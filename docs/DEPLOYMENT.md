@@ -1,0 +1,108 @@
+# Setup, deployment, backup & troubleshooting
+
+## A. Local development (no Docker, SQLite) — quickest
+Requires Python 3.11+.
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements-dev.txt
+cp .env.example .env                                      # adjust if needed
+alembic upgrade head                                      # create schema
+python -m app.seed --demo                                 # reference + fictional demo data
+uvicorn app.main:app --reload --port 8000
+```
+Open http://localhost:8000 — demo accounts are listed on the sign-in page (development only).
+API docs: http://localhost:8000/api/docs
+
+Run tests: `cd backend && pytest` (uses a throwaway SQLite DB; 122 tests).
+
+## B. Development with SQL Server (Docker Compose)
+```bash
+cp .env.docker.example .env.docker      # set strong passwords and SECRET_KEY
+docker compose --env-file .env.docker up --build
+# demo data (optional, dev only):
+docker compose --env-file .env.docker exec api python -m app.seed --demo
+```
+The `db-init` service creates the `ServiceDesk` database and a least-privilege login `sd_app`
+(`deploy/sql/init.sql`). The API container runs `alembic upgrade head` and reference seeding on start.
+> Note: the Docker setup and SQL Server path were prepared and the SQL Server DDL was compiled offline,
+> but they were **not executed against a live SQL Server** in the build environment. Run the stack once
+> in your environment and execute `pytest` against it before go-live (see section F).
+
+## C. Production on a company-managed server
+1. **Server:** Linux VM (2 vCPU / 4 GB is ample for a few hundred users) or Windows Server with Docker/Python. SQL Server 2019+ (Standard or the existing corporate instance).
+2. **Database:** run `deploy/sql/init.sql` (as DBA). For stricter separation, give `sd_app` only `db_datareader`/`db_datawriter`, and run migrations with a separate `sd_migrator` login that has `db_ddladmin`.
+   Use `Encrypt=yes&TrustServerCertificate=no` with a valid SQL Server certificate.
+3. **Environment** (`backend/.env` or service environment — never in Git):
+   `APP_ENV=production`, `SECRET_KEY=<python -c "import secrets;print(secrets.token_urlsafe(64))">`,
+   `COOKIE_SECURE=true`, `DATABASE_URL=mssql+pyodbc://...`, `CORS_ORIGINS=https://servicedesk.yourcompany`,
+   `UPLOAD_DIR=/srv/data/uploads` (on a backed-up volume), `ENABLE_SCHEDULER=true` on exactly one instance.
+   The app refuses to start in production with a weak secret, insecure cookies or SQLite.
+4. **Migrate & seed reference data:** `alembic upgrade head && python -m app.seed` (never `--demo`; it is refused in production).
+5. **Create the first administrator** (one-off, from the server shell):
+   ```bash
+   python - <<'PY'
+   from app.core.database import SessionLocal
+   from app.core.security import hash_password
+   from app.models import User, Role, UserRole
+   from sqlalchemy import select
+   db = SessionLocal()
+   u = User(employee_code="E0001", email="it.admin@yourcompany.com", full_name="IT Administrator",
+            password_hash=hash_password(input("Password: ")))
+   db.add(u); db.flush()
+   db.add(UserRole(user_id=u.id, role_id=db.scalar(select(Role.id).where(Role.code=="it_admin"))))
+   db.commit(); print("created", u.id)
+   PY
+   ```
+   Then add departments, locations, users and support-group members (user import / AD sync is on the roadmap).
+6. **Run:** `uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=127.0.0.1`
+   under systemd (or the Docker image), behind Nginx/IIS with TLS (`deploy/nginx/servicedesk.conf`).
+   With several workers, keep `ENABLE_SCHEDULER=true` on one process only (e.g. a dedicated worker instance), and note the in-memory rate limiter is per process.
+7. **Email go-live:** set `SMTP_*`, send a test, then `EMAIL_ENABLED=true`. Failed deliveries retry up to 5 times and are visible in `notifications.email_status/email_last_error`.
+
+## D. Backup & restore
+- **Database (SQL Server):** full backup nightly + transaction log backups every 15 min (Full recovery model).
+  ```sql
+  BACKUP DATABASE ServiceDesk TO DISK = N'/var/opt/mssql/backup/ServiceDesk_full.bak' WITH COMPRESSION, CHECKSUM, INIT;
+  BACKUP LOG ServiceDesk TO DISK = N'/var/opt/mssql/backup/ServiceDesk_log.trn' WITH COMPRESSION, CHECKSUM;
+  ```
+  Restore:
+  ```sql
+  RESTORE DATABASE ServiceDesk FROM DISK = N'.../ServiceDesk_full.bak' WITH NORECOVERY, REPLACE;
+  RESTORE LOG ServiceDesk FROM DISK = N'.../ServiceDesk_log.trn' WITH RECOVERY;
+  ```
+- **Attachments:** back up `UPLOAD_DIR` with the same schedule (files are immutable; incremental copies work well). The DB stores each file's SHA-256 for integrity checks.
+- **Test restores quarterly** into a non-production server and log in to verify.
+- **Retention (recommended policy, to be approved):** closed tickets 7 years; audit logs 3 years; notifications 12 months; revoked refresh tokens 30 days. Purge jobs are on the roadmap — until then run them as scheduled SQL agent jobs.
+
+## E. Troubleshooting
+| Symptom | Cause / fix |
+|---|---|
+| App exits: "SECRET_KEY must be set…" | Production guard. Set a strong `SECRET_KEY`, `COOKIE_SECURE=true`, a SQL Server URL. |
+| `pyodbc` "Data source name not found" | Install **ODBC Driver 18 for SQL Server** and use `driver=ODBC+Driver+18+for+SQL+Server`. |
+| SSL error connecting to SQL Server | Install the server certificate's CA, or (dev only) `TrustServerCertificate=yes`. |
+| Signed out every few minutes | Refresh cookie not stored: when using plain HTTP set `COOKIE_SECURE=false` (dev only); check the proxy forwards cookies and the site is same-origin. |
+| "Too many sign-in attempts" | Login rate limit (default 10/min/IP). Behind a proxy, enable `--proxy-headers` so the real client IP is used. |
+| "Account temporarily locked" | 5 failed attempts → 15-minute lock. An admin can deactivate/activate the user to clear it. |
+| Upload rejected "content does not match" | File extension and content differ (e.g. renamed .exe). Only listed types are allowed. |
+| SLA due dates look wrong | Check the business calendar hours/working days/holidays and the user's timezone. |
+| No SLA warnings / auto-close | `ENABLE_SCHEDULER=true` on exactly one instance; check logs for `servicedesk.scheduler`. |
+
+## F. Verifying against SQL Server
+```bash
+DATABASE_URL="mssql+pyodbc://sd_app:...@host/ServiceDesk_Test?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=yes" \
+  alembic upgrade head && python -m app.seed --demo
+```
+Point the test suite at a disposable SQL Server database by editing `DATABASE_URL` in `tests/conftest.py`.
+
+## G. Vercel (demo hosting)
+Files: `api/index.py` (entry point), `vercel.json`, root `requirements.txt`, `.vercelignore`.
+1. Push the **whole** `vision-servicedesk` folder to GitHub (with `api/`, `backend/`, `frontend/` at the top level).
+2. In Vercel → *Add New Project* → import the repo. **Root Directory: leave empty (the repo root)**, Framework preset: *Other*. No build command.
+3. Deploy, then open the site URL.
+
+Limitations: Vercel functions are serverless — the SQLite database lives in `/tmp`, is recreated with demo
+data on each cold start, and is not shared between instances, so **changes do not persist**. Background SLA
+jobs do not run and uploads are temporary. For real use, set environment variables
+`DATABASE_URL` (hosted SQL Server; add `pyodbc` to `requirements.txt`), `DEMO_SEED=false`, a strong `SECRET_KEY`,
+and run `alembic upgrade head` against that database — or host on a company server/VM as in section C.

@@ -1,0 +1,42 @@
+# Development stack: API + SQL Server 2022 (Developer edition).
+# Usage: cp .env.docker.example .env.docker && docker compose --env-file .env.docker up --build
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?set in .env.docker}
+    ports: ["1433:1433"]
+    volumes: [mssql-data:/var/opt/mssql]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      retries: 12
+
+  db-init:  # creates the database and a least-privilege app login once
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set in .env.docker}
+    volumes: [./deploy/sql/init.sql:/init.sql:ro]
+    entrypoint: ["/bin/sh", "-c", "/opt/mssql-tools18/bin/sqlcmd -C -S db -U sa -P \"$$MSSQL_SA_PASSWORD\" -v APP_DB_PASSWORD=\"$$APP_DB_PASSWORD\" -i /init.sql"]
+    restart: "no"
+
+  api:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    depends_on: { db-init: { condition: service_completed_successfully } }
+    environment:
+      APP_ENV: development
+      SECRET_KEY: ${SECRET_KEY:?set in .env.docker}
+      DATABASE_URL: mssql+pyodbc://sd_app:${APP_DB_PASSWORD}@db:1433/ServiceDesk?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=yes
+      CORS_ORIGINS: http://localhost:8000
+      COOKIE_SECURE: "false"
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-Vision@Demo2026}
+    ports: ["8000:8000"]
+    volumes: [uploads:/srv/data/uploads]
+
+volumes:
+  mssql-data:
+  uploads:
