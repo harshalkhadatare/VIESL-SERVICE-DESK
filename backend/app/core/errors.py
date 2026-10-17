@@ -82,7 +82,8 @@ def register_error_handlers(app: FastAPI) -> None:
         code = {404: "not_found", 405: "method_not_allowed", 401: "unauthorized", 403: "forbidden"}.get(
             exc.status_code, "http_error")
         msg = exc.detail if isinstance(exc.detail, str) else "Request failed."
-        return _envelope(request, exc.status_code, code, msg)
+        details = [{"path": request.url.path}] if exc.status_code == 404 else []
+        return _envelope(request, exc.status_code, code, msg, details)
 
     @app.exception_handler(Exception)
     async def _unhandled(request: Request, exc: Exception):

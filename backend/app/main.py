@@ -35,6 +35,26 @@ async def lifespan(app: FastAPI):
         await task
 
 
+class StripFunctionPrefix:
+    """On Vercel, requests can arrive with the serverless function path (/api/index...)
+    instead of the URL the visitor opened. Normalise it so normal routing works."""
+
+    PREFIXES = ("/api/index.py", "/api/index")
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            path = scope.get("path", "")
+            for pre in self.PREFIXES:
+                if path == pre or path.startswith(pre + "/"):
+                    path = path[len(pre):] or "/"
+                    scope = dict(scope, path=path, raw_path=path.encode())
+                    break
+        await self.app(scope, receive, send)
+
+
 app = FastAPI(
     title="Vision Infra IT Service Desk API", version="1.0.0", lifespan=lifespan,
     docs_url=None if settings.is_production else "/api/docs",
@@ -42,6 +62,7 @@ app = FastAPI(
     openapi_url=None if settings.is_production else "/api/openapi.json",
 )
 register_error_handlers(app)
+app.add_middleware(StripFunctionPrefix)
 
 app.add_middleware(
     CORSMiddleware, allow_origins=settings.cors_origin_list, allow_credentials=True,
@@ -98,6 +119,10 @@ if settings.serve_frontend and frontend.exists():
 
     @app.get("/", include_in_schema=False)
     def index():
+        return FileResponse(frontend / "index.html", headers={"Cache-Control": "no-cache"})
+
+    @app.get("/index.html", include_in_schema=False)
+    def index_html():
         return FileResponse(frontend / "index.html", headers={"Cache-Control": "no-cache"})
 elif settings.serve_frontend:
     log.warning("Frontend folder not found at %s — only the API is served", frontend)
