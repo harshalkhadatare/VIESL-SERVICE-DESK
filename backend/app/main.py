@@ -46,6 +46,19 @@ class StripFunctionPrefix:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] in ("http", "websocket"):
+            # vercel.json forwards the visitor's original path as ?__path=...
+            qs = scope.get("query_string", b"").decode("latin-1")
+            if "__path=" in qs:
+                from urllib.parse import parse_qsl, quote, urlencode
+                pairs = parse_qsl(qs, keep_blank_values=True)
+                orig = next((v for k, v in pairs if k == "__path"), "/") or "/"
+                if not orig.startswith("/"):
+                    orig = "/" + orig
+                rest = urlencode([(k, v) for k, v in pairs if k != "__path"])
+                scope = dict(scope, path=orig, raw_path=quote(orig).encode(),
+                             query_string=rest.encode("latin-1"))
+                await self.app(scope, receive, send)
+                return
             path = scope.get("path", "")
             for pre in self.PREFIXES:
                 if path == pre or path.startswith(pre + "/"):
