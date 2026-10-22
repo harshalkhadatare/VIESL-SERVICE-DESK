@@ -1,8 +1,9 @@
 from datetime import datetime
 
 from sqlalchemy import (
-    BigInteger, Boolean, CheckConstraint, ForeignKey, Index, Integer, Unicode, UniqueConstraint, false,
+    LargeBinary, BigInteger, Boolean, CheckConstraint, ForeignKey, Index, Integer, Unicode, UniqueConstraint, false,
 )
+from sqlalchemy.dialects import mssql
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, CreatedByMixin, LongText, TimestampMixin, UTCDateTime, utcnow
@@ -133,6 +134,13 @@ class TicketAttachment(Base):
     uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
     uploader: Mapped[User] = relationship(lazy="joined")
+
+
+class TicketAttachmentBlob(Base):
+    """File bytes when ATTACHMENT_STORAGE=database (serverless hosts with no persistent disk)."""
+    __tablename__ = "ticket_attachment_blobs"
+    attachment_id: Mapped[int] = mapped_column(ForeignKey("ticket_attachments.id"), primary_key=True)
+    data: Mapped[bytes] = mapped_column(LargeBinary().with_variant(mssql.VARBINARY("max"), "mssql"), nullable=False)
 
 
 class TicketHistory(Base):

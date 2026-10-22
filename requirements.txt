@@ -1,4 +1,4 @@
-# Used by Vercel. (pyodbc is omitted: add it only if DATABASE_URL points to SQL Server.)
+# Used by Vercel. PostgreSQL driver included for Neon; add pyodbc only if DATABASE_URL points to SQL Server.
 fastapi==0.143.3
 uvicorn==0.53.0
 SQLAlchemy==2.1.5
@@ -10,3 +10,4 @@ PyJWT==2.14.0
 argon2-cffi==25.1.0
 python-multipart==0.0.32
 tzdata==2026.5
+psycopg[binary]==3.3.6

@@ -109,7 +109,7 @@ vision-servicedesk/
 │  │  │                          scheduler, dashboard, attachments, audit, settings_service
 │  │  └─ api/  deps.py · v1/{auth,tickets,meta,dashboard,platform}.py
 │  ├─ alembic/                   migrations (0001_initial_schema)
-│  ├─ tests/                     116 tests incl. role × action matrix
+│  ├─ tests/                     120 tests incl. role × action matrix
 │  ├─ Dockerfile · requirements*.txt · pytest.ini · .env.example
 ├─ frontend/
 │  ├─ index.html · css/app.css · assets/favicon.svg

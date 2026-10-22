@@ -778,6 +778,21 @@ INSERT INTO alembic_version (version_num) OUTPUT inserted.version_num VALUES ('0
 
 GO
 
+-- Running upgrade 0001_initial -> 0002_attachment_blobs
+
+CREATE TABLE ticket_attachment_blobs (
+    attachment_id INTEGER NOT NULL, 
+    data VARBINARY(max) NOT NULL, 
+    CONSTRAINT pk_ticket_attachment_blobs PRIMARY KEY (attachment_id), 
+    CONSTRAINT fk_ticket_attachment_blobs_attachment_id_ticket_attachments FOREIGN KEY(attachment_id) REFERENCES ticket_attachments (id)
+);
+
+GO
+
+UPDATE alembic_version SET version_num='0002_attachment_blobs' WHERE alembic_version.version_num = '0001_initial';
+
+GO
+
 COMMIT;
 
 GO

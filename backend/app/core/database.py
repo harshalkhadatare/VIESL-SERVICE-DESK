@@ -1,6 +1,9 @@
 from collections.abc import Iterator
 
+import os
+
 from sqlalchemy import create_engine, event
+from sqlalchemy.pool import NullPool
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -13,11 +16,18 @@ def build_engine(url: str | None = None, echo: bool = False) -> Engine:
     kwargs: dict = {"pool_pre_ping": True, "echo": echo or settings.db_echo}
     if url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
+    elif os.environ.get("VERCEL"):
+        # Serverless: don't hold idle connections between invocations (Neon suspends idle compute)
+        kwargs["poolclass"] = NullPool
     else:
-        # SQL Server: fast_executemany speeds up bulk inserts (seed / imports)
-        kwargs["fast_executemany"] = True
         kwargs["pool_size"] = 10
         kwargs["max_overflow"] = 20
+        kwargs["pool_recycle"] = 1800
+    if url.startswith("mssql"):
+        kwargs["fast_executemany"] = True  # SQL Server: faster bulk inserts (seed / imports)
+    if url.startswith("postgresql"):
+        # Neon's pooled URL goes through PgBouncer (transaction mode): disable server-side prepared statements
+        kwargs["connect_args"] = {"prepare_threshold": None}
     eng = create_engine(url, **kwargs)
 
     if url.startswith("sqlite"):

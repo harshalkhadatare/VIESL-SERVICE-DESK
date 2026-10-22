@@ -3,10 +3,10 @@ import { state, catalog } from "../state.js";
 import { $, $$, html, mount, icon, debounce, busy, toast, errorToast, showFieldErrors, prioBadge, fileSize } from "../ui.js";
 
 const ALLOWED = ".png,.jpg,.jpeg,.gif,.webp,.bmp,.tif,.tiff,.heic,.heif,.pdf";
-const MAX_MB = 10;
 
 export async function render(view) {
   const cat = await catalog();
+  const MAX_MB = cat.max_upload_mb || 10;
   const me = state.me;
   const files = [];
   const idemKey = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random();

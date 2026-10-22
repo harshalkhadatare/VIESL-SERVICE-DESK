@@ -7,6 +7,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import Principal, get_principal, require, require_any
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.models import (
     Announcement, Category, Department, Priority, PriorityMatrix, SupportGroup, SupportGroupMember, TicketStatus,
@@ -61,6 +62,7 @@ class CatalogOut(BaseModel):
     urgency: dict[int, str]
     erp_modules: list[str]
     matrix: list[dict]
+    max_upload_mb: int
 
 
 @router.get("/meta/catalog", response_model=CatalogOut)
@@ -81,6 +83,7 @@ def catalog(p: Principal = Depends(get_principal), db: Session = Depends(get_db)
         statuses=[StatusOut(code=s.code, name=s.name, is_open=s.is_open, pauses_sla=s.pauses_sla) for s in stats],
         impact=IMPACT, urgency=URGENCY, erp_modules=ERP_MODULES,
         matrix=[{"impact": m.impact, "urgency": m.urgency, "priority": pmap[m.priority_id]} for m in matrix],
+        max_upload_mb=get_settings().max_upload_mb,
     )
 
 

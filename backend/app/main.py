@@ -88,19 +88,25 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
 
 
 async def _send_queued_emails() -> None:
-    """Email notifications created by this request are sent right away (works on serverless hosts
-    with no background scheduler). Failures stay queued and the scheduler retries them."""
+    """After a change request: send the emails it created right away, and on serverless hosts
+    (RUN_JOBS_ON_REQUEST=true) also run the SLA / auto-close / retry jobs if they are due."""
     from app.services.notifications import deliver_pending_emails, email_configured
-    if not email_configured():
+    run_jobs = settings.run_jobs_on_request
+    if not email_configured() and not run_jobs:
         return
     from app.core.database import SessionLocal
 
     def _run():
         with SessionLocal() as db:
             try:
-                deliver_pending_emails(db, batch=20, first_attempt_only=True)
+                if email_configured():
+                    deliver_pending_emails(db, batch=20, first_attempt_only=True)
+                if run_jobs:
+                    from app.services.scheduler import maybe_run_jobs
+                    maybe_run_jobs(db)
             except Exception:  # noqa: BLE001
-                log.exception("inline email delivery failed")
+                db.rollback()
+                log.exception("post-request background work failed")
     await asyncio.to_thread(_run)
 
 
@@ -134,6 +140,21 @@ async def request_context(request: Request, call_next):
 api = APIRouter(prefix="/api/v1")
 for r in (auth.router, tickets.router, meta.router, dashboard.router, platform.router):
     api.include_router(r)
+
+
+@api.get("/internal/jobs", tags=["Health"], include_in_schema=False)
+def cron_jobs(request: Request):
+    """Called once a day by Vercel Cron (Authorization: Bearer <CRON_SECRET>)."""
+    import hmac
+
+    from app.core.database import SessionLocal
+    from app.services.scheduler import maybe_run_jobs
+    expected = f"Bearer {settings.cron_secret}"
+    if not settings.cron_secret or not hmac.compare_digest(request.headers.get("Authorization", ""), expected):
+        return JSONResponse(status_code=401, content={"error": {"code": "unauthorized", "message": "Unauthorized.",
+                                                                 "details": [], "request_id": None}})
+    with SessionLocal() as db:
+        return {"ran": maybe_run_jobs(db, force=True)}
 
 
 @api.get("/health", tags=["Health"])

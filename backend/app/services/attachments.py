@@ -6,6 +6,7 @@
 - Downloads go through an authorised endpoint with Content-Disposition: attachment
 """
 import hashlib
+import io
 import os
 import re
 import uuid
@@ -52,20 +53,26 @@ def _verify_magic(ext: str, head: bytes) -> None:
 
 
 async def store_upload(file: UploadFile) -> dict:
+    """Validate and store an upload. Returns metadata; with ATTACHMENT_STORAGE=database the
+    bytes are returned under "data" for the caller to save in ticket_attachment_blobs."""
     s = get_settings()
     name = safe_display_name(file.filename or "")
     ext = Path(name).suffix.lower()
     if ext not in ALLOWED:
         raise BusinessRuleError("Only images (PNG, JPG, GIF, WEBP, BMP, TIFF, HEIC) and PDF files can be attached.")
     limit = s.max_upload_mb * 1024 * 1024
-    root = Path(s.upload_dir).resolve()
     stored = f"{uuid.uuid4().hex}{ext}"
-    sub = root / stored[:2]
-    sub.mkdir(parents=True, exist_ok=True)
-    dest = sub / stored
+    in_db = s.attachment_storage == "database"
+    buf = io.BytesIO()
+    dest = None
+    if not in_db:
+        root = Path(s.upload_dir).resolve()
+        (root / stored[:2]).mkdir(parents=True, exist_ok=True)
+        dest = root / stored[:2] / stored
     sha, size, head = hashlib.sha256(), 0, b""
     try:
-        with open(dest, "wb") as out:
+        out = buf if in_db else open(dest, "wb")
+        try:
             while chunk := await file.read(64 * 1024):
                 if not head:
                     head = chunk[:512]
@@ -75,13 +82,20 @@ async def store_upload(file: UploadFile) -> dict:
                     raise BusinessRuleError(f"File exceeds the {s.max_upload_mb} MB limit.")
                 sha.update(chunk)
                 out.write(chunk)
+        finally:
+            if not in_db:
+                out.close()
         if size == 0:
             raise BusinessRuleError("Empty files are not allowed.")
     except Exception:
-        dest.unlink(missing_ok=True)
+        if dest is not None:
+            dest.unlink(missing_ok=True)
         raise
-    return {"original_name": name, "stored_name": stored, "content_type": ALLOWED[ext][0],
+    meta = {"original_name": name, "stored_name": stored, "content_type": ALLOWED[ext][0],
             "size_bytes": size, "sha256": sha.hexdigest()}
+    if in_db:
+        meta["data"] = buf.getvalue()
+    return meta
 
 
 def path_for(stored_name: str) -> Path:

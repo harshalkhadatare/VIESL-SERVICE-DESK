@@ -4,7 +4,7 @@ Internal ITSM portal for **Vision Infra Equipment Solutions Ltd.** — employees
 (including detailed ERP issues), IT engineers work queues against business-hours SLAs, leads assign and
 escalate, management sees live and historical performance, and every change is audited.
 
-**Stack:** Python · FastAPI · SQLAlchemy 2 · Alembic · Microsoft SQL Server (SQLite for local dev) ·
+**Stack:** Python · FastAPI · SQLAlchemy 2 · Alembic · PostgreSQL / Microsoft SQL Server (SQLite for local dev) ·
 HTML / CSS / vanilla JavaScript (ES modules, no build step) · Docker.
 
 ![Ticket list with the ⋮ assign menu](docs/screenshots/kebab_menu.png)
@@ -33,8 +33,9 @@ Open **http://localhost:8000** and sign in (password `Vision@Demo2026`, all user
 Only two roles exist: **Employee** (raise and track own tickets) and **IT Administrator** (work, assign and
 manage everything). Add real users with real company emails under *Users & roles → Add user*.
 
-Tests: `cd backend && python -m pytest` → **116 passed** (auth, two-role matrix, lifecycle, assignment, SLA, email, attachments, exports, audit).
-SQL Server via Docker: see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Tests: `cd backend && python -m pytest` → **120 passed** (auth, two-role matrix, lifecycle, assignment, SLA, email, attachments, exports, audit).
+**Free hosting with permanent data:** Vercel + Neon PostgreSQL — step by step in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#g-vercel--free-neon-postgresql-permanent-data-no-cost).
+Databases supported: SQLite (local), PostgreSQL (Neon / any), Microsoft SQL Server. Tests pass on SQLite and PostgreSQL.
 
 ## What works today
 - Secure sign-in (Argon2id, short-lived JWT + rotating HttpOnly refresh cookie, lockout, rate limiting)

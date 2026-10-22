@@ -1,7 +1,9 @@
 # Known limitations & roadmap
 
 ## Known limitations (this release)
-- **Not run against a live SQL Server here.** The schema compiles to SQL Server DDL (`docs/sqlserver_schema.sql`) and the Docker stack is provided, but all automated tests ran on SQLite. Run the suite against SQL Server before go-live.
+- **Databases:** the full test suite passes on SQLite and PostgreSQL 16 (what Neon runs). SQL Server is supported and its
+  DDL is generated (`docs/sqlserver_schema.sql`), but it has not been run against a live SQL Server here.
+- **On Vercel's free plan** background jobs run after user actions and once a day (Hobby crons are daily only).
 - **Email** is implemented and was tested end to end against a local SMTP server; it has **not** been tested against your
   company's real mail server. Turn it on with the `SMTP_*` settings and use *Email notifications → Send test email*.
 - **Approval workflows** are not built yet: categories flagged `requires_approval` show a notice and staff can use the *Pending Approval* status manually; no approver routing or decisions are recorded.

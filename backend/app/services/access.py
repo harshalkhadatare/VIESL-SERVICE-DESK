@@ -29,7 +29,7 @@ def ticket_visibility_clause(p: Principal) -> ColumnElement[bool]:
 def get_visible_ticket(db: Session, p: Principal, number: str, for_update: bool = False) -> Ticket:
     stmt = select(Ticket).where(Ticket.number == number, ticket_visibility_clause(p))
     if for_update:
-        stmt = stmt.with_for_update()
+        stmt = stmt.with_for_update(of=Ticket)
     t = db.scalar(stmt)
     if not t:
         raise NotFound("Ticket not found.")

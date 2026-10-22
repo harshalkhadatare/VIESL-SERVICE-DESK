@@ -1,12 +1,24 @@
 {
   "rewrites": [
-    { "source": "/", "destination": "/api/index?__path=/" },
-    { "source": "/:path*", "destination": "/api/index?__path=/:path*" }
+    {
+      "source": "/",
+      "destination": "/api/index?__path=/"
+    },
+    {
+      "source": "/:path*",
+      "destination": "/api/index?__path=/:path*"
+    }
   ],
   "functions": {
     "api/index.py": {
       "maxDuration": 30,
-      "includeFiles": "{backend/app/**,frontend/**}"
+      "includeFiles": "{backend/app/**,backend/alembic/**,backend/alembic.ini,frontend/**}"
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/v1/internal/jobs",
+      "schedule": "30 1 * * *"
+    }
+  ]
 }

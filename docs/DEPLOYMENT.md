@@ -14,7 +14,7 @@ uvicorn app.main:app --reload --port 8000
 Open http://localhost:8000 — demo accounts are listed on the sign-in page (development only).
 API docs: http://localhost:8000/api/docs
 
-Run tests: `cd backend && python -m pytest` (uses a throwaway SQLite DB; 116 tests).
+Run tests: `cd backend && python -m pytest` (uses a throwaway SQLite DB; 120 tests).
 
 ## B. Development with SQL Server (Docker Compose)
 ```bash
@@ -95,18 +95,42 @@ DATABASE_URL="mssql+pyodbc://sd_app:...@host/ServiceDesk_Test?driver=ODBC+Driver
 ```
 Point the test suite at a disposable SQL Server database by editing `DATABASE_URL` in `tests/conftest.py`.
 
-## G. Vercel (demo hosting)
-Files: `api/index.py` (entry point), `vercel.json`, root `requirements.txt`, `.vercelignore`.
-1. Push the **whole** `vision-servicedesk` folder to GitHub (with `api/`, `backend/`, `frontend/` at the top level).
-2. In Vercel → *Add New Project* → import the repo. **Root Directory: leave empty (the repo root)**, Framework preset: *Other*. No build command.
-3. Deploy, then open the site URL.
+## G. Vercel + free Neon PostgreSQL (permanent data, no cost)
+Vercel runs the app; **Neon** (free plan: no credit card, 1 GB storage) keeps the data permanently.
+Users, tickets, comments, notifications and attachments (stored inside the database) all survive restarts.
 
-Limitations: Vercel functions are serverless — the SQLite database lives in `/tmp`, is recreated with demo
-data on each cold start, and is not shared between instances, so **changes do not persist**. Background SLA
-jobs do not run and uploads are temporary. For real use, set environment variables
-`DATABASE_URL` (hosted SQL Server; add `pyodbc` to `requirements.txt`), `DEMO_SEED=false`, a strong `SECRET_KEY`,
-and run `alembic upgrade head` against that database — or host on a company server/VM as in section C.
+1. **Create the database** — Vercel dashboard → your project → **Storage** → **Create Database** → **Neon** → choose
+   the **Free** plan and a region close to you (e.g. *Asia Pacific (Singapore)* or *Mumbai* if offered) → **Create**.
+2. **Connect it** — on the database page click **Connect Project**, pick `viesl-service-desk`, tick **Production**
+   (and Preview if you like) → **Connect**. Vercel adds `DATABASE_URL` and related variables automatically.
+3. **Add these environment variables** (Project → Settings → Environment Variables):
 
+| Variable | Value |
+|---|---|
+| `SECRET_KEY` | a long random string — PowerShell: `python -c "import secrets;print(secrets.token_urlsafe(64))"` |
+| `BOOTSTRAP_ADMIN_EMAIL` | your email, e.g. `harshal@visioninfra.co.in` |
+| `BOOTSTRAP_ADMIN_PASSWORD` | first password (10+ characters, upper + lower case + a digit) |
+| `BOOTSTRAP_ADMIN_NAME` | your name |
+| `CRON_SECRET` | any long random string (protects the daily job endpoint) |
+| `DEMO_SEED` | optional: `true` to add the fictional demo users and tickets |
+
+4. **Redeploy** (Deployments → ⋯ → Redeploy). On start-up the app creates all tables and reference data,
+   then your administrator account.
+5. Sign in with the bootstrap email/password, change the password (your name → Change password), then add
+   colleagues under **Users & roles → Add user**. You can delete `BOOTSTRAP_ADMIN_PASSWORD` afterwards.
+
+How it works on Vercel
+- `api/index.py` detects `DATABASE_URL`, runs the Alembic migrations and seeds reference data on each cold start
+  (safe to repeat). Without `DATABASE_URL` it falls back to a temporary demo database.
+- Attachments are stored in the database (`ticket_attachment_blobs`); the limit is 4 MB per file because Vercel
+  rejects requests larger than 4.5 MB.
+- There is no always-on background process, so SLA checks, auto-close and email retries run after user actions
+  (at most every 10 minutes) plus once a day via Vercel Cron (`vercel.json` → `/api/v1/internal/jobs`).
+- Neon's free compute pauses after 5 minutes without use; the first request afterwards takes about a second longer.
+
+Free-plan limits to keep in mind: Neon 1 GB storage (roughly tens of thousands of tickets plus a few hundred
+screenshots) and 100 compute hours per month; Vercel Hobby is for non-commercial use — check Vercel's terms for
+company use, or move to a company server (section C) later. The same code also runs on SQL Server.
 
 ## H. Email notifications
 Every in-app notification is also emailed (new ticket, assignment — including who it is assigned to — replies, status

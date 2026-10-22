@@ -13,7 +13,8 @@ from app.api.deps import Principal, get_principal, require
 from app.core.database import get_db
 from app.core.errors import BusinessRuleError, Forbidden, NotFound
 from app.models import (
-    Priority, SatisfactionRating, SLATracking, Ticket, TicketAttachment, TicketComment, TicketHistory,
+    Priority, SatisfactionRating, SLATracking, Ticket, TicketAttachment, TicketAttachmentBlob, TicketComment,
+    TicketHistory,
     TicketStatus,
 )
 from app.schemas.common import CodeRef, Page, Ref, UserRef
@@ -332,8 +333,12 @@ async def upload_attachment(number: str, file: UploadFile = File(...), is_intern
     if n >= MAX_FILES_PER_TICKET:
         raise BusinessRuleError(f"A ticket can have at most {MAX_FILES_PER_TICKET} attachments.")
     meta = await store_upload(file)
+    data = meta.pop("data", None)
     a = TicketAttachment(ticket_id=t.id, uploaded_by=p.id, is_internal=is_internal, **meta)
     db.add(a)
+    if data is not None:
+        db.flush()
+        db.add(TicketAttachmentBlob(attachment_id=a.id, data=data))
     svc.add_history(db, t, "attachment", None, meta["original_name"], p.id, internal=is_internal)
     audit_p(db, p, "ticket.attachment_upload", entity_type="ticket", entity_id=t.number,
             detail={"name": meta["original_name"], "size": meta["size_bytes"], "sha256": meta["sha256"]})
@@ -350,12 +355,19 @@ def download_attachment(number: str, attachment_id: int, p: Principal = Depends(
                                                  TicketAttachment.ticket_id == t.id))
     if not a or (a.is_internal and not _sees_internal(p, t)):
         raise NotFound("Attachment not found.")
+    headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"}
     path = path_for(a.stored_name)
-    if not path.exists():
-        raise NotFound("Attachment file is missing from storage.")
+    blob = None
+    if not path.exists():  # stored in the database (serverless hosting)
+        blob = db.get(TicketAttachmentBlob, a.id)
+        if blob is None:
+            raise NotFound("Attachment file is missing from storage.")
     audit_p(db, p, "ticket.attachment_download", entity_type="ticket", entity_id=t.number,
             detail={"attachment_id": a.id})
     db.commit()
+    if blob is not None:
+        from urllib.parse import quote
+        headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(a.original_name)}"
+        return Response(content=blob.data, media_type=a.content_type, headers=headers)
     return FileResponse(path, media_type=a.content_type, filename=a.original_name,
-                        content_disposition_type="attachment",
-                        headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"})
+                        content_disposition_type="attachment", headers=headers)

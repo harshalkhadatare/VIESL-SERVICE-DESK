@@ -4,7 +4,8 @@ import tempfile
 _tmp = tempfile.mkdtemp(prefix="sdtest_")
 os.environ.update({
     "APP_ENV": "testing",
-    "DATABASE_URL": f"sqlite:///{_tmp}/test.db",
+    # Set TEST_DATABASE_URL to run the suite against PostgreSQL / SQL Server (use an empty database)
+    "DATABASE_URL": os.environ.get("TEST_DATABASE_URL", f"sqlite:///{_tmp}/test.db"),
     "UPLOAD_DIR": f"{_tmp}/uploads",
     "ENABLE_SCHEDULER": "false",
     "SECRET_KEY": "test-secret-key-0123456789abcdef0123456789",

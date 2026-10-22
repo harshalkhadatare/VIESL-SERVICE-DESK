@@ -124,3 +124,45 @@ async def scheduler_loop(stop: asyncio.Event) -> None:
             await asyncio.wait_for(stop.wait(), timeout=interval)
         except asyncio.TimeoutError:
             pass
+
+
+JOBS_KEY = "jobs_last_run"
+
+
+def run_jobs_once(db: Session) -> dict:
+    s1 = run_sla_checks(db)
+    s2 = run_auto_close(db)
+    sent = deliver_pending_emails(db)
+    return {"sla": s1, "auto_close": s2, "emails_sent": sent}
+
+
+def maybe_run_jobs(db: Session, force: bool = False) -> dict | None:
+    """Serverless replacement for the always-on loop: run the jobs if they haven't run for
+    JOBS_MIN_INTERVAL_MINUTES. A compare-and-set on application_settings makes sure only one
+    concurrent request actually runs them."""
+    from sqlalchemy import update
+
+    from app.models import ApplicationSetting
+    now = utcnow()
+    row = db.get(ApplicationSetting, JOBS_KEY)
+    if row is None:
+        db.add(ApplicationSetting(key=JOBS_KEY, value="1970-01-01T00:00:00+00:00",
+                                  description="Last time background jobs ran (serverless mode)"))
+        try:
+            db.commit()
+        except Exception:  # noqa: BLE001 - created concurrently
+            db.rollback()
+        row = db.get(ApplicationSetting, JOBS_KEY)
+    from datetime import datetime
+    last = datetime.fromisoformat(row.value)
+    if not force and now - last < timedelta(minutes=get_settings().jobs_min_interval_minutes):
+        return None
+    claimed = db.execute(update(ApplicationSetting).where(ApplicationSetting.key == JOBS_KEY,
+                                                          ApplicationSetting.value == row.value)
+                         .values(value=now.isoformat())).rowcount
+    db.commit()
+    if not claimed:
+        return None
+    result = run_jobs_once(db)
+    log.info("serverless jobs ran: %s", result)
+    return result
