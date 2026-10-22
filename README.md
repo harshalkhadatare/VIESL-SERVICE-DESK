@@ -7,7 +7,7 @@ escalate, management sees live and historical performance, and every change is a
 **Stack:** Python · FastAPI · SQLAlchemy 2 · Alembic · Microsoft SQL Server (SQLite for local dev) ·
 HTML / CSS / vanilla JavaScript (ES modules, no build step) · Docker.
 
-![Operations dashboard](docs/screenshots/ops.png)
+![Ticket list with the ⋮ assign menu](docs/screenshots/kebab_menu.png)
 
 ## Quick start (5 minutes, no Docker)
 ```bash
@@ -19,19 +19,21 @@ alembic upgrade head
 python -m app.seed --demo
 uvicorn app.main:app --reload --port 8000
 ```
-Open **http://localhost:8000** and click a demo account (password `Vision@Demo2026`, all users fictional):
+Open **http://localhost:8000** and sign in (password `Vision@Demo2026`, all users fictional):
 
 | Account | Role |
 |---|---|
 | anjali.sharma@demo.example.com | Employee (Finance) |
-| amit.deshmukh@demo.example.com | IT Support Engineer — ERP |
-| rahul.kulkarni@demo.example.com | IT Support Engineer — Network / EUC |
-| sanjay.patil@demo.example.com | IT Team Lead — ERP & Service Desk |
-| neha.joshi@demo.example.com | IT Team Lead — Infrastructure, EUC, Security |
-| rohan.mehta@demo.example.com | IT Administrator |
-| kavita.rao@demo.example.com | Management / Auditor |
+| manoj.gupta@demo.example.com | Employee (Procurement) |
+| rohan.mehta@demo.example.com | IT Administrator — Head of IT |
+| amit.deshmukh@demo.example.com | IT Administrator — ERP |
+| rahul.kulkarni@demo.example.com | IT Administrator — Network |
+| sneha.iyer@demo.example.com | IT Administrator — Service Desk |
 
-Tests: `cd backend && pytest` → **122 passed** (auth, RBAC matrix, lifecycle, SLA, routing, attachments, exports, audit).
+Only two roles exist: **Employee** (raise and track own tickets) and **IT Administrator** (work, assign and
+manage everything). Add real users with real company emails under *Users & roles → Add user*.
+
+Tests: `cd backend && python -m pytest` → **116 passed** (auth, two-role matrix, lifecycle, assignment, SLA, email, attachments, exports, audit).
 SQL Server via Docker: see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## What works today
@@ -42,7 +44,8 @@ SQL Server via Docker: see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 - Conversation with public replies and private internal notes, complete change history, related/duplicate links, satisfaction rating
 - SLA engine on a business calendar (hours, working days, holidays), pauses, no clock resets, warnings, breach escalation, auto-close (never for protected categories)
 - Employee home, operations dashboard (live vs period metrics, trend, mix, workload), global search, CSV export
-- In-app notifications (email outbox ready, off by default), users & roles admin, audit log viewer, light/dark theme, mobile layout
+- In-app **and email** notifications that always show the assigned IT administrator; ⋮ menu on every ticket row to assign it
+- Attachments limited to images and PDF; users & roles admin (add users), email settings page with test send, audit log, mobile layout
 
 Not yet built (clearly scoped in [docs/ROADMAP.md](docs/ROADMAP.md)): approval workflows, KB authoring, suggestions portal, assets/CMDB, admin UIs for SLA/categories/rules, SSO.
 

@@ -35,7 +35,7 @@ small hand-written SVG components (no CDN). The backend follows the recommended 
 | SLA engine (business calendar, holidays, pauses, no clock reset, warnings, breach escalation) | **Done** |
 | Comments & internal notes, attachments (magic-byte validation), related/duplicate links, CSAT rating | **Done** |
 | Dashboards (employee + operations, live vs historical, filters), global search, CSV export | **Done** |
-| In-app notifications + email outbox with SMTP provider interface | **Done** (email *not verified* against a real relay) |
+| In-app + email notifications (HTML emails, sent instantly, retried on failure, test-send page) | **Done** (tested against a local SMTP server, not yet against the company relay) |
 | Knowledge base (search, read, suggestions while raising tickets) | **Read side done**; authoring/review UI is Phase 5 |
 | Users & roles admin, audit log viewer | **Done** |
 | Approval workflows, suggestions portal, assets/CMDB, admin UI for categories/SLA/calendars/rules | **Planned** (Phases 5–6); tables for rules/SLA/calendars exist and are seeded |
@@ -109,7 +109,7 @@ vision-servicedesk/
 │  │  │                          scheduler, dashboard, attachments, audit, settings_service
 │  │  └─ api/  deps.py · v1/{auth,tickets,meta,dashboard,platform}.py
 │  ├─ alembic/                   migrations (0001_initial_schema)
-│  ├─ tests/                     122 tests incl. role × action matrix
+│  ├─ tests/                     116 tests incl. role × action matrix
 │  ├─ Dockerfile · requirements*.txt · pytest.ini · .env.example
 ├─ frontend/
 │  ├─ index.html · css/app.css · assets/favicon.svg
@@ -133,7 +133,7 @@ vision-servicedesk/
 2. SLA targets (business minutes): P1 30/240, P2 60/540, P3 240/1620, P4 480/2700; Security P1 15/180. These are examples to be confirmed by IT management.
 3. New tickets start in **Submitted**; **New** is reserved for future email-to-ticket intake.
 4. Pauses: Pending Employee, Pending Approval, Resolved, Closed, Cancelled pause the SLA. Pending Vendor / Pending Change do **not** pause by default (configurable in `ticket_statuses.pauses_sla`).
-5. Team leads coordinate queues and are excluded from automatic assignment unless no engineer is available.
+5. Two roles only: Employee and IT Administrator. IT administrators belong to support teams (ERP, Infrastructure, End-User Computing, Service Desk, Security) used for automatic routing; any administrator can assign any ticket.
 6. Reopen window 7 days; auto-close 5 days after resolution with a reminder at day 3.
 7. Local accounts are used now; SSO (Azure AD / Entra ID via OIDC) is a planned enhancement — `users.auth_provider` already exists.
 

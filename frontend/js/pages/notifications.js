@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { $, $$, html, mount, icon, fmtRelative, fmtDate, emptyState, errorToast, toast } from "../ui.js";
+import { $, $$, html, mount, icon, fmtRelative, fmtDate, emptyState, errorToast, toast, initials } from "../ui.js";
 import { refreshUnread } from "../app.js";
 
 const EV_ICON = { ticket_created: "ticket", ticket_assigned: "user", status_changed: "refresh", comment_added: "send",
@@ -18,10 +18,15 @@ export async function render(view) {
       const r = await api.get("/notifications", { unread_only: unreadOnly, page, page_size: 20 });
       if (!$("#nl", view)?.isConnected) return;
       mount($("#nl", view), r.items.length ? html`${r.items.map((n) => html`<li style="${n.is_read ? "" : "background:var(--surface-hover)"}">
-        <a class="item row" style="flex-wrap:nowrap;align-items:flex-start;gap:14px" href="${n.link || "#/notifications"}" data-id="${n.id}" data-read="${n.is_read}">
+        <a class="item" style="display:flex;flex-wrap:nowrap;align-items:flex-start;gap:14px" href="${n.link || "#/notifications"}" data-id="${n.id}" data-read="${n.is_read}">
           <span class="attach" style="padding:0"><span class="ic">${icon(EV_ICON[n.event] || "bell")}</span></span>
           <span style="flex:1;min-width:0"><b style="font-weight:${n.is_read ? 500 : 650}">${n.title}</b>
-            ${n.body ? html`<div class="t-sub2" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${n.body}</div>` : ""}</span>
+            ${n.ticket_subject ? html`<div class="t-sub2" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${n.ticket_subject}${n.ticket_status ? html` · ${n.ticket_status}` : ""}</div>` : ""}
+            ${n.body ? html`<div class="t-sub2" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${n.body.split("\n").filter((l) => !l.startsWith("Assigned to:")).join(" · ")}</div>` : ""}
+            ${n.ticket_number ? (n.assignee_name
+              ? html`<span class="assignee-chip"><span class="avatar">${initials(n.assignee_name)}</span>Assigned to <b>${n.assignee_name}</b></span>`
+              : html`<span class="assignee-chip none">Not yet assigned</span>`) : ""}
+            ${n.email_status === "sent" ? html`<span class="assignee-chip" style="margin-left:6px;padding-left:9px" title="An email was sent for this update">${icon("mail")} Emailed</span>` : ""}</span>
           <span class="muted small" title="${fmtDate(n.created_at)}" style="white-space:nowrap">${fmtRelative(n.created_at)}</span></a></li>`)}` :
         html`<li>${emptyState(unreadOnly ? "You're all caught up" : "No notifications yet", "We'll let you know when something changes on your tickets.", "bell")}</li>`);
       const pages = Math.max(1, Math.ceil(r.total / r.page_size));

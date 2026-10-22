@@ -51,7 +51,7 @@ def _list_item(t: Ticket, now: datetime) -> TicketListItem:
         else:
             sla_state = "on_track"
     return TicketListItem(
-        number=t.number, subject=t.subject, ticket_type=t.ticket_type,
+        number=t.number, version=t.version, assignee_id=t.assignee_id, subject=t.subject, ticket_type=t.ticket_type,
         status=CodeRef(code=t.status.code, name=t.status.name),
         priority=CodeRef(code=t.priority.code, name=t.priority.name), category=t.category.name,
         requester=t.requester.full_name, department=t.department.name if t.department else None,
@@ -270,7 +270,7 @@ def change_status(number: str, data: StatusChangeIn, p: Principal = Depends(get_
 
 
 @router.post("/{number}/assign", response_model=TicketDetail)
-def assign(number: str, data: AssignIn, p: Principal = Depends(require("ticket.work")),
+def assign(number: str, data: AssignIn, p: Principal = Depends(require("ticket.assign")),
            db: Session = Depends(get_db)):
     t = svc.assign(db, p, number, data)
     db.commit()

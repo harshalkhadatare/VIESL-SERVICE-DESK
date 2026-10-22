@@ -11,6 +11,8 @@ import * as kbPage from "./pages/kb.js";
 import * as notificationsPage from "./pages/notifications.js";
 import * as adminPage from "./pages/admin.js";
 
+export const COMPANY = "Vision Infra Equipment Solutions Ltd.";
+
 const ROUTES = [
   [/^\/?$/, dashboardPage.render, "dashboard"],
   [/^\/tickets\/new$/, newTicketPage.render, "new"],
@@ -21,6 +23,7 @@ const ROUTES = [
   [/^\/notifications$/, notificationsPage.render, "notifications"],
   [/^\/admin\/users$/, adminPage.renderUsers, "users", "user.manage"],
   [/^\/admin\/audit$/, adminPage.renderAudit, "audit", "audit.view"],
+  [/^\/admin\/email$/, adminPage.renderEmail, "email", "settings.manage"],
 ];
 
 let cleanup = null;
@@ -45,7 +48,7 @@ function renderShell() {
   <div class="shell" id="shell">
     <aside class="sidebar" aria-label="Main navigation">
       <div class="brand"><div class="brand-mark">${brandMark()}</div>
-        <div><div class="brand-name">IT Service Desk</div><div class="brand-sub">Vision Infra Equipment</div></div></div>
+        <div><div class="brand-name">IT Service Desk</div><div class="brand-sub">Vision Infra · VIESL</div></div></div>
       <nav class="nav">
         <div class="nav-section">Workspace</div>
         ${navLink("/", "dashboard", "home", isStaff() || can("dashboard.ops") ? "Dashboard" : "Home")}
@@ -56,6 +59,7 @@ function renderShell() {
         ${navLink("/kb", "kb", "book", "Knowledge base")}
         ${can("user.manage") || can("audit.view") ? html`<div class="nav-section">Administration</div>` : ""}
         ${can("user.manage") ? navLink("/admin/users", "users", "users", "Users & roles") : ""}
+        ${can("settings.manage") ? navLink("/admin/email", "email", "mail", "Email notifications") : ""}
         ${can("audit.view") ? navLink("/admin/audit", "audit", "shield", "Audit log") : ""}
       </nav>
       <div class="sidebar-foot">Need urgent help? Call the IT Service Desk<br>for P1 outages after raising a ticket.</div>
@@ -63,6 +67,7 @@ function renderShell() {
     <div class="main">
       <header class="topbar">
         <button class="icon-btn menu-btn" id="menu-btn" aria-label="Open navigation">${icon("menu")}</button>
+        <div class="company-title" title="${COMPANY}">${COMPANY}</div>
         <div class="search" role="search">
           ${icon("search")}
           <input type="search" id="global-search" placeholder="Search tickets and articles…  ( / )" autocomplete="off"
@@ -70,7 +75,6 @@ function renderShell() {
           <div class="search-results" id="search-results" hidden></div>
         </div>
         <div class="topbar-right">
-          <button class="icon-btn" id="theme-btn" aria-label="Toggle dark mode" title="Toggle theme"></button>
           <a class="icon-btn" href="#/notifications" aria-label="Notifications" title="Notifications">${icon("bell")}
             <span class="dot-count" id="bell-count" hidden></span></a>
           <button class="user-chip" id="user-btn" aria-haspopup="menu" aria-expanded="false">
@@ -85,25 +89,9 @@ function renderShell() {
 
   $("#menu-btn").addEventListener("click", () => $("#shell").classList.toggle("nav-open"));
   $(".sidebar").addEventListener("click", (e) => { if (e.target.closest("a")) $("#shell").classList.remove("nav-open"); });
-  setupTheme();
   setupUserMenu();
   setupSearch();
   pollUnread();
-}
-
-function setupTheme() {
-  const btn = $("#theme-btn");
-  const paint = () => {
-    const dark = document.documentElement.dataset.theme === "dark";
-    mount(btn, icon(dark ? "sun" : "moon"));
-  };
-  btn.addEventListener("click", () => {
-    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-    document.documentElement.dataset.theme = next;
-    try { localStorage.setItem("sd-theme", next); } catch { /* ignore */ }
-    paint();
-  });
-  paint();
 }
 
 function setupUserMenu() {

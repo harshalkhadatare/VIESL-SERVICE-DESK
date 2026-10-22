@@ -26,14 +26,12 @@ PASSWORD = "Vision@Demo2026"
 EMAILS = {
     "employee": "anjali.sharma@demo.example.com",
     "employee2": "manoj.gupta@demo.example.com",
-    "dept_viewer": "meera.pillai@demo.example.com",
-    "erp_engineer": "amit.deshmukh@demo.example.com",
-    "erp_engineer2": "priya.nair@demo.example.com",
-    "infra_engineer": "rahul.kulkarni@demo.example.com",
-    "erp_lead": "sanjay.patil@demo.example.com",
-    "infra_lead": "neha.joshi@demo.example.com",
-    "admin": "rohan.mehta@demo.example.com",
-    "management": "kavita.rao@demo.example.com",
+    "employee3": "meera.pillai@demo.example.com",
+    "admin": "rohan.mehta@demo.example.com",          # Head of IT (Service Desk + Security teams)
+    "erp_admin": "amit.deshmukh@demo.example.com",     # ERP team
+    "erp_admin2": "priya.nair@demo.example.com",       # ERP team
+    "infra_admin": "rahul.kulkarni@demo.example.com",  # Infrastructure + EUC teams
+    "sd_admin": "sneha.iyer@demo.example.com",         # Service Desk + EUC teams
 }
 
 

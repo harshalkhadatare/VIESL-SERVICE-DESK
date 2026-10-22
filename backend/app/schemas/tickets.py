@@ -71,8 +71,8 @@ class StatusChangeIn(StrictIn):
 
 
 class AssignIn(StrictIn):
-    support_group_id: int
-    assignee_id: int | None = None
+    assignee_id: int | None = None          # IT administrator; None = unassign
+    support_group_id: int | None = None     # optional: move to another support team
     reason: str | None = Field(None, max_length=500)
     expected_version: int
 
@@ -120,6 +120,8 @@ class SlaOut(BaseModel):
 
 class TicketListItem(BaseModel):
     number: str
+    version: int
+    assignee_id: int | None
     subject: str
     ticket_type: str
     status: CodeRef

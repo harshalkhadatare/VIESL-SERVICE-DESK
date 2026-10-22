@@ -122,6 +122,30 @@ def group_members(group_id: int, p: Principal = Depends(require("ticket.work")),
             for m in sorted(rows, key=lambda m: m.user.full_name) if m.user.is_active]
 
 
+class StaffOut(BaseModel):
+    id: int
+    full_name: str
+    email: str
+    job_title: str | None
+    open_tickets: int
+
+
+@router.get("/it-admins", response_model=list[StaffOut])
+def it_admins(p: Principal = Depends(require("ticket.assign")), db: Session = Depends(get_db)):
+    """IT administrators a ticket can be assigned to, with their current open workload."""
+    from sqlalchemy import func
+
+    from app.models import Ticket
+    from app.services.routing import OPEN_WORK_STATUSES
+    from app.services.staff import it_staff
+    staff = it_staff(db)
+    loads = dict(db.execute(select(Ticket.assignee_id, func.count()).where(
+        Ticket.assignee_id.in_([u.id for u in staff] or [-1]), Ticket.status_code.in_(OPEN_WORK_STATUSES + (
+            "PENDING_EMPLOYEE", "PENDING_APPROVAL"))).group_by(Ticket.assignee_id)).all())
+    return [StaffOut(id=u.id, full_name=u.full_name, email=u.email, job_title=u.job_title,
+                     open_tickets=loads.get(u.id, 0)) for u in staff]
+
+
 @router.get("/departments", response_model=list[dict])
 def departments(p: Principal = Depends(require_any("dashboard.ops", "user.manage")), db: Session = Depends(get_db)):
     return [{"id": d.id, "name": d.name} for d in db.scalars(select(Department).order_by(Department.name))]

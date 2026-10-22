@@ -93,11 +93,11 @@ def test_me_returns_server_side_permissions(client):
 
 
 def test_login_events_are_audited(client):
-    login(client, EMAILS["management"], "Wrong-pass-1")
-    login(client, EMAILS["management"])
+    login(client, EMAILS["infra_admin"], "Wrong-pass-1")
+    login(client, EMAILS["infra_admin"])
     with SessionLocal() as db:
         outcomes = {a.outcome for a in db.scalars(select(AuditLog).where(
-            AuditLog.action == "auth.login", AuditLog.actor_label == EMAILS["management"]))}
+            AuditLog.action == "auth.login", AuditLog.actor_label == EMAILS["infra_admin"]))}
     assert {"success", "failure"} <= outcomes
 
 

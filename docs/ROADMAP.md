@@ -2,7 +2,8 @@
 
 ## Known limitations (this release)
 - **Not run against a live SQL Server here.** The schema compiles to SQL Server DDL (`docs/sqlserver_schema.sql`) and the Docker stack is provided, but all automated tests ran on SQLite. Run the suite against SQL Server before go-live.
-- **Email delivery** is implemented (outbox, retries, SMTP provider) but **not verified** against a real relay; it is disabled by default.
+- **Email** is implemented and was tested end to end against a local SMTP server; it has **not** been tested against your
+  company's real mail server. Turn it on with the `SMTP_*` settings and use *Email notifications → Send test email*.
 - **Approval workflows** are not built yet: categories flagged `requires_approval` show a notice and staff can use the *Pending Approval* status manually; no approver routing or decisions are recorded.
 - **Knowledge base:** search, reading and suggestions work; authoring, review/publish workflow and "convert ticket to article" are not in the UI yet (tables exist).
 - **Suggestions portal, IT assets & CMDB** are not built.
@@ -21,7 +22,7 @@
 - Leads excluded from auto-assignment so they can manage the queue.
 - Recurring-issue alert to leads when the same category spikes in 24 h.
 - Unassigned P1 auto-escalation after 15 business minutes.
-- Global search (tickets + articles, `/` shortcut), light/dark theme, mobile layout, keyboard-accessible forms and modals.
+- Global search (tickets + articles, `/` shortcut), mobile layout, keyboard-accessible forms and modals.
 - Demo-data badges everywhere seeded records appear.
 
 ## Roadmap

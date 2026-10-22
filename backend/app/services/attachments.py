@@ -16,17 +16,19 @@ from fastapi import UploadFile
 from app.core.config import get_settings
 from app.core.errors import BusinessRuleError
 
-ALLOWED: dict[str, tuple[str, tuple[bytes, ...] | None]] = {
+# Images and PDF only. SVG is deliberately excluded (it can carry scripts).
+ALLOWED: dict[str, tuple[str, tuple[bytes, ...]]] = {
     ".png": ("image/png", (b"\x89PNG\r\n\x1a\n",)),
     ".jpg": ("image/jpeg", (b"\xff\xd8\xff",)),
     ".jpeg": ("image/jpeg", (b"\xff\xd8\xff",)),
     ".gif": ("image/gif", (b"GIF87a", b"GIF89a")),
+    ".webp": ("image/webp", (b"RIFF",)),
+    ".bmp": ("image/bmp", (b"BM",)),
+    ".tif": ("image/tiff", (b"II*\x00", b"MM\x00*")),
+    ".tiff": ("image/tiff", (b"II*\x00", b"MM\x00*")),
+    ".heic": ("image/heic", ()),
+    ".heif": ("image/heif", ()),
     ".pdf": ("application/pdf", (b"%PDF-",)),
-    ".xlsx": ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", (b"PK\x03\x04",)),
-    ".docx": ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", (b"PK\x03\x04",)),
-    ".txt": ("text/plain", None),
-    ".log": ("text/plain", None),
-    ".csv": ("text/csv", None),
 }
 MAX_FILES_PER_TICKET = 20
 
@@ -38,21 +40,15 @@ def safe_display_name(name: str) -> str:
 
 
 def _verify_magic(ext: str, head: bytes) -> None:
-    sigs = ALLOWED[ext][1]
-    if sigs is None:
-        if b"\x00" in head:
-            raise BusinessRuleError("Text files must not contain binary data.")
-        try:
-            head.decode("utf-8")
-        except UnicodeDecodeError:
-            # head may cut a multi-byte char; accept if only the tail is invalid
-            try:
-                head[:-4].decode("utf-8")
-            except UnicodeDecodeError:
-                raise BusinessRuleError("Text files must be UTF-8 encoded.")
-        return
-    if not any(head.startswith(s) for s in sigs):
-        raise BusinessRuleError("File content does not match its extension.")
+    ok = False
+    if ext in (".heic", ".heif"):  # ISO-BMFF: bytes 4..12 = 'ftyp' + brand
+        ok = head[4:8] == b"ftyp" and head[8:12] in (b"heic", b"heix", b"hevc", b"heim", b"heis", b"mif1", b"msf1")
+    elif ext == ".webp":
+        ok = head.startswith(b"RIFF") and head[8:12] == b"WEBP"
+    else:
+        ok = any(head.startswith(sig) for sig in ALLOWED[ext][1])
+    if not ok:
+        raise BusinessRuleError("File content does not match its extension. Only images and PDF files are allowed.")
 
 
 async def store_upload(file: UploadFile) -> dict:
@@ -60,7 +56,7 @@ async def store_upload(file: UploadFile) -> dict:
     name = safe_display_name(file.filename or "")
     ext = Path(name).suffix.lower()
     if ext not in ALLOWED:
-        raise BusinessRuleError(f"File type not allowed. Allowed: {', '.join(sorted(ALLOWED))}")
+        raise BusinessRuleError("Only images (PNG, JPG, GIF, WEBP, BMP, TIFF, HEIC) and PDF files can be attached.")
     limit = s.max_upload_mb * 1024 * 1024
     root = Path(s.upload_dir).resolve()
     stored = f"{uuid.uuid4().hex}{ext}"

@@ -22,12 +22,7 @@ export async function supportGroups() {
 }
 
 export function roleLabel() {
-  const r = state.me?.roles || [];
-  if (r.includes("it_admin")) return "IT Administrator";
-  if (r.includes("it_lead")) return "IT Team Lead";
-  if (r.includes("it_engineer")) return "IT Support Engineer";
-  if (r.includes("management")) return "Management";
-  return "Employee";
+  return state.me?.roles?.includes("it_admin") ? "IT Administrator" : "Employee";
 }
 
 export function resetState() { state.me = null; state.catalog = null; state.groups = null; }

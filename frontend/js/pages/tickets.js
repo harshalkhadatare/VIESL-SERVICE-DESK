@@ -1,13 +1,13 @@
 import { api } from "../api.js";
 import { can, isStaff, catalog, supportGroups } from "../state.js";
 import { $, $$, html, mount, icon, fmtRelative, fmtDate, statusBadge, prioBadge, slaBadge, skeletonRows, emptyState,
-  errorToast, debounce, toast } from "../ui.js";
+  errorToast, debounce, toast, initials } from "../ui.js";
 
 const STAFF_TABS = [
-  ["queue", "My queues", { scope: "queue", status: "open" }],
-  ["assigned", "Assigned to me", { scope: "assigned", status: "open" }],
-  ["unassigned", "Unassigned", { scope: "queue", status: "open", assignee: "unassigned" }],
-  ["all", "All visible", { scope: "all" }],
+  ["open", "All open", { scope: "all", status: "open" }],
+  ["assigned", "Assigned to me", { scope: "all", status: "open", assignee: "me" }],
+  ["unassigned", "Unassigned", { scope: "all", status: "open", assignee: "unassigned" }],
+  ["all", "All tickets", { scope: "all" }],
   ["mine", "Raised by me", { scope: "mine" }],
 ];
 const EMP_TABS = [
@@ -28,11 +28,15 @@ export async function render(view, _p, query) {
   const activeTab = () => tabs.find(([, , p]) => Object.keys(p).every((k) => String(f[k] ?? "") === String(p[k]))
     && ["priority", "category_id", "sla", "q", "group_id"].every((k) => !f[k]) && (p.assignee || !f.assignee))?.[0];
 
-  const [cat, groups] = await Promise.all([catalog(), staff || can("dashboard.ops") ? supportGroups() : []]);
+  const canAssign = can("ticket.assign");
+  const cols = canAssign ? 9 : 8;
+  let admins = [];
+  const [cat, groups] = await Promise.all([catalog(), staff || can("dashboard.ops") ? supportGroups() : [],
+    canAssign ? api.get("/it-admins").then((a) => { admins = a; }).catch(() => {}) : null]);
   mount(view, html`
     <div class="page-head">
       <div><h1>${staff || can("ticket.view_all") ? "Tickets" : "My tickets"}</h1>
-        <div class="sub">${staff ? "Work your queues, keep SLAs green." : "Track the status of everything you have raised."}</div></div>
+        <div class="sub">${canAssign ? "Use the ⋮ menu on any row to assign a ticket to an IT administrator." : "Track the status of everything you have raised."}</div></div>
       <div class="row">
         ${can("report.export") ? html`<button class="btn" id="exp">${icon("download")} Export</button>` : ""}
         <a class="btn primary" href="#/tickets/new">${icon("plus")} Raise a ticket</a></div>
@@ -54,11 +58,11 @@ export async function render(view, _p, query) {
         <select id="f-sort" aria-label="Sort"><option value="updated_desc">Recently updated</option><option value="created_desc">Newest</option>
           <option value="created_asc">Oldest</option><option value="priority">Priority</option><option value="due">SLA due soonest</option></select>
       </div>
-      <div class="table-wrap"><table class="data">
+      <div class="table-wrap"><table class="data ${canAssign ? "compact-admin" : ""}">
         <thead><tr><th>Ticket</th><th>Subject</th><th>Status</th><th>Priority</th>
           <th class="hide-sm">${staff ? "Requester" : "Category"}</th><th class="hide-sm">${staff ? "Assignee" : "Assigned to"}</th>
-          <th class="hide-sm">SLA</th><th class="hide-sm">Updated</th></tr></thead>
-        <tbody id="rows">${skeletonRows(8, 8)}</tbody></table></div>
+          <th class="hide-sm">SLA</th><th class="hide-sm ${canAssign ? "hide-md" : ""}">Updated</th>${canAssign ? html`<th class="row-menu"><span class="sr-only">Actions</span></th>` : ""}</tr></thead>
+        <tbody id="rows">${skeletonRows(8, cols)}</tbody></table></div>
       <div class="pager" id="pager"></div>
     </div>`);
 
@@ -74,7 +78,7 @@ export async function render(view, _p, query) {
 
   async function load() {
     syncTabs(); pushUrl();
-    mount($("#rows", view), skeletonRows(6, 8));
+    mount($("#rows", view), skeletonRows(6, cols));
     try {
       const page = Number(f.page || 1);
       const r = await api.get("/tickets", { ...Object.fromEntries(KEYS.filter((k) => k !== "page").map((k) => [k, f[k]])), page, page_size: 25 });
@@ -82,15 +86,19 @@ export async function render(view, _p, query) {
       mount($("#rows", view), r.items.length ? html`${r.items.map((t) => html`
         <tr class="clickable" data-href="#/tickets/${t.number}" tabindex="0">
           <td><span class="t-id">${t.number}</span></td>
-          <td><span class="t-subject" title="${t.subject}">${t.subject}</span><span class="t-sub2">${staff ? t.category : t.ticket_type === "incident" ? "Incident" : "Service request"}${t.support_group && staff ? html` · ${t.support_group}` : ""}</span></td>
+          <td><span class="t-subject" title="${t.subject}">${t.subject}</span><span class="t-sub2">${staff ? t.category : t.ticket_type === "incident" ? "Incident" : "Service request"}${canAssign ? html` · ${fmtRelative(t.updated_at)}` : ""}</span></td>
           <td>${statusBadge(t.status)}</td><td>${prioBadge(t.priority.code)}</td>
           <td class="hide-sm">${staff ? html`${t.requester}<div class="t-sub2">${t.department || ""}</div>` : t.category}</td>
           <td class="hide-sm">${t.assignee || html`<span class="muted">Unassigned</span>`}</td>
           <td class="hide-sm" title="${t.resolution_due_at ? "Due " + fmtDate(t.resolution_due_at) : ""}">${slaBadge(t.sla_state)}</td>
-          <td class="hide-sm muted" title="${fmtDate(t.updated_at)}">${fmtRelative(t.updated_at)}</td></tr>`)}` :
-        html`<tr><td colspan="8">${emptyState("No tickets match", "Try a different tab or clear the filters.", "inbox")}</td></tr>`);
+          <td class="hide-sm muted ${canAssign ? "hide-md" : ""}" title="${fmtDate(t.updated_at)}">${fmtRelative(t.updated_at)}</td>
+          ${canAssign ? html`<td class="row-menu">${["CLOSED", "CANCELLED"].includes(t.status.code) ? "" :
+            html`<button class="kebab" data-menu="${t.number}" aria-haspopup="menu" aria-expanded="false"
+              aria-label="Assign ${t.number}" title="Assign ticket">${icon("more")}</button>`}</td>` : ""}</tr>`)}` :
+        html`<tr><td colspan="${cols}">${emptyState("No tickets match", "Try a different tab or clear the filters.", "inbox")}</td></tr>`);
+      rows = Object.fromEntries(r.items.map((t) => [t.number, t]));
       $$("tr[data-href]", view).forEach((tr) => {
-        tr.addEventListener("click", () => { location.hash = tr.dataset.href; });
+        tr.addEventListener("click", (e) => { if (!e.target.closest(".row-menu")) location.hash = tr.dataset.href; });
         tr.addEventListener("keydown", (e) => { if (e.key === "Enter") location.hash = tr.dataset.href; });
       });
       const pages = Math.max(1, Math.ceil(r.total / r.page_size));
@@ -100,7 +108,7 @@ export async function render(view, _p, query) {
         <span>Page ${r.page} of ${pages}</span><button class="btn sm" id="nx" ${r.page >= pages ? "disabled" : ""}>Next</button></div>`);
       $("#pv", view).addEventListener("click", () => { f.page = r.page - 1; load(); });
       $("#nx", view).addEventListener("click", () => { f.page = r.page + 1; load(); });
-    } catch (e) { errorToast(e); mount($("#rows", view), html`<tr><td colspan="8">${emptyState("Could not load tickets", e.message, "alert")}</td></tr>`); }
+    } catch (e) { errorToast(e); mount($("#rows", view), html`<tr><td colspan="${cols}">${emptyState("Could not load tickets", e.message, "alert")}</td></tr>`); }
   }
 
   $$("#tabs button", view).forEach((b) => b.addEventListener("click", () => {
@@ -119,5 +127,87 @@ export async function render(view, _p, query) {
     try { await api.download("/tickets/export.csv", Object.fromEntries(KEYS.filter((k) => k !== "page" && k !== "sort").map((k) => [k, f[k]])), "tickets.csv"); toast("Export downloaded."); }
     catch (e) { errorToast(e); }
   });
+  // ------------------------------------------------------------- ⋮ assign menu
+  let rows = {};
+  let menu = null;
+  const onScroll = (e) => { if (menu && !menu.el.contains(e.target)) closeMenu(); };
+  const closeMenu = () => {
+    window.removeEventListener("scroll", onScroll, true);
+    window.removeEventListener("resize", closeMenu);
+    if (!menu) return;
+    menu.el.remove();
+    menu.btn.setAttribute("aria-expanded", "false");
+    menu = null;
+  };
+  async function assignTo(t, admin) {
+    closeMenu();
+    try {
+      await api.post(`/tickets/${t.number}/assign`, { assignee_id: admin ? admin.id : null, expected_version: t.version });
+      toast(admin ? `${t.number} assigned to ${admin.full_name}.` : `${t.number} unassigned.`);
+      api.get("/it-admins").then((a) => { admins = a; }).catch(() => {});
+      load();
+    } catch (e) {
+      if (e.status === 409) { toast("Someone else just updated this ticket — list refreshed.", "info"); load(); }
+      else errorToast(e);
+    }
+  }
+  function openMenu(btn) {
+    const t = rows[btn.dataset.menu];
+    if (!t) return;
+    closeMenu();
+    const el = document.createElement("div");
+    el.className = "pop-menu";
+    el.setAttribute("role", "menu");
+    mount(el, html`<div class="pm-head">Assign ${t.number} to</div>
+      ${admins.length ? admins.map((a) => html`<button role="menuitem" data-id="${a.id}">
+        <span class="tick">${a.id === t.assignee_id ? icon("check") : ""}</span>
+        <span class="avatar sm">${initials(a.full_name)}</span>
+        <span class="grow"><b>${a.full_name}</b><span>${a.job_title || "IT Administrator"}</span></span>
+        <span class="load" title="Open tickets">${a.open_tickets} open</span></button>`) :
+        html`<div class="muted small" style="padding:8px 10px">No IT administrators found.</div>`}
+      ${t.assignee_id ? html`<hr><button role="menuitem" data-id="none"><span class="tick"></span>${icon("x")}<span class="grow"><b>Unassign</b><span>Return to the IT queue</span></span></button>` : ""}
+      <hr><button role="menuitem" data-open="1"><span class="tick"></span>${icon("ticket")}<span class="grow"><b>Open ticket</b></span></button>`);
+    document.body.appendChild(el);
+    const r = btn.getBoundingClientRect();
+    const h = el.offsetHeight;
+    el.style.left = `${Math.max(8, Math.min(window.innerWidth - el.offsetWidth - 8, r.right - el.offsetWidth))}px`;
+    el.style.top = `${r.bottom + 6 + h > window.innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6}px`;
+    btn.setAttribute("aria-expanded", "true");
+    menu = { el, btn };
+    // close if the page scrolls (attached after the click settles so the opening scroll doesn't close it)
+    setTimeout(() => { if (menu?.el === el) { window.addEventListener("scroll", onScroll, true); window.addEventListener("resize", closeMenu); } }, 120);
+    el.addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      if (b.dataset.open) { closeMenu(); location.hash = `#/tickets/${t.number}`; return; }
+      const id = b.dataset.id;
+      if (id === "none") return assignTo(t, null);
+      const a = admins.find((x) => String(x.id) === id);
+      if (a && a.id !== t.assignee_id) assignTo(t, a); else closeMenu();
+    });
+    el.addEventListener("keydown", (e) => {
+      const items = $$("button", el);
+      const i = items.indexOf(document.activeElement);
+      if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+      if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+      if (e.key === "Escape") { closeMenu(); btn.focus(); }
+    });
+    $("button", el)?.focus();
+  }
+  const onKebab = (e) => {
+    const btn = e.target.closest(".kebab");
+    if (!btn) return;
+    e.stopPropagation();
+    if (menu && menu.btn === btn) closeMenu(); else openMenu(btn);
+  };
+  view.addEventListener("click", onKebab);
+  const outside = (e) => { if (menu && !menu.el.contains(e.target) && !e.target.closest(".kebab")) closeMenu(); };
+  document.addEventListener("click", outside);
+
   await load();
+  return () => {
+    closeMenu();
+    view.removeEventListener("click", onKebab);
+    document.removeEventListener("click", outside);
+  };
 }

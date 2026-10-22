@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import Principal
 from app.core.errors import BusinessRuleError, Conflict, Forbidden, NotFound
 from app.models import (
-    Category, IdempotencyKey, SatisfactionRating, StatusTransition, Subcategory, SupportGroup, SupportGroupMember,
+    Category, IdempotencyKey, SatisfactionRating, StatusTransition, Subcategory, SupportGroup,
     Ticket, TicketAssignment, TicketComment, TicketErpDetail, TicketHistory, TicketRelationship, TicketSequence,
     TicketStatus, TicketWatcher, User, utcnow,
 )
@@ -20,6 +20,7 @@ from app.services.audit import audit_p
 from app.services.notifications import notify
 from app.services.routing import priority_for, route_ticket
 from app.services.settings_service import get_int
+from app.services.staff import group_staff_ids, is_it_staff
 
 INITIAL_STATUS = "SUBMITTED"
 FINAL_STATUSES = {"CLOSED", "CANCELLED"}
@@ -86,10 +87,12 @@ def find_duplicates(db: Session, p: Principal, subject: str, category_id: int | 
 
 
 def _group_leads(db: Session, group_id: int | None) -> list[int]:
-    if not group_id:
-        return []
-    return list(db.scalars(select(SupportGroupMember.user_id).where(
-        SupportGroupMember.group_id == group_id, SupportGroupMember.is_lead.is_(True))).all())
+    """IT staff to alert for a group (kept name for compatibility)."""
+    return group_staff_ids(db, group_id)
+
+
+def _assigned_line(t: Ticket) -> str:
+    return f"Assigned to: {t.assignee.full_name}" if t.assignee else "Assigned to: not yet assigned"
 
 
 # ------------------------------------------------------------------ create
@@ -156,14 +159,18 @@ def create_ticket(db: Session, p: Principal, data: TicketCreate, idempotency_key
     if idempotency_key:
         db.add(IdempotencyKey(user_id=user.id, key=idempotency_key[:80], ticket_id=t.id))
 
+    db.flush()
+    db.refresh(t)
     notify(db, user.id, "ticket_created", f"{t.number} received",
-           f"We received your request '{t.subject}'.", t, dedupe_key=f"created:{t.id}")
-    for lead in _group_leads(db, group_id):
-        notify(db, lead, "ticket_created", f"New {prio.code} ticket {t.number}", t.subject, t,
-               dedupe_key=f"created-lead:{t.id}:{lead}")
+           f"We received your request '{t.subject}'.\n{_assigned_line(t)}", t, dedupe_key=f"created:{t.id}")
     if assignee_id:
-        notify(db, assignee_id, "ticket_assigned", f"{t.number} assigned to you", t.subject, t,
+        notify(db, assignee_id, "ticket_assigned", f"{t.number} assigned to you",
+               f"{t.subject}\nRaised by {user.full_name} · {prio.code}", t,
                dedupe_key=f"assigned:{t.id}:{assignee_id}:{now.timestamp()}")
+    else:  # nobody picked automatically: alert the team (or all IT administrators)
+        for uid in _group_leads(db, group_id):
+            notify(db, uid, "ticket_created", f"New {prio.code} ticket {t.number} — not assigned",
+                   f"{t.subject}\nRaised by {user.full_name}", t, dedupe_key=f"created-staff:{t.id}:{uid}")
     _check_recurring(db, t)
     audit_p(db, p, "ticket.create", entity_type="ticket", entity_id=t.number,
             detail={"category": cat.code, "priority": prio.code})
@@ -267,51 +274,49 @@ def change_status(db: Session, p: Principal, number: str, data: StatusChangeIn) 
     # Notifications: requester hears about meaningful public changes; staff about reopen
     if target == "PENDING_EMPLOYEE":
         notify(db, t.requester_id, "info_requested", f"{t.number}: more information needed",
-               data.reason or "The support engineer needs more information.", t)
+               f"{data.reason or 'IT needs more information.'}\n{_assigned_line(t)}", t)
     elif target == "RESOLVED":
         notify(db, t.requester_id, "ticket_resolved", f"{t.number} resolved",
-               "Please confirm the fix or reopen if the issue persists.", t)
+               f"Resolution: {t.resolution_notes}\nResolved by {p.user.full_name}. "
+               "Please confirm the fix, or reopen if the issue persists.", t)
     elif target == "REOPENED":
-        notify(db, t.assignee_id, "ticket_reopened", f"{t.number} reopened", data.reason, t)
+        for uid in ([t.assignee_id] if t.assignee_id else _group_leads(db, t.support_group_id)):
+            notify(db, uid, "ticket_reopened", f"{t.number} reopened by {p.user.full_name}", data.reason, t)
     elif target in ("IN_PROGRESS", "CLOSED", "CANCELLED") and not is_requester(p, t):
-        notify(db, t.requester_id, "status_changed", f"{t.number} is now {t.status.name}", None, t)
+        notify(db, t.requester_id, "status_changed", f"{t.number} is now {t.status.name}",
+               _assigned_line(t), t)
 
     audit_p(db, p, "ticket.status", entity_type="ticket", entity_id=t.number, detail={"from": old, "to": target})
     return t
 
 
 def assign(db: Session, p: Principal, number: str, data: AssignIn) -> Ticket:
+    """Assign to an IT administrator and/or move to another support team. IT administrators only."""
     t = get_visible_ticket(db, p, number, for_update=True)
     check_version(t, data.expected_version)
+    if not can_assign_ticket(p, t):
+        raise Forbidden("Only IT administrators can assign tickets.")
     if t.status_code in FINAL_STATUSES:
         raise BusinessRuleError("Closed or cancelled tickets cannot be reassigned.")
-    group = db.get(SupportGroup, data.support_group_id)
-    if not group or not group.is_active:
-        raise BusinessRuleError("Select a valid support group.")
-
-    moving_group = data.support_group_id != t.support_group_id
-    # Leads assign within their groups; engineers may only escalate (move group, no assignee)
-    if not can_assign_ticket(p, t):
-        if not (can_work_ticket(p, t) and p.can("ticket.escalate") and moving_group and data.assignee_id is None):
-            raise Forbidden("You do not have permission to assign this ticket.")
-        if not (data.reason and len(data.reason.strip()) >= 5):
-            raise BusinessRuleError("An escalation reason is required.", details=[{"field": "reason"}])
-    if data.assignee_id is not None:
-        member = db.scalar(select(SupportGroupMember).where(SupportGroupMember.group_id == group.id,
-                                                            SupportGroupMember.user_id == data.assignee_id))
-        if not member or not member.user.is_active:
-            raise BusinessRuleError("The engineer is not an active member of that support group.")
+    group = t.support_group
+    if data.support_group_id is not None:
+        group = db.get(SupportGroup, data.support_group_id)
+        if not group or not group.is_active:
+            raise BusinessRuleError("Select a valid support team.")
+    if data.assignee_id is not None and not is_it_staff(db, data.assignee_id):
+        raise BusinessRuleError("Tickets can only be assigned to an active IT administrator.")
 
     now = utcnow()
+    moving_group = group is not None and group.id != t.support_group_id
     old_group = t.support_group.name if t.support_group else None
     old_assignee = t.assignee.full_name if t.assignee else None
-    t.support_group_id = group.id
+    if group is not None:
+        t.support_group_id = group.id
     t.assignee_id = data.assignee_id
     if data.assignee_id:
         t.assigned_at = now
-    db.add(TicketAssignment(ticket_id=t.id, support_group_id=group.id, assignee_id=data.assignee_id,
-                            assigned_by=p.id, method="escalation" if not can_assign_ticket(p, t) else "manual",
-                            reason=data.reason))
+    db.add(TicketAssignment(ticket_id=t.id, support_group_id=t.support_group_id, assignee_id=data.assignee_id,
+                            assigned_by=p.id, method="manual", reason=data.reason))
     if moving_group:
         add_history(db, t, "support_group", old_group, group.name, p.id, data.reason)
     new_assignee = db.get(User, data.assignee_id).full_name if data.assignee_id else None
@@ -325,13 +330,24 @@ def assign(db: Session, p: Principal, number: str, data: AssignIn) -> Ticket:
     t.updated_at = now
     db.flush()
     db.refresh(t)
-    if data.assignee_id and data.assignee_id != p.id:
-        notify(db, data.assignee_id, "ticket_assigned", f"{t.number} assigned to you", t.subject, t)
+    stamp = now.timestamp()
+    if new_assignee != old_assignee:
+        if data.assignee_id and data.assignee_id != p.id:
+            notify(db, data.assignee_id, "ticket_assigned", f"{t.number} assigned to you by {p.user.full_name}",
+                   f"{t.subject}\nRaised by {t.requester.full_name} · {t.priority.code}"
+                   + (f"\nNote: {data.reason}" if data.reason else ""), t,
+                   dedupe_key=f"assigned:{t.id}:{data.assignee_id}:{stamp}")
+        if t.requester_id != p.id:
+            notify(db, t.requester_id, "ticket_assigned",
+                   f"{t.number} assigned to {new_assignee}" if new_assignee else f"{t.number} returned to the IT queue",
+                   _assigned_line(t), t, dedupe_key=f"assigned-req:{t.id}:{stamp}")
     if moving_group and not data.assignee_id:
-        for lead in _group_leads(db, group.id):
-            notify(db, lead, "ticket_assigned", f"{t.number} escalated to {group.name}", data.reason, t)
+        for uid in _group_leads(db, group.id):
+            if uid != p.id:
+                notify(db, uid, "ticket_assigned", f"{t.number} moved to {group.name} — not assigned",
+                       data.reason or t.subject, t, dedupe_key=f"moved:{t.id}:{uid}:{stamp}")
     audit_p(db, p, "ticket.assign", entity_type="ticket", entity_id=t.number,
-            detail={"group": group.code, "assignee_id": data.assignee_id})
+            detail={"group": group.code if group else None, "assignee_id": data.assignee_id})
     return t
 
 
@@ -359,7 +375,7 @@ def accept(db: Session, p: Principal, number: str, expected_version: int) -> Tic
     db.flush()
     db.refresh(t)
     notify(db, t.requester_id, "status_changed", f"{t.number} is being worked on",
-           f"{p.user.full_name} has picked up your ticket.", t)
+           f"{p.user.full_name} has picked up your ticket.\n{_assigned_line(t)}", t)
     audit_p(db, p, "ticket.accept", entity_type="ticket", entity_id=t.number)
     return t
 
@@ -399,14 +415,16 @@ def add_comment(db: Session, p: Principal, number: str, data: CommentIn) -> Tick
     db.add(c)
     if staff and not data.is_internal:
         sla_svc.record_first_response(t, now)
-        notify(db, t.requester_id, "comment_added", f"New reply on {t.number}", data.body[:300], t)
+        notify(db, t.requester_id, "comment_added", f"New reply on {t.number} from {p.user.full_name}",
+               data.body[:300], t)
     elif is_requester(p, t) and not staff:
         if t.status_code == "PENDING_EMPLOYEE":  # requester answered — resume work and SLA
             old = t.status_code
             t.status_code = "IN_PROGRESS"
             sla_svc.on_status_change(db, t, old, "IN_PROGRESS", now)
             add_history(db, t, "status", old, "IN_PROGRESS", None, "Requester responded")
-        notify(db, t.assignee_id, "comment_added", f"Requester replied on {t.number}", data.body[:300], t)
+        for uid in ([t.assignee_id] if t.assignee_id else _group_leads(db, t.support_group_id)):
+            notify(db, uid, "comment_added", f"{p.user.full_name} replied on {t.number}", data.body[:300], t)
     db.flush()
     # Touch updated_at without bumping the optimistic-lock version: a comment must not
     # invalidate a colleague's pending status change.

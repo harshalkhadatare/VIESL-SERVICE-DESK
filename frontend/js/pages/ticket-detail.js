@@ -45,7 +45,7 @@ export async function render(view, [number]) {
         <div class="row" id="actions">
           ${canAccept ? html`<button class="btn primary" data-act="accept">${icon("check")} Accept & start</button>` : ""}
           ${t.can_work && allowed.length ? html`<button class="btn ${canAccept ? "" : "primary"}" data-act="status">Update status</button>` : ""}
-          ${t.can_assign || (t.can_work && can("ticket.escalate")) ? html`<button class="btn" data-act="assign">${t.can_assign ? "Assign" : "Escalate"}</button>` : ""}
+          ${t.can_assign ? html`<button class="btn" data-act="assign">${icon("user")} Assign</button>` : ""}
           ${t.can_set_priority ? html`<button class="btn" data-act="priority">Priority</button>` : ""}
           ${t.can_work && can("ticket.link") ? html`<button class="btn ghost" data-act="link" title="Link a related ticket">${icon("link")}</button>` : ""}
           ${!t.can_work && isRequester() && allowed.includes("CLOSED") ? html`<button class="btn primary" data-act="confirm">${icon("check")} Confirm it's fixed</button>` : ""}
@@ -197,8 +197,8 @@ export async function render(view, [number]) {
         <div style="flex:1;min-width:0"><a href="#" data-dl="${a.id}" data-name="${a.original_name}" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.original_name}</a>
         <span class="t-sub2">${fileSize(a.size_bytes)} · ${a.uploader.full_name}${a.is_internal ? html` · <span class="tag-internal">internal</span>` : ""}</span></div></div>`) :
         html`<p class="muted small">No files attached.</p>`}
-      ${!closed && (t.can_work || isRequester()) ? html`<div class="dropzone" id="up" tabindex="0" role="button" style="margin-top:12px">${icon("clip")} Add a file</div>
-        <input type="file" id="upf" hidden accept=".png,.jpg,.jpeg,.gif,.pdf,.xlsx,.docx,.txt,.log,.csv">` : ""}</div></div>`;
+      ${!closed && (t.can_work || isRequester()) ? html`<div class="dropzone" id="up" tabindex="0" role="button" style="margin-top:12px">${icon("clip")} Add an image or PDF</div>
+        <input type="file" id="upf" hidden accept="image/*,.heic,.heif,.pdf">` : ""}</div></div>`;
   }
 
   function ratingCard() {
@@ -350,34 +350,25 @@ export async function render(view, [number]) {
   }
 
   async function assignModal() {
-    const groups = await supportGroups();
-    const escalateOnly = !t.can_assign;
-    openModal({ title: escalateOnly ? "Escalate to another team" : "Assign ticket",
-      subtitle: escalateOnly ? "The receiving team's lead will be notified." : "Choose a support group and, optionally, an engineer.",
+    const [groups, admins] = await Promise.all([supportGroups(), api.get("/it-admins")]);
+    openModal({ title: "Assign ticket", subtitle: "Choose the IT administrator who will handle this ticket. They and the requester are notified by email.",
       body: html`<form id="af" class="stack" style="gap:14px">
-        <label class="field"><span class="lbl">Support group</span><select name="support_group_id">${groups.map((g) => html`<option value="${g.id}" ${g.id === t.support_group?.id ? "selected" : ""}>${g.name}</option>`)}</select></label>
-        ${escalateOnly ? "" : html`<label class="field"><span class="lbl">Engineer</span><select name="assignee_id"><option value="">Leave in group queue</option></select>
-          <div class="help" id="m-help"></div></label>`}
-        <label class="field"><span class="lbl">Reason${escalateOnly ? html`<span class="req">*</span>` : ""}</span><input type="text" name="reason" maxlength="500" placeholder="${escalateOnly ? "Why does this belong with that team?" : "Optional"}"></label></form>`,
-      actions: html`<button class="btn" data-close>Cancel</button><button class="btn primary" id="aok">${escalateOnly ? "Escalate" : "Assign"}</button>`,
+        <label class="field"><span class="lbl">Assign to</span><select name="assignee_id">
+          <option value="">— Unassigned (IT queue) —</option>
+          ${admins.map((a) => html`<option value="${a.id}" ${a.id === t.assignee?.id ? "selected" : ""}>${a.full_name} · ${a.open_tickets} open</option>`)}</select></label>
+        <label class="field"><span class="lbl">Support team</span><select name="support_group_id">
+          ${groups.map((g) => html`<option value="${g.id}" ${g.id === t.support_group?.id ? "selected" : ""}>${g.name}</option>`)}</select></label>
+        <label class="field"><span class="lbl">Note for the assignee</span><input type="text" name="reason" maxlength="500" placeholder="Optional"></label></form>`,
+      actions: html`<button class="btn" data-close>Cancel</button><button class="btn primary" id="aok">Save assignment</button>`,
       onMount: (el, close) => {
         const f = $("#af", el);
-        const loadMembers = async () => {
-          if (escalateOnly) return;
-          try {
-            const m = await api.get(`/support-groups/${f.support_group_id.value}/members`);
-            mount(f.assignee_id, html`<option value="">Leave in group queue</option>${m.map((x) => html`<option value="${x.user_id}" ${x.user_id === t.assignee?.id ? "selected" : ""} ${x.is_available ? "" : "disabled"}>${x.full_name}${x.is_lead ? " (lead)" : ""}${x.is_available ? "" : " — unavailable"}</option>`)}`);
-            $("#m-help", el).textContent = `${m.length} member${m.length === 1 ? "" : "s"}`;
-          } catch (ex) { errorToast(ex); }
-        };
-        f.support_group_id.addEventListener("change", loadMembers); loadMembers();
         $("#aok", el).addEventListener("click", async (e) => {
           const d = Object.fromEntries(new FormData(f));
           busy(e.currentTarget);
           try {
-            await api.post(`/tickets/${number}/assign`, { support_group_id: Number(d.support_group_id),
+            await api.post(`/tickets/${number}/assign`, { support_group_id: d.support_group_id ? Number(d.support_group_id) : null,
               assignee_id: d.assignee_id ? Number(d.assignee_id) : null, reason: d.reason.trim() || null, expected_version: t.version });
-            close(); await reload(escalateOnly ? "Ticket escalated." : "Assignment updated.");
+            close(); await reload("Assignment updated.");
           } catch (ex) { busy(e.currentTarget, false); if (ex.status === 409) { close(); return handle409(ex); } showFieldErrors(f, ex.fieldErrors?.() || {}); errorToast(ex); }
         });
       } });

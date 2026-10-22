@@ -43,20 +43,14 @@ PERMISSIONS = {
     "user.manage": "Manage users and roles", "audit.view": "View audit log", "settings.manage": "Manage settings",
 }
 _EMP = ["ticket.create", "ticket.view_own", "kb.view"]
-_ENG = _EMP + ["ticket.view_group", "ticket.work", "ticket.accept", "ticket.escalate", "ticket.comment_internal",
-               "ticket.link", "dashboard.ops"]
-_LEAD = _ENG + ["ticket.assign", "ticket.set_priority", "report.export", "kb.manage"]
 ROLES = {
-    "employee": ("Employee", "Raise and track own tickets", _EMP),
-    "dept_viewer": ("Department Viewer", "Explicit read access to own department's tickets",
-                    _EMP + ["ticket.view_department"]),
-    "it_engineer": ("IT Support Engineer", "Work tickets in assigned support groups", _ENG),
-    "it_lead": ("IT Team Lead", "Assign, prioritise and oversee team tickets", _LEAD),
-    "it_admin": ("IT Administrator", "Full configuration and user administration", list(PERMISSIONS)),
-    "management": ("Management / Auditor", "Read-only dashboards, reports and audit",
-                   _EMP + ["ticket.view_all", "ticket.view_internal", "dashboard.ops", "report.export",
-                           "audit.view"]),
+    "employee": ("Employee", "Raise and track own tickets, read the knowledge base", _EMP),
+    "it_admin": ("IT Administrator", "Work and assign all tickets, dashboards, users and settings",
+                 list(PERMISSIONS)),
 }
+# Roles from earlier releases are folded into the two roles above on the next seed run.
+LEGACY_ROLE_MAP = {"it_engineer": "it_admin", "it_lead": "it_admin", "management": "it_admin",
+                   "dept_viewer": "employee"}
 STATUSES = [  # code, name, is_open, pauses_sla
     ("NEW", "New", True, False), ("SUBMITTED", "Submitted", True, False), ("TRIAGED", "Triaged", True, False),
     ("ASSIGNED", "Assigned", True, False), ("IN_PROGRESS", "In Progress", True, False),
@@ -146,6 +140,28 @@ def _get_or_create(db: Session, model, lookup: dict, **values):
     return obj, True
 
 
+def _fold_legacy_roles(db: Session) -> None:
+    """Move users from retired roles onto Employee / IT Administrator, then delete those roles."""
+    db.flush()
+    current = {r.code: r for r in db.scalars(select(Role))}
+    for old_code, new_code in LEGACY_ROLE_MAP.items():
+        old = current.get(old_code)
+        if not old:
+            continue
+        target = current[new_code]
+        for ur in db.scalars(select(UserRole).where(UserRole.role_id == old.id)).all():
+            has = db.get(UserRole, (ur.user_id, target.id))
+            if not has:
+                db.add(UserRole(user_id=ur.user_id, role_id=target.id, granted_by=ur.granted_by))
+            db.delete(ur)
+        db.flush()
+        for rp in db.scalars(select(RolePermission).where(RolePermission.role_id == old.id)).all():
+            db.delete(rp)
+        db.flush()
+        db.delete(old)
+        db.flush()
+
+
 def seed_reference(db: Session) -> None:
     perms = {}
     for code, desc in PERMISSIONS.items():
@@ -156,6 +172,7 @@ def seed_reference(db: Session) -> None:
         for pc in plist:
             if perms[pc].id not in have:
                 db.add(RolePermission(role_id=role.id, permission_id=perms[pc].id))
+    _fold_legacy_roles(db)
     for i, (code, name, is_open, pauses) in enumerate(STATUSES):
         _get_or_create(db, TicketStatus, {"code": code}, name=name, is_open=is_open, pauses_sla=pauses,
                        sort_order=i * 10)
@@ -217,26 +234,20 @@ DEPTS = [("FIN", "Finance & Accounts"), ("PROC", "Procurement"), ("PROJ", "Proje
          ("MGMT", "Management")]
 LOCS = [("PUN", "Pune — Head Office"), ("MUM", "Mumbai Branch"), ("BLR", "Bengaluru Branch"),
         ("NAG", "Nagpur Site Office")]
-DEMO_USERS = [  # code, name, dept, loc, title, roles, groups [(code, lead)]
-    ("D-ADM01", "Rohan Mehta", "IT", "PUN", "IT Administrator", ["it_admin"], []),
-    ("D-MGT01", "Kavita Rao", "MGMT", "PUN", "Head — Finance & IT", ["management"], []),
-    ("D-LED01", "Sanjay Patil", "IT", "PUN", "IT Lead — Applications", ["it_lead"],
-     [("ERP", True), ("SD", True)]),
-    ("D-LED02", "Neha Joshi", "IT", "PUN", "IT Lead — Infrastructure", ["it_lead"],
-     [("INFRA", True), ("EUC", True), ("SEC", True)]),
-    ("D-ENG01", "Amit Deshmukh", "IT", "PUN", "ERP Support Engineer", ["it_engineer"], [("ERP", False)]),
-    ("D-ENG02", "Priya Nair", "IT", "MUM", "ERP Support Engineer", ["it_engineer"], [("ERP", False)]),
-    ("D-ENG03", "Rahul Kulkarni", "IT", "PUN", "Network Engineer", ["it_engineer"],
-     [("INFRA", False), ("EUC", False)]),
-    ("D-ENG04", "Sneha Iyer", "IT", "BLR", "Service Desk Engineer", ["it_engineer"], [("SD", False), ("EUC", False)]),
-    ("D-ENG05", "Vikram Singh", "IT", "PUN", "Systems & Security Engineer", ["it_engineer"],
-     [("INFRA", False), ("SEC", False)]),
+DEMO_USERS = [  # code, name, dept, loc, title, roles, support groups (specialisation)
+    ("D-ADM01", "Rohan Mehta", "IT", "PUN", "Head of IT", ["it_admin"], ["SD", "SEC"]),
+    ("D-ADM02", "Amit Deshmukh", "IT", "PUN", "ERP Administrator", ["it_admin"], ["ERP"]),
+    ("D-ADM03", "Priya Nair", "IT", "MUM", "ERP Administrator", ["it_admin"], ["ERP"]),
+    ("D-ADM04", "Rahul Kulkarni", "IT", "PUN", "Network Administrator", ["it_admin"], ["INFRA", "EUC"]),
+    ("D-ADM05", "Sneha Iyer", "IT", "BLR", "Service Desk Administrator", ["it_admin"], ["SD", "EUC"]),
+    ("D-ADM06", "Vikram Singh", "IT", "PUN", "Systems & Security Administrator", ["it_admin"], ["INFRA", "SEC"]),
     ("D-EMP01", "Anjali Sharma", "FIN", "PUN", "Accounts Executive", ["employee"], []),
     ("D-EMP02", "Manoj Gupta", "PROC", "MUM", "Purchase Officer", ["employee"], []),
     ("D-EMP03", "Farhan Shaikh", "PROJ", "NAG", "Site Engineer", ["employee"], []),
     ("D-EMP04", "Pooja Kadam", "SALES", "PUN", "Rental Coordinator", ["employee"], []),
     ("D-EMP05", "Deepak Verma", "STORE", "BLR", "Stores Supervisor", ["employee"], []),
-    ("D-EMP06", "Meera Pillai", "HR", "PUN", "HR Executive", ["employee", "dept_viewer"], []),
+    ("D-EMP06", "Meera Pillai", "HR", "PUN", "HR Executive", ["employee"], []),
+    ("D-EMP07", "Kavita Rao", "MGMT", "PUN", "Head — Finance", ["employee"], []),
 ]
 SAMPLES = {
     "ERP_APP": ["Purchase order approval screen shows error", "ERP logs out every few minutes",
@@ -335,8 +346,8 @@ def seed_demo(db: Session, n_tickets: int = 70) -> None:
         db.flush()
         for r in rl:
             db.add(UserRole(user_id=u.id, role_id=roles[r].id))
-        for g, lead in gl:
-            db.add(SupportGroupMember(group_id=groups[g].id, user_id=u.id, is_lead=lead,
+        for g in gl:
+            db.add(SupportGroupMember(group_id=groups[g].id, user_id=u.id, is_lead=False,
                                       skills="ERP" if g == "ERP" else None))
         users[code] = u
     db.flush()
@@ -347,7 +358,7 @@ def seed_demo(db: Session, n_tickets: int = 70) -> None:
     cats = {c.code: c for c in db.scalars(select(Category))}
     for _, cat, title, kw, prob, sol in KB:
         db.add(KnowledgeArticle(title=title, category_id=cats[cat].id, keywords=kw, problem=prob, solution=sol,
-                                status="published", author_id=users["D-LED01"].id, reviewer_id=admin.id,
+                                status="published", author_id=users["D-ADM02"].id, reviewer_id=admin.id,
                                 published_at=utcnow(), view_count=random.Random(title).randint(5, 120)))
     db.add(Announcement(title="Planned ERP maintenance (demo)",
                         body="ERP will be unavailable on Sunday 06:00–09:00 IST for patching. Save your work.",
@@ -359,7 +370,7 @@ def seed_demo(db: Session, n_tickets: int = 70) -> None:
 
     from app.services import tickets as tsvc
     rnd = random.Random(2026)
-    employees = [users[c] for c in ("D-EMP01", "D-EMP02", "D-EMP03", "D-EMP04", "D-EMP05", "D-EMP06")]
+    employees = [u for c, u in users.items() if c.startswith("D-EMP")]
     now = utcnow()
     created_times = sorted(_biz_time(now - timedelta(days=rnd.uniform(0.05, 27)), rnd) for _ in range(n_tickets))
     created_times = [c if c < now else now - timedelta(minutes=30) for c in created_times]
@@ -407,7 +418,7 @@ def seed_demo(db: Session, n_tickets: int = 70) -> None:
         if outcome == "open_new":
             continue
         group_members = [m.user for m in db.scalars(select(SupportGroupMember).where(
-            SupportGroupMember.group_id == t.support_group_id))] or [users["D-ENG04"]]
+            SupportGroupMember.group_id == t.support_group_id))] or [users["D-ADM05"]]
         eng = t.assignee or rnd.choice(group_members)
         t.assignee_id = eng.id
         t.assigned_at = t.assigned_at or created + timedelta(minutes=rnd.randint(5, 90))

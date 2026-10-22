@@ -44,14 +44,20 @@ class Settings(BaseSettings):
     serve_frontend: bool = True
     frontend_dir: str = "../frontend"
 
-    # Email (disabled until configured and tested against the company relay)
+    # Email notifications (sent only when EMAIL_ENABLED=true and SMTP is configured)
     email_enabled: bool = False
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""
     smtp_password: str = ""
     smtp_from: str = "it-servicedesk@example.invalid"
-    smtp_starttls: bool = True
+    smtp_from_name: str = "Vision Infra IT Service Desk"
+    smtp_starttls: bool = True        # port 587 (Office 365, Gmail)
+    smtp_ssl: bool = False            # port 465 (implicit TLS)
+    smtp_timeout_seconds: int = 10
+    # Public address of the portal, used for links inside emails
+    app_base_url: str = "http://localhost:8000"
+    company_name: str = "Vision Infra Equipment Solutions Ltd."
 
     @field_validator("cors_origins")
     @classmethod

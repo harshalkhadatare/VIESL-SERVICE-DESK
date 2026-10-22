@@ -14,7 +14,7 @@ uvicorn app.main:app --reload --port 8000
 Open http://localhost:8000 — demo accounts are listed on the sign-in page (development only).
 API docs: http://localhost:8000/api/docs
 
-Run tests: `cd backend && pytest` (uses a throwaway SQLite DB; 122 tests).
+Run tests: `cd backend && python -m pytest` (uses a throwaway SQLite DB; 116 tests).
 
 ## B. Development with SQL Server (Docker Compose)
 ```bash
@@ -58,7 +58,7 @@ The `db-init` service creates the `ServiceDesk` database and a least-privilege l
 6. **Run:** `uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=127.0.0.1`
    under systemd (or the Docker image), behind Nginx/IIS with TLS (`deploy/nginx/servicedesk.conf`).
    With several workers, keep `ENABLE_SCHEDULER=true` on one process only (e.g. a dedicated worker instance), and note the in-memory rate limiter is per process.
-7. **Email go-live:** set `SMTP_*`, send a test, then `EMAIL_ENABLED=true`. Failed deliveries retry up to 5 times and are visible in `notifications.email_status/email_last_error`.
+7. **Email notifications:** see section H.
 
 ## D. Backup & restore
 - **Database (SQL Server):** full backup nightly + transaction log backups every 15 min (Full recovery model).
@@ -106,3 +106,27 @@ data on each cold start, and is not shared between instances, so **changes do no
 jobs do not run and uploads are temporary. For real use, set environment variables
 `DATABASE_URL` (hosted SQL Server; add `pyodbc` to `requirements.txt`), `DEMO_SEED=false`, a strong `SECRET_KEY`,
 and run `alembic upgrade head` against that database — or host on a company server/VM as in section C.
+
+
+## H. Email notifications
+Every in-app notification is also emailed (new ticket, assignment — including who it is assigned to — replies, status
+changes, information requests, resolution, reopen, SLA breach). Emails are sent immediately after the action and failed
+ones are retried by the scheduler (up to 5 attempts). Demo addresses (`*.example.com`) are never emailed.
+
+1. Pick a sending mailbox, e.g. `it-servicedesk@yourcompany.com`.
+2. Set the environment variables (server `.env`, or Vercel → Project → Settings → Environment Variables):
+
+| Variable | Office 365 | Gmail / Google Workspace |
+|---|---|---|
+| `EMAIL_ENABLED` | `true` | `true` |
+| `SMTP_HOST` | `smtp.office365.com` | `smtp.gmail.com` |
+| `SMTP_PORT` | `587` | `587` |
+| `SMTP_STARTTLS` | `true` | `true` |
+| `SMTP_USERNAME` | the mailbox address | the mailbox address |
+| `SMTP_PASSWORD` | mailbox password (SMTP AUTH must be enabled for it in Microsoft 365 admin) | a 16-character **App Password** |
+| `SMTP_FROM` | the mailbox address | the mailbox address |
+| `APP_BASE_URL` | your portal address, e.g. `https://viesl-service-desk.vercel.app` | same |
+
+3. Restart (or redeploy on Vercel), sign in as an IT Administrator, open **Email notifications** and click
+   **Send test email**. The page shows the exact SMTP error if sending fails.
+4. Create real users with real company emails (**Users & roles → Add user**) — demo users never receive email.

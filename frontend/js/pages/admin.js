@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { state } from "../state.js";
 import { $, $$, html, mount, icon, fmtDate, fmtRelative, initials, emptyState, errorToast, toast, openModal, busy,
-  confirmDialog, debounce, skeletonRows } from "../ui.js";
+  confirmDialog, debounce, skeletonRows, showFieldErrors } from "../ui.js";
 
 // =================================================================== users & roles
 export async function renderUsers(view) {
@@ -9,7 +9,9 @@ export async function renderUsers(view) {
   const roles = await api.get("/admin/roles");
   const roleName = Object.fromEntries(roles.map((r) => [r.code, r.name]));
   mount(view, html`<div class="page-head"><div><h1>Users & roles</h1>
-      <div class="sub">Role changes take effect at the user's next sign-in and are recorded in the audit log.</div></div></div>
+      <div class="sub">Two roles: <b>Employee</b> raises tickets, <b>IT Administrator</b> works and assigns them.
+      Changes are recorded in the audit log.</div></div>
+      <button class="btn primary" id="add-user">${icon("plus")} Add user</button></div>
     <div class="card">
       <div class="toolbar"><div class="search-inline">${icon("search")}<input type="search" id="uq" placeholder="Name, email or employee code" aria-label="Search users"></div></div>
       <div class="table-wrap"><table class="data"><thead><tr><th>User</th><th class="hide-sm">Employee code</th><th class="hide-sm">Department</th>
@@ -63,6 +65,48 @@ export async function renderUsers(view) {
     try { await api.patch(`/admin/users/${u.id}/active`, { is_active: !u.is_active }); toast("User updated."); load(); } catch (e) { errorToast(e); }
   }
   $("#uq", view).addEventListener("input", debounce((e) => { q = e.target.value.trim(); page = 1; load(); }, 300));
+  $("#add-user", view).addEventListener("click", addUser);
+
+  async function addUser() {
+    const depts = await api.get("/departments").catch(() => []);
+    openModal({ title: "Add user", subtitle: "Use the person's real company email — notifications are emailed there.", wide: true,
+      body: html`<form id="nu" class="form-grid" novalidate>
+        <label class="field"><span class="lbl">Full name<span class="req">*</span></span><input type="text" name="full_name" maxlength="150" required></label>
+        <label class="field"><span class="lbl">Company email<span class="req">*</span></span><input type="email" name="email" maxlength="254" required></label>
+        <label class="field"><span class="lbl">Employee code<span class="req">*</span></span><input type="text" name="employee_code" maxlength="30" required></label>
+        <label class="field"><span class="lbl">Department</span><select name="department_id"><option value="">—</option>
+          ${depts.map((d) => html`<option value="${d.id}">${d.name}</option>`)}</select></label>
+        <label class="field"><span class="lbl">Job title</span><input type="text" name="job_title" maxlength="120"></label>
+        <label class="field"><span class="lbl">Phone</span><input type="text" name="phone" maxlength="30"></label>
+        <div class="field full"><span class="lbl">Role</span>
+          <div class="choice-grid" style="grid-template-columns:1fr 1fr" id="role-pick">
+            <div class="choice on" data-v="employee" role="radio" tabindex="0"><b>Employee</b><span>Raises and tracks own tickets</span></div>
+            <div class="choice" data-v="it_admin" role="radio" tabindex="0"><b>IT Administrator</b><span>Works and assigns all tickets</span></div>
+          </div></div>
+        <label class="field full"><span class="lbl">Temporary password<span class="req">*</span></span>
+          <input type="text" name="password" minlength="10" required autocomplete="off">
+          <div class="help">At least 10 characters with upper and lower case letters and a digit. Share it privately; the user can change it after signing in.</div></label>
+        </form>`,
+      actions: html`<button class="btn" data-close>Cancel</button><button class="btn primary" id="nu-save">Create user</button>`,
+      onMount: (el, close) => {
+        let role = "employee";
+        $("#role-pick", el).addEventListener("click", (e) => {
+          const c = e.target.closest(".choice"); if (!c) return;
+          role = c.dataset.v; $$(".choice", el).forEach((x) => x.classList.toggle("on", x === c));
+        });
+        $("#nu-save", el).addEventListener("click", async (e) => {
+          const f = $("#nu", el);
+          const d = Object.fromEntries(new FormData(f));
+          busy(e.currentTarget);
+          try {
+            await api.post("/admin/users", { full_name: d.full_name.trim(), email: d.email.trim(), employee_code: d.employee_code.trim(),
+              department_id: d.department_id ? Number(d.department_id) : null, job_title: d.job_title.trim() || null,
+              phone: d.phone.trim() || null, role, password: d.password });
+            close(); toast(`${d.full_name} added.`); load();
+          } catch (ex) { busy(e.currentTarget, false); showFieldErrors(f, ex.fieldErrors?.() || {}); errorToast(ex); }
+        });
+      } });
+  }
   await load();
 }
 
@@ -102,5 +146,71 @@ export async function renderAudit(view) {
   }
   $("#aa", view).addEventListener("change", (e) => { action = e.target.value; page = 1; load(); });
   $("#au", view).addEventListener("input", debounce((e) => { actor = e.target.value.trim(); page = 1; load(); }, 300));
+  await load();
+}
+
+// =================================================================== email notifications
+export async function renderEmail(view) {
+  mount(view, html`<div class="page-head"><div><h1>Email notifications</h1>
+      <div class="sub">Employees and IT administrators receive an email for every in-app notification:
+      new tickets, assignments (with the assigned person's name), replies, status changes and resolution.</div></div></div>
+    <div class="grid grid-main-side">
+      <div class="card"><div class="card-head"><h2>Mail server</h2><span id="em-badge"></span></div>
+        <div class="card-body" id="em-body"><div class="skeleton"></div></div></div>
+      <div class="stack">
+        <div class="card"><div class="card-head"><h2>Send a test email</h2></div>
+          <div class="card-body"><form id="tf" class="stack" style="gap:12px">
+            <label class="field"><span class="lbl">Send to</span><input type="email" name="to" value="${state.me.email}"></label>
+            <button class="btn primary" type="submit">${icon("send")} Send test email</button></form>
+            <div id="tf-result" style="margin-top:12px"></div></div></div>
+        <div class="card"><div class="card-body small">
+          <div class="row" style="gap:8px;margin-bottom:8px">${icon("info")}<b>How to turn email on</b></div>
+          <p class="muted">Mail settings are kept in the server environment (never in the browser) so the password stays secret.
+          Set these variables, then restart or redeploy:</p>
+          <pre class="mono" style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px;white-space:pre-wrap;margin:10px 0 0">EMAIL_ENABLED=true
+SMTP_HOST=smtp.office365.com
+SMTP_PORT=587
+SMTP_USERNAME=it-servicedesk@yourcompany.com
+SMTP_PASSWORD=********
+SMTP_FROM=it-servicedesk@yourcompany.com
+APP_BASE_URL=https://your-portal-address</pre></div></div>
+      </div>
+    </div>`);
+
+  async function load() {
+    try {
+      const s = await api.get("/admin/email");
+      if (!$("#em-body", view)?.isConnected) return;
+      mount($("#em-badge", view), s.configured ? html`<span class="badge ok">Active</span>`
+        : html`<span class="badge warn">${s.enabled ? "Incomplete" : "Off"}</span>`);
+      mount($("#em-body", view), html`
+        ${s.configured ? "" : html`<div class="notice warn" style="margin-bottom:16px">${icon("alert")}<div><b>Emails are not being sent</b>
+          Notifications still appear in the app. Configure the mail server (see the right-hand panel) to start sending emails.</div></div>`}
+        <dl class="kv">
+          <dt>Status</dt><dd>${s.configured ? "Sending emails" : s.enabled ? "Enabled, but SMTP host missing" : "Disabled"}</dd>
+          <dt>SMTP server</dt><dd class="mono">${s.smtp_host}:${s.smtp_port}</dd>
+          <dt>Security</dt><dd>${s.security}</dd>
+          <dt>From</dt><dd>${s.from_name} &lt;${s.from_address}&gt;</dd>
+          <dt>Links point to</dt><dd class="mono">${s.portal_url}</dd>
+          <dt>Sent (7 days)</dt><dd>${s.sent_last_7_days}</dd>
+          <dt>Waiting</dt><dd>${s.pending}</dd>
+          <dt>Failed</dt><dd>${s.failed ? html`<span style="color:var(--danger);font-weight:600">${s.failed}</span>` : "0"}</dd>
+          ${s.last_error ? html`<dt>Last error</dt><dd class="small" style="color:var(--danger)">${s.last_error}</dd>` : ""}
+        </dl>
+        <p class="small muted" style="margin-top:14px">Demo accounts (addresses ending in example.com) never receive emails.
+          Failed emails are retried automatically up to 5 times.</p>`);
+    } catch (e) { errorToast(e); }
+  }
+  $("#tf", view).addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("button[type=submit]", e.target), out = $("#tf-result", view);
+    busy(btn);
+    try {
+      const r = await api.post("/admin/email/test", { to: e.target.to.value.trim() || null });
+      mount(out, html`<div class="notice">${icon("checkCircle")}<div>${r.message}</div></div>`);
+    } catch (ex) {
+      mount(out, html`<div class="notice danger">${icon("alert")}<div>${ex.message}</div></div>`);
+    } finally { busy(btn, false); load(); }
+  });
   await load();
 }

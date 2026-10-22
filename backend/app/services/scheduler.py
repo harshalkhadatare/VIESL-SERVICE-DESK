@@ -13,21 +13,19 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import SessionLocal
-from app.models import SLATracking, SupportGroupMember, Ticket, TicketStatus, utcnow
+from app.models import SLATracking, Ticket, TicketStatus, utcnow
 from app.services import sla as sla_svc
 from app.services.business_time import business_minutes_between
 from app.services.notifications import deliver_pending_emails, notify
 from app.services.settings_service import get_int
+from app.services.staff import group_staff_ids
 from app.services.tickets import add_history
 
 log = logging.getLogger("servicedesk.scheduler")
 
 
 def _leads(db: Session, group_id: int | None) -> list[int]:
-    if not group_id:
-        return []
-    return list(db.scalars(select(SupportGroupMember.user_id).where(
-        SupportGroupMember.group_id == group_id, SupportGroupMember.is_lead.is_(True))).all())
+    return group_staff_ids(db, group_id)
 
 
 def run_sla_checks(db: Session, now=None) -> dict:

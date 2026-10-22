@@ -87,6 +87,23 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
        "font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
 
 
+async def _send_queued_emails() -> None:
+    """Email notifications created by this request are sent right away (works on serverless hosts
+    with no background scheduler). Failures stay queued and the scheduler retries them."""
+    from app.services.notifications import deliver_pending_emails, email_configured
+    if not email_configured():
+        return
+    from app.core.database import SessionLocal
+
+    def _run():
+        with SessionLocal() as db:
+            try:
+                deliver_pending_emails(db, batch=20, first_attempt_only=True)
+            except Exception:  # noqa: BLE001
+                log.exception("inline email delivery failed")
+    await asyncio.to_thread(_run)
+
+
 @app.middleware("http")
 async def request_context(request: Request, call_next):
     rid = request.headers.get("X-Request-ID")
@@ -98,6 +115,9 @@ async def request_context(request: Request, call_next):
                 "code": "rate_limited", "message": "Too many requests.", "details": [],
                 "request_id": request.state.request_id}})
     response = await call_next(request)
+    if (request.method in ("POST", "PUT", "PATCH") and request.url.path.startswith("/api/")
+            and response.status_code < 400):
+        await _send_queued_emails()
     response.headers["X-Request-ID"] = request.state.request_id
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"

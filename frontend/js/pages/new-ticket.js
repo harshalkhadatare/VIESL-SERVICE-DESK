@@ -2,7 +2,7 @@ import { api } from "../api.js";
 import { state, catalog } from "../state.js";
 import { $, $$, html, mount, icon, debounce, busy, toast, errorToast, showFieldErrors, prioBadge, fileSize } from "../ui.js";
 
-const ALLOWED = ".png,.jpg,.jpeg,.gif,.pdf,.xlsx,.docx,.txt,.log,.csv";
+const ALLOWED = ".png,.jpg,.jpeg,.gif,.webp,.bmp,.tif,.tiff,.heic,.heif,.pdf";
 const MAX_MB = 10;
 
 export async function render(view) {
@@ -85,9 +85,9 @@ export async function render(view) {
               <label class="field"><span class="lbl">Preferred contact</span><select name="contact_method">
                 <option value="portal">This portal</option><option value="email">Email</option><option value="phone">Phone</option><option value="teams">Teams</option></select></label>
               <label class="field"><span class="lbl">Related ticket (optional)</span><input type="text" name="related_ticket_number" placeholder="IT-2026-000123" pattern="IT-\\d{4}-\\d{6}"></label>
-              <div class="field full"><span class="lbl">Screenshots or files</span>
-                <div class="dropzone" id="drop" tabindex="0" role="button">${icon("clip")} Drop files here or <u>browse</u> · up to ${MAX_MB} MB each · images, PDF, Excel, Word, text</div>
-                <input type="file" id="file" multiple accept="${ALLOWED}" hidden>
+              <div class="field full"><span class="lbl">Screenshots or PDF</span>
+                <div class="dropzone" id="drop" tabindex="0" role="button">${icon("clip")} Drop files here or <u>browse</u> · up to ${MAX_MB} MB each · images and PDF only</div>
+                <input type="file" id="file" multiple accept="image/*,${ALLOWED}" hidden>
                 <div id="file-list"></div></div>
             </div>
           </section>
@@ -185,7 +185,7 @@ export async function render(view) {
   const addFiles = (list) => {
     for (const f of list) {
       const ext = "." + f.name.split(".").pop().toLowerCase();
-      if (!ALLOWED.split(",").includes(ext)) { toast(`${f.name}: file type not allowed`, "err"); continue; }
+      if (!ALLOWED.split(",").includes(ext)) { toast(`${f.name}: only images and PDF files can be attached`, "err"); continue; }
       if (f.size > MAX_MB * 1048576) { toast(`${f.name}: larger than ${MAX_MB} MB`, "err"); continue; }
       if (files.length >= 5) { toast("Attach up to 5 files here; add more from the ticket page.", "info"); break; }
       files.push(f);

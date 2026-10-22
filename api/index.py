@@ -4,7 +4,8 @@ Vercel runs the FastAPI app as a serverless function. Its filesystem is read-onl
 except /tmp, and /tmp is wiped on cold starts, so this setup is for a DEMO:
 an SQLite database is created in /tmp and filled with fictional demo data on start.
 For real use, set DATABASE_URL to a hosted SQL Server and DEMO_SEED=false
-(see docs/DEPLOYMENT.md, section "Vercel").
+(see docs/DEPLOYMENT.md, section "Vercel"). Email: set EMAIL_ENABLED, SMTP_* and APP_BASE_URL
+in Vercel's Environment Variables (docs/DEPLOYMENT.md, section H).
 """
 import os
 import sys

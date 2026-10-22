@@ -41,7 +41,7 @@ def test_breach_marks_escalates_and_notifies_once(client):
         tid = db.scalar(select(Ticket.id).where(Ticket.number == t["number"]))
         s = db.get(SLATracking, tid)
         assert s.resolution_breached and s.escalation_level == 1 and s.response_breached
-        lead = user_id("sanjay.patil@demo.example.com")
+        lead = t["assignee"]["id"]
         n1 = db.scalars(select(Notification).where(Notification.ticket_id == tid,
                                                    Notification.event == "sla_breached",
                                                    Notification.user_id == lead)).all()
@@ -50,7 +50,7 @@ def test_breach_marks_escalates_and_notifies_once(client):
                                                    Notification.event == "sla_breached",
                                                    Notification.user_id == lead)).all()
         assert len(n1) == len(n2) == 1
-    d = client.get(f"{API}/{t['number']}", headers=auth("erp_lead")).json()
+    d = client.get(f"{API}/{t['number']}", headers=auth("admin")).json()
     assert d["sla"]["state"] == "breached"
 
 
@@ -66,7 +66,7 @@ def test_warning_before_breach(client):
 
 def test_pause_excludes_time_and_status_change_does_not_reset(client):
     t = make_ticket(client, code="ERP_APP", impact=2, urgency=2)
-    eng = "erp_engineer" if t["assignee"]["id"] == user_id("amit.deshmukh@demo.example.com") else "erp_engineer2"
+    eng = "admin"
     d = client.post(f"{API}/{t['number']}/status", headers=auth(eng), json={
         "to_status": "PENDING_EMPLOYEE", "reason": "Need details", "expected_version": t["version"]}).json()
     with SessionLocal() as db:

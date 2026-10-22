@@ -2,15 +2,16 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.api.deps import Principal, get_principal, require
 from app.core.database import get_db
 from app.core.errors import BusinessRuleError, NotFound
+from app.core.config import get_settings
 from app.models import (
-    AuditLog, Category, KnowledgeArticle, Notification, RefreshToken, Role, User, UserRole, utcnow,
+    AuditLog, Category, KnowledgeArticle, Notification, RefreshToken, Role, Ticket, User, UserRole, utcnow,
 )
 from app.schemas.common import Page, StrictIn
 from app.services.audit import audit_p
@@ -27,6 +28,20 @@ class NotificationOut(BaseModel):
     link: str | None
     is_read: bool
     created_at: datetime
+    ticket_number: str | None = None
+    ticket_subject: str | None = None
+    ticket_status: str | None = None
+    assignee_name: str | None = None      # current assigned IT administrator
+    email_status: str = "none"
+
+
+def _notif_out(n: Notification, t: Ticket | None) -> NotificationOut:
+    return NotificationOut(
+        id=n.id, event=n.event, title=n.title, body=n.body, link=n.link, is_read=n.is_read,
+        created_at=n.created_at, email_status=n.email_status,
+        ticket_number=t.number if t else None, ticket_subject=t.subject if t else None,
+        ticket_status=t.status.name if t else None,
+        assignee_name=t.assignee.full_name if t and t.assignee else None)
 
 
 @router.get("/notifications", response_model=Page[NotificationOut], tags=["Notifications"])
@@ -38,7 +53,9 @@ def notifications(unread_only: bool = False, page: int = Query(1, ge=1), page_si
     total = db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = db.scalars(stmt.order_by(Notification.created_at.desc(), Notification.id.desc())
                       .offset((page - 1) * page_size).limit(page_size)).all()
-    return Page(items=[NotificationOut.model_validate(n, from_attributes=True) for n in rows],
+    tids = {n.ticket_id for n in rows if n.ticket_id}
+    tickets = {t.id: t for t in db.scalars(select(Ticket).where(Ticket.id.in_(tids)))} if tids else {}
+    return Page(items=[_notif_out(n, tickets.get(n.ticket_id)) for n in rows],
                 total=total, page=page, page_size=page_size)
 
 
@@ -175,6 +192,44 @@ def list_users(q: str | None = Query(None, max_length=100), page: int = Query(1,
     return Page(items=[_user_out(u) for u in rows], total=total, page=page, page_size=page_size)
 
 
+class UserCreateIn(StrictIn):
+    full_name: str = Field(min_length=2, max_length=150)
+    email: EmailStr
+    employee_code: str = Field(min_length=1, max_length=30)
+    department_id: int | None = None
+    job_title: str | None = Field(None, max_length=120)
+    phone: str | None = Field(None, max_length=30)
+    role: str = Field(pattern="^(employee|it_admin)$")
+    password: str = Field(min_length=10, max_length=200)
+
+
+@router.post("/admin/users", response_model=UserAdminOut, status_code=201, tags=["Administration"])
+def create_user(data: UserCreateIn, p: Principal = Depends(require("user.manage")), db: Session = Depends(get_db)):
+    from app.core.security import hash_password, validate_password_strength
+    from app.models import Department
+    email = data.email.lower()
+    if db.scalar(select(User.id).where(User.email == email)):
+        raise BusinessRuleError("A user with this email already exists.", details=[{"field": "email"}])
+    if db.scalar(select(User.id).where(User.employee_code == data.employee_code)):
+        raise BusinessRuleError("This employee code is already used.", details=[{"field": "employee_code"}])
+    if data.department_id and not db.get(Department, data.department_id):
+        raise BusinessRuleError("Select a valid department.", details=[{"field": "department_id"}])
+    problems = validate_password_strength(data.password)
+    if problems:
+        raise BusinessRuleError("Password must contain " + ", ".join(problems) + ".", details=[{"field": "password"}])
+    role = db.scalar(select(Role).where(Role.code == data.role))
+    u = User(full_name=data.full_name.strip(), email=email, employee_code=data.employee_code.strip(),
+             department_id=data.department_id, job_title=data.job_title, phone=data.phone,
+             password_hash=hash_password(data.password), timezone=get_settings().app_timezone)
+    db.add(u)
+    db.flush()
+    db.add(UserRole(user_id=u.id, role_id=role.id, granted_by=p.id))
+    audit_p(db, p, "admin.user_create", entity_type="user", entity_id=u.id, detail={"email": email, "role": data.role})
+    db.commit()
+    db.refresh(u)
+    return _user_out(u)
+
+
 @router.put("/admin/users/{uid}/roles", response_model=UserAdminOut, tags=["Administration"])
 def set_roles(uid: int, data: RolesIn, p: Principal = Depends(require("user.manage")),
               db: Session = Depends(get_db)):
@@ -250,3 +305,64 @@ def audit_logs(action: str | None = Query(None, max_length=60), actor: str | Non
                       .offset((page - 1) * page_size).limit(page_size)).all()
     return Page(items=[AuditOut.model_validate(r, from_attributes=True) for r in rows], total=total, page=page,
                 page_size=page_size)
+
+
+# ------------------------------------------------------------------ admin: email
+class EmailStatusOut(BaseModel):
+    enabled: bool
+    configured: bool
+    smtp_host: str
+    smtp_port: int
+    security: str
+    from_address: str
+    from_name: str
+    portal_url: str
+    sent_last_7_days: int
+    pending: int
+    failed: int
+    last_error: str | None
+
+
+@router.get("/admin/email", response_model=EmailStatusOut, tags=["Administration"])
+def email_status(p: Principal = Depends(require("settings.manage")), db: Session = Depends(get_db)):
+    from datetime import timedelta
+
+    from app.services.notifications import email_configured
+    s = get_settings()
+    since = utcnow() - timedelta(days=7)
+
+    def count(*w):
+        return db.scalar(select(func.count()).select_from(Notification).where(*w)) or 0
+    last = db.scalar(select(Notification.email_last_error).where(Notification.email_last_error.isnot(None))
+                     .order_by(Notification.id.desc()).limit(1))
+    return EmailStatusOut(
+        enabled=s.email_enabled, configured=email_configured(), smtp_host=s.smtp_host or "—", smtp_port=s.smtp_port,
+        security="SSL/TLS" if s.smtp_ssl else ("STARTTLS" if s.smtp_starttls else "None"),
+        from_address=s.smtp_from, from_name=s.smtp_from_name, portal_url=s.app_base_url,
+        sent_last_7_days=count(Notification.email_status == "sent", Notification.created_at >= since),
+        pending=count(Notification.email_status == "pending"), failed=count(Notification.email_status == "failed"),
+        last_error=last)
+
+
+class TestEmailIn(StrictIn):
+    to: str | None = Field(None, max_length=254)
+
+
+@router.post("/admin/email/test", tags=["Administration"])
+def email_test(data: TestEmailIn, p: Principal = Depends(require("settings.manage")), db: Session = Depends(get_db)):
+    from app.services.notifications import email_configured, send_test_email
+    if not email_configured():
+        raise BusinessRuleError("Email is not configured. Set EMAIL_ENABLED=true and the SMTP_* settings, "
+                                "then restart the application.")
+    to = (data.to or p.user.email).strip()
+    if "@" not in to:
+        raise BusinessRuleError("Enter a valid email address.", details=[{"field": "to"}])
+    try:
+        send_test_email(to, p.user.full_name)
+    except Exception as exc:  # noqa: BLE001 - surface SMTP error to the administrator
+        audit_p(db, p, "admin.email_test", detail={"to": to}, outcome="failure")
+        db.commit()
+        raise BusinessRuleError(f"Sending failed: {str(exc)[:300]}")
+    audit_p(db, p, "admin.email_test", detail={"to": to})
+    db.commit()
+    return {"message": f"Test email sent to {to}."}
