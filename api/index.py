@@ -60,7 +60,7 @@ def _bootstrap_admin(db) -> None:
     from sqlalchemy import select
 
     from app.core.config import get_settings
-    from app.core.security import hash_password, validate_password_strength
+    from app.core.security import set_user_password
     from app.models import Role, User, UserRole
     s = get_settings()
     email = s.bootstrap_admin_email.strip().lower()
@@ -68,11 +68,11 @@ def _bootstrap_admin(db) -> None:
         return
     if db.scalar(select(User.id).where(User.email == email)):
         return  # already created; the password variable can now be removed
-    if validate_password_strength(s.bootstrap_admin_password):
-        log.error("BOOTSTRAP_ADMIN_PASSWORD is too weak (10+ chars, upper, lower, digit) — admin not created")
+    if len(s.bootstrap_admin_password) < 6:
+        log.error("BOOTSTRAP_ADMIN_PASSWORD must be at least 6 characters — admin not created")
         return
-    u = User(employee_code="ADMIN-1", email=email, full_name=s.bootstrap_admin_name,
-             password_hash=hash_password(s.bootstrap_admin_password), timezone=s.app_timezone)
+    u = User(employee_code="ADMIN-1", email=email, full_name=s.bootstrap_admin_name, timezone=s.app_timezone)
+    set_user_password(u, s.bootstrap_admin_password)
     db.add(u)
     db.flush()
     db.add(UserRole(user_id=u.id, role_id=db.scalar(select(Role.id).where(Role.code == "it_admin"))))

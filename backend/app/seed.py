@@ -331,7 +331,8 @@ def seed_demo(db: Session, n_tickets: int = 70) -> None:
     if db.scalar(select(User.id).where(User.is_demo.is_(True))):
         print("Demo data already present — skipping.")
         return
-    pw = hash_password(os.environ.get("DEMO_PASSWORD", "Vision@Demo2026"))
+    demo_pw = os.environ.get("DEMO_PASSWORD", "Vision@Demo2026")
+    pw = hash_password(demo_pw)
     depts = {c: _get_or_create(db, Department, {"code": c}, name=n)[0] for c, n in DEPTS}
     locs = {c: _get_or_create(db, Location, {"code": c}, name=n)[0] for c, n in LOCS}
     roles = {r.code: r for r in db.scalars(select(Role))}
@@ -340,7 +341,7 @@ def seed_demo(db: Session, n_tickets: int = 70) -> None:
     for code, name, d, l, title, rl, gl in DEMO_USERS:
         first, last = name.lower().split()
         u = User(employee_code=code, email=f"{first}.{last}@demo.example.com", full_name=name, job_title=title,
-                 department_id=depts[d].id, location_id=locs[l].id, password_hash=pw, is_demo=True,
+                 department_id=depts[d].id, location_id=locs[l].id, password_hash=pw, password_plain=demo_pw, is_demo=True,
                  phone=f"+91 20 5555 {random.Random(code).randint(1000, 9999)}")
         db.add(u)
         db.flush()

@@ -12,8 +12,8 @@ from app.core.database import get_db
 from app.core.errors import BusinessRuleError, Forbidden, TooManyRequests, Unauthorized
 from app.core.rate_limit import login_limiter
 from app.core.security import (
-    create_access_token, hash_password, hash_token, needs_rehash, new_refresh_token, validate_password_strength,
-    verify_password,
+    check_user_password, create_access_token, hash_password, hash_token, needs_rehash, new_refresh_token,
+    set_user_password, validate_password_strength, verify_password,
 )
 from app.models import RefreshToken, User, utcnow
 from app.schemas.common import StrictIn
@@ -97,7 +97,7 @@ def login(data: LoginIn, request: Request, response: Response, db: Session = Dep
         raise Unauthorized("Account temporarily locked after repeated failures. Try again later.",
                            code="account_locked")
 
-    ok = verify_password(data.password, user.password_hash if user else None)
+    ok = check_user_password(user, data.password)
     if not user or not ok or not user.is_active:
         if user:
             user.failed_logins += 1
@@ -109,8 +109,8 @@ def login(data: LoginIn, request: Request, response: Response, db: Session = Dep
         raise generic
 
     user.failed_logins, user.locked_until, user.last_login_at = 0, None, now
-    if needs_rehash(user.password_hash):
-        user.password_hash = hash_password(data.password)
+    if user.password_hash is None or needs_rehash(user.password_hash) or not verify_password(data.password, user.password_hash):
+        user.password_hash = hash_password(data.password)  # keep the hash in step with an edited plain password
     out = _issue(db, user, response, request)
     audit(db, "auth.login", actor_id=user.id, actor_label=email, ip=ip)
     db.commit()
@@ -176,13 +176,13 @@ def me(p: Principal = Depends(get_principal)):
 def change_password(data: ChangePasswordIn, response: Response, p: Principal = Depends(get_principal),
                     db: Session = Depends(get_db)):
     user = db.get(User, p.id)
-    if not verify_password(data.current_password, user.password_hash):
+    if not check_user_password(user, data.current_password):
         raise BusinessRuleError("Current password is incorrect.", details=[{"field": "current_password"}])
     problems = validate_password_strength(data.new_password)
     if problems:
         raise BusinessRuleError("Password must contain " + ", ".join(problems) + ".",
                                 details=[{"field": "new_password"}])
-    user.password_hash = hash_password(data.new_password)
+    set_user_password(user, data.new_password)
     db.execute(update(RefreshToken).where(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None))
                .values(revoked_at=utcnow()))
     audit_p(db, p, "auth.password_change", entity_type="user", entity_id=user.id)

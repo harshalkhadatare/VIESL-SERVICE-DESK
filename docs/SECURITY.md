@@ -3,7 +3,11 @@
 Legend: ✅ implemented & tested · ☑ implemented (configuration/operational) · ⬜ to do before/after go-live
 
 ## Authentication & sessions
-- ✅ Argon2id password hashing, automatic rehash on login, timing-equalised for unknown users
+- ⚠️ **Readable passwords (owner's decision, 22 Oct 2026):** passwords are stored in plain text in `users.password_plain`
+  so the database owner can see and edit them; logins are checked against that column. An Argon2id hash is still kept
+  in `password_hash`. Anyone with database access can read every password — restrict Neon access, never share the
+  connection string, and ask staff not to reuse passwords from other systems. To go back to hashed-only storage, run
+  `UPDATE users SET password_plain = NULL;` (logins then use the hash again).
 - ✅ Identical error for wrong password vs unknown user
 - ✅ Account lockout (5 failures → 15 min) and per-IP login rate limit
 - ✅ 15-minute JWT access token held in memory only (never localStorage)

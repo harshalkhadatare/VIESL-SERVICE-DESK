@@ -32,6 +32,7 @@ export async function renderUsers(view) {
         <td class="hide-sm muted small">${u.last_login_at ? fmtRelative(u.last_login_at) : "Never"}</td>
         <td>${!u.is_active ? html`<span class="badge">Inactive</span>` : u.locked ? html`<span class="badge warn">Locked</span>` : html`<span class="badge ok">Active</span>`}</td>
         <td style="text-align:right;white-space:nowrap"><button class="btn sm" data-roles="${u.id}">Roles</button>
+          <button class="btn sm" data-pw="${u.id}">${icon("key")} Password</button>
           ${u.id !== state.me.id ? html`<button class="btn sm ghost" data-active="${u.id}" data-on="${u.is_active}">${u.is_active ? "Deactivate" : "Activate"}</button>` : ""}</td></tr>`)}` :
         html`<tr><td colspan="7">${emptyState("No users found", "Try another search.", "users")}</td></tr>`);
       const pages = Math.max(1, Math.ceil(r.total / r.page_size));
@@ -40,6 +41,7 @@ export async function renderUsers(view) {
       $("#nx", view).addEventListener("click", () => { page++; load(); });
       $$("[data-roles]", view).forEach((b) => b.addEventListener("click", () => editRoles(r.items.find((u) => String(u.id) === b.dataset.roles))));
       $$("[data-active]", view).forEach((b) => b.addEventListener("click", () => toggleActive(r.items.find((u) => String(u.id) === b.dataset.active))));
+      $$("[data-pw]", view).forEach((b) => b.addEventListener("click", () => resetPassword(r.items.find((u) => String(u.id) === b.dataset.pw))));
     } catch (e) { errorToast(e); }
   }
 
@@ -57,6 +59,23 @@ export async function renderUsers(view) {
         catch (ex) { busy(e.currentTarget, false); errorToast(ex); }
       }) });
   }
+  function resetPassword(u) {
+    openModal({ title: `Set password for ${u.full_name}`, subtitle: "The account is also unlocked and signed out on other devices.",
+      body: html`<form id="pwf" class="stack" style="gap:12px" novalidate>
+        <label class="field"><span class="lbl">New password<span class="req">*</span></span>
+          <input type="text" name="password" minlength="6" maxlength="200" autocomplete="off" required>
+          <div class="help">At least 6 characters. Tell the user privately.</div></label></form>`,
+      actions: html`<button class="btn" data-close>Cancel</button><button class="btn primary" id="pw-save">Save password</button>`,
+      onMount: (el, close) => $("#pw-save", el).addEventListener("click", async (e) => {
+        const f = $("#pwf", el);
+        const pw = f.password.value;
+        if (pw.length < 6) return showFieldErrors(f, { password: "At least 6 characters." });
+        busy(e.currentTarget);
+        try { await api.post(`/admin/users/${u.id}/password`, { password: pw }); close(); toast(`Password updated for ${u.full_name}.`); load(); }
+        catch (ex) { busy(e.currentTarget, false); showFieldErrors(f, ex.fieldErrors?.() || {}); errorToast(ex); }
+      }) });
+  }
+
   async function toggleActive(u) {
     const ok = await confirmDialog({ title: u.is_active ? `Deactivate ${u.full_name}?` : `Activate ${u.full_name}?`,
       message: u.is_active ? "They will be signed out immediately and cannot sign in. Their tickets and history are kept." : "They will be able to sign in again.",

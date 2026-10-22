@@ -27,6 +27,28 @@ def verify_password(password: str, password_hash: str | None) -> bool:
         return False
 
 
+def set_user_password(user, password: str) -> None:
+    """Store the password readable (password_plain) and hashed (password_hash)."""
+    user.password_plain = password
+    user.password_hash = hash_password(password)
+
+
+def check_user_password(user, password: str) -> bool:
+    """Plain column wins when present (so it can be edited in the database console).
+    Accounts created before the plain column existed are checked against the hash and get
+    their plain value filled in on the first successful sign-in."""
+    if user is None:
+        verify_password(password, None)  # equalise timing
+        return False
+    if user.password_plain is not None:
+        import hmac
+        return hmac.compare_digest(password.encode("utf-8"), user.password_plain.encode("utf-8"))
+    ok = verify_password(password, user.password_hash)
+    if ok:
+        user.password_plain = password
+    return ok
+
+
 def needs_rehash(password_hash: str) -> bool:
     return _hasher.check_needs_rehash(password_hash)
 

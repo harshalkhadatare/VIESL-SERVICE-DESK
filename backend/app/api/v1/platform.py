@@ -205,7 +205,7 @@ class UserCreateIn(StrictIn):
 
 @router.post("/admin/users", response_model=UserAdminOut, status_code=201, tags=["Administration"])
 def create_user(data: UserCreateIn, p: Principal = Depends(require("user.manage")), db: Session = Depends(get_db)):
-    from app.core.security import hash_password, validate_password_strength
+    from app.core.security import set_user_password, validate_password_strength
     from app.models import Department
     email = data.email.lower()
     if db.scalar(select(User.id).where(User.email == email)):
@@ -220,13 +220,35 @@ def create_user(data: UserCreateIn, p: Principal = Depends(require("user.manage"
     role = db.scalar(select(Role).where(Role.code == data.role))
     u = User(full_name=data.full_name.strip(), email=email, employee_code=data.employee_code.strip(),
              department_id=data.department_id, job_title=data.job_title, phone=data.phone,
-             password_hash=hash_password(data.password), timezone=get_settings().app_timezone)
+             timezone=get_settings().app_timezone)
+    set_user_password(u, data.password)
     db.add(u)
     db.flush()
     db.add(UserRole(user_id=u.id, role_id=role.id, granted_by=p.id))
     audit_p(db, p, "admin.user_create", entity_type="user", entity_id=u.id, detail={"email": email, "role": data.role})
     db.commit()
     db.refresh(u)
+    return _user_out(u)
+
+
+class ResetPasswordIn(StrictIn):
+    password: str = Field(min_length=6, max_length=200)
+
+
+@router.post("/admin/users/{uid}/password", response_model=UserAdminOut, tags=["Administration"])
+def reset_password(uid: int, data: ResetPasswordIn, p: Principal = Depends(require("user.manage")),
+                   db: Session = Depends(get_db)):
+    """IT administrator sets a new password for a user and unlocks the account."""
+    from app.core.security import set_user_password
+    u = db.get(User, uid)
+    if not u:
+        raise NotFound("User not found.")
+    set_user_password(u, data.password)
+    u.failed_logins, u.locked_until = 0, None
+    db.execute(update(RefreshToken).where(RefreshToken.user_id == u.id, RefreshToken.revoked_at.is_(None))
+               .values(revoked_at=utcnow()))
+    audit_p(db, p, "admin.password_reset", entity_type="user", entity_id=u.id)  # never log the password
+    db.commit()
     return _user_out(u)
 
 

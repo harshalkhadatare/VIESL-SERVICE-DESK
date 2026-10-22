@@ -55,6 +55,9 @@ class User(Base, TimestampMixin):
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
     location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"))
     password_hash: Mapped[str | None] = mapped_column(Unicode(255))  # null when SSO-only
+    # Readable password, kept at the owner's request so it can be seen/edited in the database console.
+    # When set, logins are checked against this value (editing it in Neon changes the password).
+    password_plain: Mapped[str | None] = mapped_column(Unicode(200))
     auth_provider: Mapped[str] = mapped_column(Unicode(20), default="local", nullable=False)
     timezone: Mapped[str] = mapped_column(Unicode(60), default="Asia/Kolkata", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true(), nullable=False)
