@@ -224,3 +224,6 @@ export function showFieldErrors(form, errors) {
 export function debounce(fn, ms = 300) {
   let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 }
+
+/** Imported employees without an email get a placeholder address; never show it. */
+export const realEmail = (e) => (e && !String(e).endsWith("@no-email.invalid") ? e : "");

@@ -15,6 +15,7 @@ export async function render(view, _p, query) {
     <div class="grid grid-2" id="kl"></div>`);
 
   async function load() {
+    if (!view.isConnected) return;
     history.replaceState(null, "", `#/kb${q || category ? "?" + new URLSearchParams({ ...(q && { q }), ...(category && { category_id: category }) }) : ""}`);
     try {
       const list = await api.get("/kb/articles", { q, category_id: category, limit: 40 });

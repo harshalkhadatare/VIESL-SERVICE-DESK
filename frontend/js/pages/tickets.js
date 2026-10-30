@@ -73,6 +73,7 @@ export async function render(view, _p, query) {
   const pushUrl = () => {
     const q = new URLSearchParams();
     KEYS.forEach((k) => { if (f[k] && !(k === "page" && f[k] === 1)) q.set(k, f[k]); });
+    if (!view.isConnected) return;
     history.replaceState(null, "", `#/tickets${q.toString() ? "?" + q : ""}`);
   };
 

@@ -1,6 +1,6 @@
 import { api, refreshSession, setSessionLostHandler } from "./api.js";
 import { state, loadMe, can, isStaff, roleLabel, resetState } from "./state.js";
-import { $, $$, html, mount, icon, brandMark, initials, toast, errorToast, openModal, busy, debounce, esc,
+import { $, $$, html, mount, icon, brandMark, initials, toast, errorToast, openModal, busy, debounce, esc, realEmail,
   setTimezone, showFieldErrors } from "./ui.js";
 import * as loginPage from "./pages/login.js";
 import * as dashboardPage from "./pages/dashboard.js";
@@ -104,7 +104,7 @@ function setupUserMenu() {
     menu = document.createElement("div");
     menu.className = "menu"; menu.setAttribute("role", "menu");
     const me = state.me;
-    mount(menu, html`<div class="meta"><b style="color:var(--text)">${me.full_name}</b><br>${me.email}<br>
+    mount(menu, html`<div class="meta"><b style="color:var(--text)">${me.full_name}</b><br>${realEmail(me.email) || `Employee ID ${me.employee_code}`}<br>
         ${me.department || ""}${me.location ? html` · ${me.location}` : ""}</div><hr>
       <button role="menuitem" data-act="pw">${icon("key")} Change password</button>
       <button role="menuitem" data-act="out">${icon("logout")} Sign out</button>`);
@@ -210,7 +210,12 @@ async function route() {
   if (!state.me) return navigate("/login");
   if (!$("#view")) renderShell();
 
-  const view = $("#view");
+  // Each navigation renders into a fresh container, so a slow page that finishes loading after the
+  // user has moved on writes into a detached element instead of over the current page.
+  const host = $("#view");
+  const view = document.createElement("div");
+  view.className = "page";
+  host.replaceChildren(view);
   for (const [re, fn, key, perm] of ROUTES) {
     const m = path.match(re);
     if (!m) continue;
@@ -219,9 +224,12 @@ async function route() {
       mount(view, html`<div class="card"><div class="empty">${icon("lock")}<h3>Not available</h3><p>You do not have access to this page.</p></div></div>`);
       return;
     }
-    view.scrollTop = 0; window.scrollTo(0, 0);
-    try { cleanup = await fn(view, m.slice(1), query); } catch (e) { errorToast(e); }
-    view.focus({ preventScroll: true });
+    window.scrollTo(0, 0);
+    try {
+      const c = await fn(view, m.slice(1), query);
+      if (view.isConnected) cleanup = c; else if (typeof c === "function") c();  // navigated away meanwhile
+    } catch (e) { if (view.isConnected) errorToast(e); }
+    if (view.isConnected) host.focus({ preventScroll: true });
     return;
   }
   mount(view, html`<div class="card"><div class="empty">${icon("alert")}<h3>Page not found</h3>

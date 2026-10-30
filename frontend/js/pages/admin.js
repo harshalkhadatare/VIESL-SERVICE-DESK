@@ -11,11 +11,12 @@ export async function renderUsers(view) {
   mount(view, html`<div class="page-head"><div><h1>Users & roles</h1>
       <div class="sub">Two roles: <b>Employee</b> raises tickets, <b>IT Administrator</b> works and assigns them.
       Changes are recorded in the audit log.</div></div>
-      <button class="btn primary" id="add-user">${icon("plus")} Add user</button></div>
+      <div class="row"><button class="btn" id="import-users">${icon("download")} Import from Excel</button>
+      <button class="btn primary" id="add-user">${icon("plus")} Add user</button></div></div>
     <div class="card">
       <div class="toolbar"><div class="search-inline">${icon("search")}<input type="search" id="uq" placeholder="Name, email or employee code" aria-label="Search users"></div></div>
-      <div class="table-wrap"><table class="data"><thead><tr><th>User</th><th class="hide-sm">Employee code</th><th class="hide-sm">Department</th>
-        <th>Roles</th><th class="hide-sm">Last sign-in</th><th>Status</th><th></th></tr></thead><tbody id="ur">${skeletonRows(6, 7)}</tbody></table></div>
+      <div class="table-wrap"><table class="data"><thead><tr><th>User</th><th class="hide-sm">Employee code</th><th class="hide-sm hide-md">Department</th>
+        <th>Roles</th><th class="hide-sm hide-md">Last sign-in</th><th>Status</th><th></th></tr></thead><tbody id="ur">${skeletonRows(6, 7)}</tbody></table></div>
       <div class="pager" id="up"></div></div>
     <div class="card" style="margin-top:20px"><div class="card-head"><h2>Role permission matrix</h2><span class="hint">Enforced on the server for every request</span></div>
       <div class="card-body flush table-wrap">${matrix(roles)}</div></div>`);
@@ -26,13 +27,14 @@ export async function renderUsers(view) {
       if (!$("#ur", view)?.isConnected) return;
       mount($("#ur", view), r.items.length ? html`${r.items.map((u) => html`<tr>
         <td><div class="row" style="flex-wrap:nowrap"><span class="avatar sm">${initials(u.full_name)}</span><div style="min-width:0"><b style="font-weight:600">${u.full_name}</b>
-          ${u.is_demo ? html` <span class="pill demo">demo</span>` : ""}<div class="t-sub2">${u.email}</div></div></div></td>
-        <td class="hide-sm mono">${u.employee_code}</td><td class="hide-sm">${u.department || "—"}</td>
+          ${u.is_demo ? html` <span class="pill demo">demo</span>` : ""}<div class="t-sub2">${u.has_email ? u.email : html`<span style="color:var(--warn)">No email yet</span>`}</div></div></div></td>
+        <td class="hide-sm mono">${u.employee_code}</td><td class="hide-sm hide-md">${u.department || "—"}</td>
         <td>${u.roles.map((c) => html`<span class="pill" style="margin:1px 3px 1px 0">${roleName[c] || c}</span>`)}</td>
-        <td class="hide-sm muted small">${u.last_login_at ? fmtRelative(u.last_login_at) : "Never"}</td>
+        <td class="hide-sm hide-md muted small">${u.last_login_at ? fmtRelative(u.last_login_at) : "Never"}</td>
         <td>${!u.is_active ? html`<span class="badge">Inactive</span>` : u.locked ? html`<span class="badge warn">Locked</span>` : html`<span class="badge ok">Active</span>`}</td>
-        <td style="text-align:right;white-space:nowrap"><button class="btn sm" data-roles="${u.id}">Roles</button>
-          <button class="btn sm" data-pw="${u.id}">${icon("key")} Password</button>
+        <td style="text-align:right;white-space:nowrap"><button class="btn sm" data-edit="${u.id}">Edit</button>
+          <button class="btn sm" data-roles="${u.id}">Roles</button>
+          <button class="btn sm" data-pw="${u.id}">Password</button>
           ${u.id !== state.me.id ? html`<button class="btn sm ghost" data-active="${u.id}" data-on="${u.is_active}">${u.is_active ? "Deactivate" : "Activate"}</button>` : ""}</td></tr>`)}` :
         html`<tr><td colspan="7">${emptyState("No users found", "Try another search.", "users")}</td></tr>`);
       const pages = Math.max(1, Math.ceil(r.total / r.page_size));
@@ -41,6 +43,7 @@ export async function renderUsers(view) {
       $("#nx", view).addEventListener("click", () => { page++; load(); });
       $$("[data-roles]", view).forEach((b) => b.addEventListener("click", () => editRoles(r.items.find((u) => String(u.id) === b.dataset.roles))));
       $$("[data-active]", view).forEach((b) => b.addEventListener("click", () => toggleActive(r.items.find((u) => String(u.id) === b.dataset.active))));
+      $$("[data-edit]", view).forEach((b) => b.addEventListener("click", () => editUser(r.items.find((u) => String(u.id) === b.dataset.edit))));
       $$("[data-pw]", view).forEach((b) => b.addEventListener("click", () => resetPassword(r.items.find((u) => String(u.id) === b.dataset.pw))));
     } catch (e) { errorToast(e); }
   }
@@ -85,6 +88,100 @@ export async function renderUsers(view) {
   }
   $("#uq", view).addEventListener("input", debounce((e) => { q = e.target.value.trim(); page = 1; load(); }, 300));
   $("#add-user", view).addEventListener("click", addUser);
+  $("#import-users", view).addEventListener("click", importUsers);
+
+  async function editUser(u) {
+    const depts = await api.get("/departments").catch(() => []);
+    openModal({ title: `Edit ${u.full_name}`, subtitle: "Add a real email so this person receives email notifications.", wide: true,
+      body: html`<form id="eu" class="form-grid" novalidate>
+        <label class="field"><span class="lbl">Full name</span><input type="text" name="full_name" maxlength="150" value="${u.full_name}"></label>
+        <label class="field"><span class="lbl">Employee ID (used to sign in)</span><input type="text" name="employee_code" maxlength="30" value="${u.employee_code}"></label>
+        <label class="field"><span class="lbl">Company email</span><input type="email" name="email" maxlength="254" value="${u.has_email ? u.email : ""}" placeholder="name@visioninfra.co.in"></label>
+        <label class="field"><span class="lbl">Department</span><select name="department_id"><option value="">—</option>
+          ${depts.map((d) => html`<option value="${d.id}" ${d.id === u.department_id ? "selected" : ""}>${d.name}</option>`)}</select></label>
+        <label class="field"><span class="lbl">Job title</span><input type="text" name="job_title" maxlength="120" value="${u.job_title || ""}"></label>
+        <label class="field"><span class="lbl">Phone</span><input type="text" name="phone" maxlength="30" value="${u.phone || ""}"></label></form>`,
+      actions: html`<button class="btn" data-close>Cancel</button><button class="btn primary" id="eu-save">Save changes</button>`,
+      onMount: (el, close) => $("#eu-save", el).addEventListener("click", async (e) => {
+        const f = $("#eu", el);
+        const d = Object.fromEntries(new FormData(f));
+        const body = { full_name: d.full_name.trim(), employee_code: d.employee_code.trim(),
+          department_id: d.department_id ? Number(d.department_id) : null, job_title: d.job_title, phone: d.phone };
+        if (d.email.trim()) body.email = d.email.trim();
+        busy(e.currentTarget);
+        try { await api.patch(`/admin/users/${u.id}`, body); close(); toast("User updated."); load(); }
+        catch (ex) { busy(e.currentTarget, false); showFieldErrors(f, ex.fieldErrors?.() || {}); errorToast(ex); }
+      }) });
+  }
+
+  function importUsers() {
+    let file = null;
+    openModal({ title: "Import employees from Excel", wide: true,
+      subtitle: "Upload an .xlsx or .csv file. Required columns: employee ID (e.g. USER_ID) and name (e.g. USER_NAME). Optional: EMAIL, DEPARTMENT, DESIGNATION, PHONE, ROLE, PASSWORD.",
+      body: html`<form id="imp" class="stack" style="gap:14px" novalidate>
+        <div class="field"><span class="lbl">File</span>
+          <div class="dropzone" id="imp-drop" tabindex="0" role="button">${icon("file")} <span id="imp-name">Choose or drop your Excel file here</span></div>
+          <input type="file" id="imp-file" accept=".xlsx,.csv" hidden></div>
+        <div class="form-grid">
+          <label class="field"><span class="lbl">Starting password for everyone<span class="req">*</span></span>
+            <input type="text" name="default_password" minlength="6" maxlength="200" value="Viesl@2026" autocomplete="off">
+            <div class="help">Used unless the file has a PASSWORD column. Employees can change it after signing in.</div></label>
+          <label class="field"><span class="lbl">Role for imported people</span><select name="default_role">
+            <option value="employee">Employee</option><option value="it_admin">IT Administrator</option></select>
+            <div class="help">A ROLE column in the file overrides this.</div></label>
+        </div>
+        <label class="check"><input type="checkbox" name="update_existing"> Update names/emails of employees who already exist</label>
+        <div id="imp-result"></div></form>`,
+      actions: html`<button class="btn" data-close>Close</button><button class="btn" id="imp-preview">Preview</button>
+        <button class="btn primary" id="imp-go" disabled>Import</button>`,
+      onMount: (el, close) => {
+        const f = $("#imp", el), drop = $("#imp-drop", el), input = $("#imp-file", el), out = $("#imp-result", el);
+        const go = $("#imp-go", el);
+        const pick = (fl) => { if (!fl) return; file = fl; $("#imp-name", el).textContent = `${fl.name} · ${(fl.size / 1024).toFixed(0)} KB`; go.disabled = true; out.innerHTML = ""; };
+        drop.addEventListener("click", () => input.click());
+        drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
+        input.addEventListener("change", () => pick(input.files[0]));
+        ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("drag"); }));
+        ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("drag"); }));
+        drop.addEventListener("drop", (e) => pick(e.dataTransfer.files[0]));
+        f.addEventListener("change", (e) => { if (e.target !== input) go.disabled = true; });
+
+        async function send(dry, btn) {
+          if (!file) { toast("Choose a file first.", "err"); return; }
+          if (f.default_password.value.length < 6) { showFieldErrors(f, { default_password: "At least 6 characters." }); return; }
+          const fd = new FormData();
+          fd.append("file", file); fd.append("default_password", f.default_password.value);
+          fd.append("default_role", f.default_role.value); fd.append("update_existing", f.update_existing.checked ? "true" : "false");
+          fd.append("dry_run", dry ? "true" : "false");
+          busy(btn);
+          let imported = false;
+          try {
+            const r = await api.upload("/admin/users/import", fd);
+            const n = r.created + r.updated;
+            mount(out, html`<div class="notice ${r.error_count ? "warn" : ""}">${icon(dry ? "info" : "checkCircle")}<div>
+              <b>${dry ? "Preview — nothing saved yet" : "Import finished"}</b>
+              ${r.total_rows} rows read · <strong>${r.created}</strong> ${dry ? "will be created" : "created"}${r.updated ? html` · <strong>${r.updated}</strong> ${dry ? "will be updated" : "updated"}` : ""}
+              · ${r.skipped_existing} already exist${r.error_count ? html` · <strong style="color:var(--danger)">${r.error_count} with problems</strong>` : ""}
+              <div class="small muted" style="margin-top:4px">Columns used: ${Object.entries(r.columns).map(([k, v]) => `${k} → ${v}`).join(", ")}</div></div></div>
+              ${r.errors.length ? html`<div class="table-wrap" style="max-height:180px;overflow:auto;margin-top:10px"><table class="data"><thead><tr><th>Row</th><th>Employee ID</th><th>Problem</th></tr></thead>
+                <tbody>${r.errors.map((x) => html`<tr><td>${x.row}</td><td class="mono">${x.employee_id || "—"}</td><td>${x.message}</td></tr>`)}</tbody></table></div>` : ""}
+              ${dry && r.preview.length ? html`<div class="table-wrap" style="max-height:220px;overflow:auto;margin-top:10px"><table class="data"><thead><tr><th>Row</th><th>Employee ID</th><th>Name</th><th>Action</th></tr></thead>
+                <tbody>${r.preview.map((x) => html`<tr><td>${x.row}</td><td class="mono">${x.employee_id}</td><td>${x.name}</td><td>${x.action}</td></tr>`)}</tbody></table>
+                ${r.total_rows > r.preview.length ? html`<div class="small muted" style="padding:6px 2px">First ${r.preview.length} rows shown.</div>` : ""}</div>` : ""}
+              ${!dry ? html`<p class="small" style="margin-top:10px">Employees sign in with their <b>Employee ID</b> and the starting password. You can see or change passwords with the <b>Password</b> button.</p>` : ""}`);
+            if (dry) { go.disabled = n === 0; go.textContent = n ? `Import ${n} employee${n === 1 ? "" : "s"}` : "Nothing to import"; }
+            else { imported = true; load(); }
+          } catch (ex) {
+            mount(out, html`<div class="notice danger">${icon("alert")}<div>${ex.message}</div></div>`);
+          } finally {
+            busy(btn, false);
+            if (!dry) { go.disabled = true; if (imported) go.textContent = "Imported"; }
+          }
+        }
+        $("#imp-preview", el).addEventListener("click", (e) => send(true, e.currentTarget));
+        go.addEventListener("click", (e) => send(false, e.currentTarget));
+      } });
+  }
 
   async function addUser() {
     const depts = await api.get("/departments").catch(() => []);

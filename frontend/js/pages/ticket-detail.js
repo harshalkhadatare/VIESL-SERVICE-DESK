@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { state, catalog, supportGroups, can } from "../state.js";
 import { $, $$, html, mount, icon, fmtDate, fmtRelative, fmtMinutes, statusBadge, prioBadge, initials, toast, errorToast,
-  openModal, busy, emptyState, fileSize, showFieldErrors } from "../ui.js";
+  openModal, busy, emptyState, fileSize, showFieldErrors, realEmail } from "../ui.js";
 import { refreshUnread } from "../app.js";
 
 const FIELD_LABEL = { status: "Status", assignee: "Assignee", support_group: "Support group", priority: "Priority",
@@ -89,7 +89,7 @@ export async function render(view, [number]) {
           ${slaCard()}
           <div class="card"><div class="card-head"><h2>Details</h2></div><div class="card-body">
             <dl class="kv">
-              <dt>Requester</dt><dd>${t.requester.full_name}<div class="t-sub2">${t.requester.email}${t.requester_phone ? html`<br>${t.requester_phone}` : ""}</div></dd>
+              <dt>Requester</dt><dd>${t.requester.full_name}<div class="t-sub2">${realEmail(t.requester.email) || "No email on file"}${t.requester_phone ? html`<br>${t.requester_phone}` : ""}</div></dd>
               <dt>Department</dt><dd>${t.department?.name || "—"}</dd>
               <dt>Location</dt><dd>${t.location?.name || "—"}</dd>
               <dt>Support group</dt><dd>${t.support_group?.name || html`<span class="muted">Awaiting triage</span>`}</dd>

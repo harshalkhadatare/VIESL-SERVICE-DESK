@@ -1,7 +1,7 @@
 """Notifications, knowledge base (read + search), users/roles admin and audit log."""
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
@@ -147,6 +147,10 @@ class UserAdminOut(BaseModel):
     employee_code: str
     full_name: str
     email: str
+    has_email: bool = True
+    department_id: int | None = None
+    job_title: str | None = None
+    phone: str | None = None
     department: str | None
     location: str | None
     is_active: bool
@@ -165,7 +169,10 @@ class ActiveIn(StrictIn):
 
 
 def _user_out(u: User) -> UserAdminOut:
+    from app.services.user_import import is_placeholder
     return UserAdminOut(id=u.id, employee_code=u.employee_code, full_name=u.full_name, email=u.email,
+                        has_email=not is_placeholder(u.email), department_id=u.department_id,
+                        job_title=u.job_title, phone=u.phone,
                         department=u.department.name if u.department else None,
                         location=u.location.name if u.location else None, is_active=u.is_active,
                         is_demo=u.is_demo, roles=sorted(u.role_codes), last_login_at=u.last_login_at,
@@ -233,6 +240,77 @@ def create_user(data: UserCreateIn, p: Principal = Depends(require("user.manage"
 
 class ResetPasswordIn(StrictIn):
     password: str = Field(min_length=6, max_length=200)
+
+
+@router.post("/admin/users/import", tags=["Administration"])
+async def import_users(file: UploadFile = File(...), default_password: str = Form(..., min_length=6, max_length=200),
+                       default_role: str = Form("employee", pattern="^(employee|it_admin)$"),
+                       update_existing: bool = Form(False), dry_run: bool = Form(True),
+                       p: Principal = Depends(require("user.manage")), db: Session = Depends(get_db)):
+    """Bulk-create employees from Excel/CSV. Call with dry_run=true to preview, then dry_run=false to import."""
+    from app.services.user_import import import_users as run_import
+    content = await file.read(5 * 1024 * 1024 + 1)
+    if len(content) > 5 * 1024 * 1024:
+        raise BusinessRuleError("File is larger than 5 MB.")
+    try:
+        res = run_import(db, file.filename or "", content, default_password, default_role, update_existing,
+                         dry_run, p.id)
+        if dry_run:
+            db.rollback()
+        else:
+            audit_p(db, p, "admin.users_import", detail={"file": (file.filename or "")[:100], "created": res.created,
+                                                          "updated": res.updated, "skipped": res.skipped_existing,
+                                                          "errors": len(res.errors)})
+            db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {"dry_run": dry_run, "total_rows": res.total_rows, "created": res.created, "updated": res.updated,
+            "skipped_existing": res.skipped_existing, "errors": res.errors[:200], "error_count": len(res.errors),
+            "preview": res.preview, "columns": res.columns}
+
+
+class UserUpdateIn(StrictIn):
+    full_name: str | None = Field(None, min_length=2, max_length=150)
+    email: EmailStr | None = None
+    employee_code: str | None = Field(None, min_length=1, max_length=30)
+    department_id: int | None = None
+    job_title: str | None = Field(None, max_length=120)
+    phone: str | None = Field(None, max_length=30)
+
+
+@router.patch("/admin/users/{uid}", response_model=UserAdminOut, tags=["Administration"])
+def update_user(uid: int, data: UserUpdateIn, p: Principal = Depends(require("user.manage")),
+                db: Session = Depends(get_db)):
+    from app.models import Department
+    u = db.get(User, uid)
+    if not u:
+        raise NotFound("User not found.")
+    fields = data.model_dump(exclude_unset=True)
+    if "email" in fields and fields["email"]:
+        email = fields["email"].lower()
+        if db.scalar(select(User.id).where(User.email == email, User.id != uid)):
+            raise BusinessRuleError("Another user already has this email.", details=[{"field": "email"}])
+        u.email = email
+    if "employee_code" in fields and fields["employee_code"]:
+        code = fields["employee_code"].strip()
+        if db.scalar(select(User.id).where(func.upper(User.employee_code) == code.upper(), User.id != uid)):
+            raise BusinessRuleError("Another user already has this employee ID.", details=[{"field": "employee_code"}])
+        u.employee_code = code
+    if fields.get("full_name"):
+        u.full_name = " ".join(fields["full_name"].split())
+    if "department_id" in fields:
+        if fields["department_id"] and not db.get(Department, fields["department_id"]):
+            raise BusinessRuleError("Select a valid department.", details=[{"field": "department_id"}])
+        u.department_id = fields["department_id"]
+    for k in ("job_title", "phone"):
+        if k in fields:
+            setattr(u, k, (fields[k] or "").strip() or None)
+    audit_p(db, p, "admin.user_update", entity_type="user", entity_id=u.id,
+            detail={k: v for k, v in fields.items()})
+    db.commit()
+    db.refresh(u)
+    return _user_out(u)
 
 
 @router.post("/admin/users/{uid}/password", response_model=UserAdminOut, tags=["Administration"])

@@ -13,7 +13,7 @@
 - **Exports** are CSV only (Excel opens them; `.xlsx` and scheduled reports are planned).
 - **Dashboard historical metrics** are computed in the application for the selected range — fine for thousands of tickets per period; for very large volumes move to SQL aggregations or a reporting view.
 - **Rate limiting and the scheduler are per process.** Use one scheduler instance and a shared store for limits when scaling out.
-- **No user import / AD sync** yet; users are created by admins or a script.
+- **User import:** Excel/CSV import is built (Users & roles → Import from Excel). Active Directory sync is not.
 - Frontend has no automated browser test suite in the repository (it was exercised end-to-end with a headless browser during the build).
 
 ## Improvements added beyond the brief

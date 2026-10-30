@@ -26,11 +26,11 @@ export async function render(root, { onLogin }) {
           <span class="tag">IT Service Desk</span>
         </div>
         <h2>Sign in</h2>
-        <p class="muted" style="margin-bottom:22px">Use your company email address and password.</p>
+        <p class="muted" style="margin-bottom:22px">Use your Employee ID (or company email) and password.</p>
         <div id="login-error" class="notice danger" role="alert" hidden style="margin-bottom:16px">${icon("alert")}<div></div></div>
         <div class="stack" style="gap:16px">
-          <label class="field"><span class="lbl">Email</span>
-            <input type="email" name="email" autocomplete="username" required placeholder="name@company.com"></label>
+          <label class="field"><span class="lbl">Employee ID or email</span>
+            <input type="text" name="email" autocomplete="username" autocapitalize="none" spellcheck="false" required placeholder="e.g. 12520"></label>
           <label class="field"><span class="lbl">Password</span>
             <input type="password" name="password" autocomplete="current-password" required></label>
           <button class="btn primary block" type="submit" style="height:42px">Sign in</button>
@@ -45,7 +45,7 @@ export async function render(root, { onLogin }) {
     e.preventDefault();
     err.hidden = true;
     const email = form.email.value.trim(), password = form.password.value;
-    if (!email || !password) { err.hidden = false; err.lastElementChild.textContent = "Enter your email and password."; return; }
+    if (!email || !password) { err.hidden = false; err.lastElementChild.textContent = "Enter your Employee ID and password."; return; }
     const btn = $("button[type=submit]", form);
     busy(btn);
     try {

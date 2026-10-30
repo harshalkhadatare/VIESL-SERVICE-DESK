@@ -3,7 +3,7 @@ from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.api.deps import Principal, client_ip, get_principal
@@ -25,7 +25,8 @@ COOKIE_PATH = "/api/v1/auth"
 
 
 class LoginIn(StrictIn):
-    email: EmailStr
+    # "email" kept as the field name for compatibility; it accepts an email address OR an employee ID
+    email: str = Field(min_length=1, max_length=254)
     password: str = Field(min_length=1, max_length=200)
 
 
@@ -85,10 +86,14 @@ def login(data: LoginIn, request: Request, response: Response, db: Session = Dep
     if not login_limiter.allow(f"login:{ip}", s.login_rate_limit_per_minute):
         raise TooManyRequests("Too many sign-in attempts. Please wait a minute and try again.")
 
-    email = data.email.lower()
-    user = db.scalar(select(User).where(User.email == email))
+    login_id = data.email.strip()
+    email = login_id.lower()
+    if "@" in login_id:
+        user = db.scalar(select(User).where(User.email == email))
+    else:  # employee ID, e.g. 12520
+        user = db.scalar(select(User).where(func.upper(User.employee_code) == login_id.upper()))
     now = utcnow()
-    generic = Unauthorized("Incorrect email or password.", code="invalid_credentials")
+    generic = Unauthorized("Incorrect Employee ID / email or password.", code="invalid_credentials")
 
     if user and user.locked_until and user.locked_until > now:
         verify_password(data.password, None)  # equalise timing
