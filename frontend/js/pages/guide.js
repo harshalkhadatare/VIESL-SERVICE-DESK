@@ -85,7 +85,7 @@ function sections(staff) {
     { id: "it-queue", icon: "inbox", title: "IT: work the queue", body: html`
       ${steps([
         html`Open <b>Tickets</b>. Use the tabs: <i>All open</i>, <i>Assigned to me</i>, <i>Unassigned</i>.`,
-        html`The <b>Dashboard</b> shows what needs you now: tickets with no owner, overdue ones and urgent ones. Click <b>Take it</b> to assign one to yourself.`,
+        html`The <b>Dashboard</b> shows live numbers (open, unassigned, overdue…) — click any number to see those tickets.`,
         html`Click <b>⋮</b> on any row to assign it to an IT administrator (or unassign it).`,
         html`Open a ticket and click <b>Accept & start</b> to take it, then <b>Update status</b> as you work.`,
         html`Use <b>Internal note</b> for notes the employee must not see. Use <b>Reply to requester</b> to talk to them — the <b>Quick reply</b> buttons fill in common answers for you.`,

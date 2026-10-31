@@ -48,7 +48,7 @@ Databases supported: SQLite (local), PostgreSQL (Neon / any), Microsoft SQL Serv
 - Employee home, operations dashboard (live vs period metrics, trend, mix, workload), global search, CSV export
 - In-app **and email** notifications that always show the assigned IT administrator; ⋮ menu on every ticket row to assign it
 - Employee ID shown next to every name; employees can delete their own tickets (until resolved)
-- Simple admin dashboard (needs-attention list with one-click *Take it*, team board), announcements banner,
+- Announcements banner,
   quick-help tiles for employees, ticket progress tracker, quick replies for IT, permanent user delete
 - Built-in *How to use* guide, 7 colour themes and dark mode (palette button next to your name)
 - Attachments limited to images and PDF; users & roles admin (add users), email settings page with test send, audit log, mobile layout
