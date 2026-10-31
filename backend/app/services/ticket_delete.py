@@ -40,30 +40,8 @@ def delete_ticket(db: Session, p: Principal, t: Ticket) -> None:
     assignee_id, requester_id = t.assignee_id, t.requester_id
     by_owner = requester_id == p.id
 
-    # files stored on disk (database-stored files go with their rows)
-    stored = db.scalars(select(TicketAttachment.stored_name).where(TicketAttachment.ticket_id == tid)).all()
-
-    att_ids = select(TicketAttachment.id).where(TicketAttachment.ticket_id == tid)
-    for stmt in (
-        delete(TicketAttachmentBlob).where(TicketAttachmentBlob.attachment_id.in_(att_ids)),
-        delete(TicketAttachment).where(TicketAttachment.ticket_id == tid),
-        delete(TicketComment).where(TicketComment.ticket_id == tid),
-        delete(TicketHistory).where(TicketHistory.ticket_id == tid),
-        delete(TicketAssignment).where(TicketAssignment.ticket_id == tid),
-        delete(TicketWatcher).where(TicketWatcher.ticket_id == tid),
-        delete(TicketRelationship).where(or_(TicketRelationship.source_ticket_id == tid,
-                                             TicketRelationship.target_ticket_id == tid)),
-        delete(TicketErpDetail).where(TicketErpDetail.ticket_id == tid),
-        delete(SLATracking).where(SLATracking.ticket_id == tid),
-        delete(SatisfactionRating).where(SatisfactionRating.ticket_id == tid),
-        delete(IdempotencyKey).where(IdempotencyKey.ticket_id == tid),
-        delete(Notification).where(Notification.ticket_id == tid),
-        update(AutomationExecutionLog).where(AutomationExecutionLog.ticket_id == tid).values(ticket_id=None),
-        update(KnowledgeArticle).where(KnowledgeArticle.source_ticket_id == tid).values(source_ticket_id=None),
-    ):
-        db.execute(stmt.execution_options(synchronize_session=False))
     db.expunge(t)
-    db.execute(delete(Ticket).where(Ticket.id == tid).execution_options(synchronize_session=False))
+    stored = purge_tickets(db, [tid])
 
     audit_p(db, p, "ticket.delete", entity_type="ticket", entity_id=number,
             detail={"subject": subject[:200], "by_requester": by_owner})
@@ -75,10 +53,43 @@ def delete_ticket(db: Session, p: Principal, t: Ticket) -> None:
         notify(db, requester_id, "status_changed", f"Your ticket {number} was deleted by IT", subject)
     db.commit()
 
-    if get_settings().attachment_storage != "database":
-        from app.services.attachments import path_for
-        for name in stored:
-            try:
-                path_for(name).unlink(missing_ok=True)
-            except Exception:  # noqa: BLE001 — file cleanup must never fail the request
-                pass
+    remove_files(stored)
+
+
+def purge_tickets(db: Session, ids: list[int]) -> list[str]:
+    """Delete tickets and every row that belongs to them. Returns stored file names to remove from disk."""
+    if not ids:
+        return []
+    stored = list(db.scalars(select(TicketAttachment.stored_name).where(TicketAttachment.ticket_id.in_(ids))).all())
+    att_ids = select(TicketAttachment.id).where(TicketAttachment.ticket_id.in_(ids))
+    for stmt in (
+        delete(TicketAttachmentBlob).where(TicketAttachmentBlob.attachment_id.in_(att_ids)),
+        delete(TicketAttachment).where(TicketAttachment.ticket_id.in_(ids)),
+        delete(TicketComment).where(TicketComment.ticket_id.in_(ids)),
+        delete(TicketHistory).where(TicketHistory.ticket_id.in_(ids)),
+        delete(TicketAssignment).where(TicketAssignment.ticket_id.in_(ids)),
+        delete(TicketWatcher).where(TicketWatcher.ticket_id.in_(ids)),
+        delete(TicketRelationship).where(or_(TicketRelationship.source_ticket_id.in_(ids),
+                                             TicketRelationship.target_ticket_id.in_(ids))),
+        delete(TicketErpDetail).where(TicketErpDetail.ticket_id.in_(ids)),
+        delete(SLATracking).where(SLATracking.ticket_id.in_(ids)),
+        delete(SatisfactionRating).where(SatisfactionRating.ticket_id.in_(ids)),
+        delete(IdempotencyKey).where(IdempotencyKey.ticket_id.in_(ids)),
+        delete(Notification).where(Notification.ticket_id.in_(ids)),
+        update(AutomationExecutionLog).where(AutomationExecutionLog.ticket_id.in_(ids)).values(ticket_id=None),
+        update(KnowledgeArticle).where(KnowledgeArticle.source_ticket_id.in_(ids)).values(source_ticket_id=None),
+        delete(Ticket).where(Ticket.id.in_(ids)),
+    ):
+        db.execute(stmt.execution_options(synchronize_session=False))
+    return stored
+
+
+def remove_files(stored: list[str]) -> None:
+    if get_settings().attachment_storage == "database":
+        return
+    from app.services.attachments import path_for
+    for name in stored:
+        try:
+            path_for(name).unlink(missing_ok=True)
+        except Exception:  # noqa: BLE001 — file cleanup must never fail the request
+            pass

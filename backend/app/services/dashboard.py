@@ -155,3 +155,66 @@ def _bm(db: Session, t: Ticket, end: datetime | None, specs: dict) -> int | None
         specs[t.sla.calendar_id] = sla_svc.spec_for(db, t.sla.calendar_id)
     raw = business_minutes_between(t.created_at, end, specs[t.sla.calendar_id])
     return max(0, raw - (t.sla.paused_minutes if end == t.resolved_at else 0))
+
+
+# ---------------------------------------------------------------- admin home (simple dashboard)
+def admin_home(db: Session, p: Principal, tz: str) -> dict:
+    """What needs attention now, my open work, and how the team is doing this week."""
+    from app.services.staff import it_staff
+    now = utcnow()
+    vis = ticket_visibility_clause(p)
+    open_codes = list(db.scalars(select(TicketStatus.code).where(TicketStatus.is_open.is_(True))))
+    active = Ticket.status_code.in_([c for c in open_codes if c not in ("RESOLVED", "PENDING_EMPLOYEE")])
+
+    rows = db.scalars(select(Ticket).outerjoin(SLATracking, SLATracking.ticket_id == Ticket.id)
+                      .join(Priority, Priority.id == Ticket.priority_id)
+                      .where(vis, active, (Ticket.assignee_id.is_(None)) | (SLATracking.resolution_breached.is_(True))
+                             | (SLATracking.resolution_due_at < now + timedelta(hours=4))
+                             | (Priority.code.in_(["P1", "P2"])))
+                      .order_by(Priority.rank.asc(), SLATracking.resolution_due_at.asc()).limit(60)).all()
+
+    def reason(t: Ticket) -> tuple[int, str, str]:
+        s = t.sla
+        paused = s is not None and s.paused_at is not None
+        if s and not paused and (s.resolution_breached or s.resolution_due_at < now):
+            return 0, "overdue", "Overdue"
+        if t.assignee_id is None:
+            return 1, "unassigned", "Needs an owner"
+        if s and not paused and s.resolution_due_at < now + timedelta(hours=4):
+            mins = max(1, int((s.resolution_due_at - now).total_seconds() // 60))
+            return 2, "due", f"Due in {mins // 60}h {mins % 60}m" if mins >= 60 else f"Due in {mins}m"
+        return 3, "high", "High priority"
+
+    ranked = sorted(((reason(t), t) for t in rows), key=lambda x: (x[0][0], x[1].priority.rank, x[1].created_at))
+    attention = [{
+        "number": t.number, "subject": t.subject, "version": t.version, "priority": t.priority.code,
+        "status": {"code": t.status.code, "name": t.status.name},
+        "requester": t.requester.full_name, "requester_code": t.requester.employee_code,
+        "assignee": t.assignee.full_name if t.assignee else None, "assignee_id": t.assignee_id,
+        "created_at": t.created_at, "reason": r[1], "reason_label": r[2],
+    } for r, t in ranked[:8]]
+
+    my_open = db.scalar(select(func.count()).select_from(Ticket).where(
+        vis, Ticket.assignee_id == p.id, Ticket.status_code.in_(open_codes), Ticket.status_code != "RESOLVED")) or 0
+
+    week_start = now - timedelta(days=7)
+    staff = it_staff(db)
+    ids = [u.id for u in staff] or [-1]
+    open_by = dict(db.execute(select(Ticket.assignee_id, func.count()).where(
+        Ticket.assignee_id.in_(ids), Ticket.status_code.in_(open_codes), Ticket.status_code != "RESOLVED")
+        .group_by(Ticket.assignee_id)).all())
+    resolved_by = dict(db.execute(select(Ticket.assignee_id, func.count()).where(
+        Ticket.assignee_id.in_(ids), Ticket.resolved_at >= week_start).group_by(Ticket.assignee_id)).all())
+    rating_by = {a: (round(float(avg), 1), n) for a, avg, n in db.execute(
+        select(Ticket.assignee_id, func.avg(SatisfactionRating.rating * 1.0), func.count())
+        .join(Ticket, Ticket.id == SatisfactionRating.ticket_id)
+        .where(Ticket.assignee_id.in_(ids), SatisfactionRating.created_at >= now - timedelta(days=30))
+        .group_by(Ticket.assignee_id)).all()}
+    team = sorted(({
+        "user_id": u.id, "name": u.full_name, "employee_code": u.employee_code,
+        "open": open_by.get(u.id, 0), "resolved_week": resolved_by.get(u.id, 0),
+        "rating": rating_by.get(u.id, (None, 0))[0], "ratings": rating_by.get(u.id, (None, 0))[1],
+        "is_me": u.id == p.id,
+    } for u in staff), key=lambda x: (-x["resolved_week"], x["open"], x["name"]))
+    return {"my_open": my_open, "attention": attention, "team": team,
+            "attention_total": len(rows)}

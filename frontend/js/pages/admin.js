@@ -35,7 +35,8 @@ export async function renderUsers(view) {
         <td style="text-align:right;white-space:nowrap"><button class="btn sm" data-edit="${u.id}">Edit</button>
           <button class="btn sm" data-roles="${u.id}">Roles</button>
           <button class="btn sm" data-pw="${u.id}">Password</button>
-          ${u.id !== state.me.id ? html`<button class="btn sm ghost" data-active="${u.id}" data-on="${u.is_active}">${u.is_active ? "Deactivate" : "Activate"}</button>` : ""}</td></tr>`)}` :
+          ${u.id !== state.me.id ? html`<button class="btn sm ghost" data-active="${u.id}" data-on="${u.is_active}">${u.is_active ? "Deactivate" : "Activate"}</button>
+          <button class="btn sm ghost icon-only del-user" data-del="${u.id}" title="Delete permanently" aria-label="Delete ${u.full_name} permanently">${icon("trash")}</button>` : ""}</td></tr>`)}` :
         html`<tr><td colspan="7">${emptyState("No users found", "Try another search.", "users")}</td></tr>`);
       const pages = Math.max(1, Math.ceil(r.total / r.page_size));
       mount($("#up", view), html`<span>${r.total} users</span><div class="row"><button class="btn sm" id="pv" ${page <= 1 ? "disabled" : ""}>Previous</button><button class="btn sm" id="nx" ${page >= pages ? "disabled" : ""}>Next</button></div>`);
@@ -44,6 +45,7 @@ export async function renderUsers(view) {
       $$("[data-roles]", view).forEach((b) => b.addEventListener("click", () => editRoles(r.items.find((u) => String(u.id) === b.dataset.roles))));
       $$("[data-active]", view).forEach((b) => b.addEventListener("click", () => toggleActive(r.items.find((u) => String(u.id) === b.dataset.active))));
       $$("[data-edit]", view).forEach((b) => b.addEventListener("click", () => editUser(r.items.find((u) => String(u.id) === b.dataset.edit))));
+      $$("[data-del]", view).forEach((b) => b.addEventListener("click", () => deleteUser(r.items.find((u) => String(u.id) === b.dataset.del))));
       $$("[data-pw]", view).forEach((b) => b.addEventListener("click", () => resetPassword(r.items.find((u) => String(u.id) === b.dataset.pw))));
     } catch (e) { errorToast(e); }
   }
@@ -79,6 +81,34 @@ export async function renderUsers(view) {
       }) });
   }
 
+  async function deleteUser(u) {
+    let pv;
+    try { pv = await api.get(`/admin/users/${u.id}/delete-preview`); } catch (e) { return errorToast(e); }
+    const lose = [[pv.tickets_raised, "ticket(s) they raised, with all messages and files"],
+      [pv.comments, "message(s) they wrote on other tickets"], [pv.attachments, "file(s) they uploaded"],
+      [pv.kb_articles, "knowledge-base article(s) they wrote"]].filter(([n]) => n);
+    openModal({ title: `Delete ${u.full_name} permanently?`,
+      subtitle: "This removes the account from the database. It cannot be undone.",
+      body: html`<div class="stack" style="gap:14px">
+        <div class="del-sum">${lose.length ? html`<b>Will also be deleted:</b><ul>${lose.map(([n, t]) => html`<li><b>${n}</b> ${t}</li>`)}</ul>`
+          : html`<b>Nothing else is deleted</b> — this user has no tickets, messages or files.`}
+          ${pv.tickets_assigned ? html`<p class="small" style="margin:8px 0 0">${pv.tickets_assigned} ticket(s) assigned to them will become <b>Unassigned</b>.</p>` : ""}</div>
+        ${u.is_active ? html`<div class="notice">${icon("info")}<div>Just leaving the company? <strong>Deactivate</strong> instead — they can't sign in, and their old tickets stay readable.</div></div>` : ""}
+        <label class="field"><span class="lbl">Type the employee ID <b class="mono">${u.employee_code}</b> to confirm</span>
+          <input type="text" id="del-confirm" autocomplete="off" spellcheck="false"></label></div>`,
+      actions: html`<button class="btn" data-close>Cancel</button><button class="btn danger solid" id="del-go" disabled>${icon("trash")} Delete permanently</button>`,
+      onMount: (el, close) => {
+        const inp = $("#del-confirm", el), go = $("#del-go", el);
+        inp.addEventListener("input", () => { go.disabled = inp.value.trim().toUpperCase() !== u.employee_code.toUpperCase(); });
+        inp.focus();
+        go.addEventListener("click", async () => {
+          busy(go);
+          try { await api.del(`/admin/users/${u.id}`); close(); toast(`${u.full_name} deleted.`); load(); }
+          catch (ex) { busy(go, false); errorToast(ex); }
+        });
+      } });
+  }
+
   async function toggleActive(u) {
     const ok = await confirmDialog({ title: u.is_active ? `Deactivate ${u.full_name}?` : `Activate ${u.full_name}?`,
       message: u.is_active ? "They will be signed out immediately and cannot sign in. Their tickets and history are kept." : "They will be able to sign in again.",
@@ -107,7 +137,7 @@ export async function renderUsers(view) {
         const d = Object.fromEntries(new FormData(f));
         const body = { full_name: d.full_name.trim(), employee_code: d.employee_code.trim(),
           department_id: d.department_id ? Number(d.department_id) : null, job_title: d.job_title, phone: d.phone };
-        if (d.email.trim()) body.email = d.email.trim();
+        body.email = d.email.trim() || null;
         busy(e.currentTarget);
         try { await api.patch(`/admin/users/${u.id}`, body); close(); toast("User updated."); load(); }
         catch (ex) { busy(e.currentTarget, false); showFieldErrors(f, ex.fieldErrors?.() || {}); errorToast(ex); }
@@ -187,10 +217,10 @@ export async function renderUsers(view) {
 
   async function addUser() {
     const depts = await api.get("/departments").catch(() => []);
-    openModal({ title: "Add user", subtitle: "Use the person's real company email — notifications are emailed there.", wide: true,
+    openModal({ title: "Add user", subtitle: "They sign in with their Employee ID. Add an email only if they have one — updates are emailed there.", wide: true,
       body: html`<form id="nu" class="form-grid" novalidate>
         <label class="field"><span class="lbl">Full name<span class="req">*</span></span><input type="text" name="full_name" maxlength="150" required></label>
-        <label class="field"><span class="lbl">Company email<span class="req">*</span></span><input type="email" name="email" maxlength="254" required></label>
+        <label class="field"><span class="lbl">Company email <span class="muted" style="font-weight:400">(optional)</span></span><input type="email" name="email" maxlength="254" placeholder="Leave blank if they don't have one"></label>
         <label class="field"><span class="lbl">Employee code<span class="req">*</span></span><input type="text" name="employee_code" maxlength="30" required></label>
         <label class="field"><span class="lbl">Department</span><select name="department_id"><option value="">—</option>
           ${depts.map((d) => html`<option value="${d.id}">${d.name}</option>`)}</select></label>
@@ -217,7 +247,7 @@ export async function renderUsers(view) {
           const d = Object.fromEntries(new FormData(f));
           busy(e.currentTarget);
           try {
-            await api.post("/admin/users", { full_name: d.full_name.trim(), email: d.email.trim(), employee_code: d.employee_code.trim(),
+            await api.post("/admin/users", { full_name: d.full_name.trim(), email: d.email.trim() || null, employee_code: d.employee_code.trim(),
               department_id: d.department_id ? Number(d.department_id) : null, job_title: d.job_title.trim() || null,
               phone: d.phone.trim() || null, role, password: d.password });
             close(); toast(`${d.full_name} added.`); load();

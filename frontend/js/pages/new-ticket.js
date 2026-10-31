@@ -4,7 +4,24 @@ import { $, $$, html, mount, icon, debounce, busy, toast, errorToast, showFieldE
 
 const ALLOWED = ".png,.jpg,.jpeg,.gif,.webp,.bmp,.tif,.tiff,.heic,.heif,.pdf";
 
-export async function render(view) {
+// Pre-filled starting points for the "Quick help" tiles on the home page (#/tickets/new?quick=…)
+const QUICK_TEMPLATES = {
+  password: { cat: "PASSWORD", type: "service_request", label: "Forgot password", urgency: 2,
+    subject: "Password reset / account unlock",
+    description: "System (Windows / Email / ERP / other): \nWhat happens when I try to sign in: \n" },
+  outlook: { cat: "EMAIL", label: "Email / Outlook", urgency: 2, subject: "Outlook problem: ",
+    description: "What is wrong (not syncing / cannot send / password prompt / other): \nSince when: \nError message (if any): \n" },
+  printer: { cat: "PRINTER", label: "Printer / scanner", subject: "Printer not working: ",
+    description: "Printer name or location: \nWhat happens (not printing / jammed / poor quality / offline): \n" },
+  internet: { cat: "NETWORK", label: "Internet / VPN", urgency: 2, subject: "Internet / VPN problem: ",
+    description: "Where are you working (office / home / site): \nWhat happens (slow / no connection / VPN drops): \nSince when: \n" },
+  erp: { cat: "ERP_APP", label: "ERP problem", urgency: 2, subject: "ERP: ",
+    description: "Screen / module: \nWhat I was trying to do: \nWhat happened instead (copy the error text): \n" },
+  laptop: { cat: "HARDWARE", label: "Laptop / desktop", subject: "Laptop / desktop: ",
+    description: "Device / asset tag: \nWhat is wrong (slow / not starting / broken part / need new device): \n" },
+};
+
+export async function render(view, _params = [], query = {}) {
   const cat = await catalog();
   const MAX_MB = cat.max_upload_mb || 10;
   const me = state.me;
@@ -19,6 +36,7 @@ export async function render(view) {
     <div class="grid grid-main-side">
       <form class="card" id="tf" novalidate>
         <div class="card-body" style="padding:22px 24px">
+          <div id="quick-note"></div>
           <section class="form-section">
             <div class="fieldset-title">What do you need help with?</div>
             <div class="fieldset-sub">Pick the closest category — it decides which team receives your ticket.</div>
@@ -174,6 +192,20 @@ export async function render(view) {
     } catch { /* non-critical */ }
   }, 450);
   form.subject.addEventListener("input", () => { checkDupes(); suggest(); });
+
+  // ---- quick-help template from the home page
+  const tpl = QUICK_TEMPLATES[query.quick];
+  if (tpl) {
+    const c = cat.categories.find((x) => x.code === tpl.cat);
+    if (c) { form.category_id.value = String(c.id); form.category_id.dispatchEvent(new Event("change")); }
+    if (tpl.type) { ticketType = tpl.type; setSeg($("#type-seg", view), ticketType); }
+    form.subject.value = tpl.subject; form.description.value = tpl.description;
+    $("#desc-count", view).textContent = form.description.value.length;
+    if (tpl.urgency) $(`#urgency .choice[data-v="${tpl.urgency}"]`, view)?.click();
+    mount($("#quick-note", view), html`<div class="notice" style="margin-bottom:16px">${icon("zap")}<div><b>Started from “${tpl.label}”</b>
+      Fill in the blanks below — change anything you like.</div></div>`);
+    setTimeout(() => { form.subject.focus(); form.subject.setSelectionRange(form.subject.value.length, form.subject.value.length); }, 50);
+  }
 
   // ---- attachments (uploaded after the ticket is created)
   const drop = $("#drop", view), input = $("#file", view);

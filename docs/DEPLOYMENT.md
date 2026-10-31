@@ -14,7 +14,7 @@ uvicorn app.main:app --reload --port 8000
 Open http://localhost:8000 — demo accounts are listed on the sign-in page (development only).
 API docs: http://localhost:8000/api/docs
 
-Run tests: `cd backend && python -m pytest` (uses a throwaway SQLite DB; 135 tests).
+Run tests: `cd backend && python -m pytest` (uses a throwaway SQLite DB; 141 tests).
 
 ## B. Development with SQL Server (Docker Compose)
 ```bash

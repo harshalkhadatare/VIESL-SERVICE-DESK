@@ -201,7 +201,7 @@ def list_users(q: str | None = Query(None, max_length=100), page: int = Query(1,
 
 class UserCreateIn(StrictIn):
     full_name: str = Field(min_length=2, max_length=150)
-    email: EmailStr
+    email: EmailStr | None = None          # optional: people without a company mailbox sign in with their ID
     employee_code: str = Field(min_length=1, max_length=30)
     department_id: int | None = None
     job_title: str | None = Field(None, max_length=120)
@@ -214,10 +214,14 @@ class UserCreateIn(StrictIn):
 def create_user(data: UserCreateIn, p: Principal = Depends(require("user.manage")), db: Session = Depends(get_db)):
     from app.core.security import set_user_password, validate_password_strength
     from app.models import Department
-    email = data.email.lower()
-    if db.scalar(select(User.id).where(User.email == email)):
-        raise BusinessRuleError("A user with this email already exists.", details=[{"field": "email"}])
-    if db.scalar(select(User.id).where(User.employee_code == data.employee_code)):
+    code = data.employee_code.strip()
+    if data.email:
+        email = data.email.lower()
+        if db.scalar(select(User.id).where(User.email == email)):
+            raise BusinessRuleError("A user with this email already exists.", details=[{"field": "email"}])
+    else:
+        email = _unique_placeholder(db, code)
+    if db.scalar(select(User.id).where(func.upper(User.employee_code) == code.upper())):
         raise BusinessRuleError("This employee code is already used.", details=[{"field": "employee_code"}])
     if data.department_id and not db.get(Department, data.department_id):
         raise BusinessRuleError("Select a valid department.", details=[{"field": "department_id"}])
@@ -236,6 +240,34 @@ def create_user(data: UserCreateIn, p: Principal = Depends(require("user.manage"
     db.commit()
     db.refresh(u)
     return _user_out(u)
+
+
+def _unique_placeholder(db: Session, code: str) -> str:
+    from app.services.user_import import placeholder_email
+    base = placeholder_email(code)
+    email, n = base, 1
+    while db.scalar(select(User.id).where(User.email == email)):
+        n += 1
+        local, dom = base.split("@")
+        email = f"{local}-{n}@{dom}"
+    return email
+
+
+@router.get("/admin/users/{uid}/delete-preview", tags=["Administration"])
+def user_delete_preview(uid: int, p: Principal = Depends(require("user.manage")), db: Session = Depends(get_db)):
+    """What a permanent delete would remove — shown in the confirmation dialog."""
+    from app.services.user_delete import delete_preview
+    u = db.get(User, uid)
+    if not u:
+        raise NotFound("User not found.")
+    return {"user": u.label, **delete_preview(db, u)}
+
+
+@router.delete("/admin/users/{uid}", tags=["Administration"])
+def user_delete(uid: int, p: Principal = Depends(require("user.manage")), db: Session = Depends(get_db)):
+    """Permanently delete a user, the tickets they raised and their comments/files. Cannot be undone."""
+    from app.services.user_delete import delete_user
+    return {"deleted": True, **delete_user(db, p, uid)}
 
 
 class ResetPasswordIn(StrictIn):
@@ -287,7 +319,11 @@ def update_user(uid: int, data: UserUpdateIn, p: Principal = Depends(require("us
     if not u:
         raise NotFound("User not found.")
     fields = data.model_dump(exclude_unset=True)
-    if "email" in fields and fields["email"]:
+    if "email" in fields and not fields["email"]:
+        from app.services.user_import import is_placeholder
+        if not is_placeholder(u.email):
+            u.email = _unique_placeholder(db, fields.get("employee_code") or u.employee_code)
+    elif "email" in fields:
         email = fields["email"].lower()
         if db.scalar(select(User.id).where(User.email == email, User.id != uid)):
             raise BusinessRuleError("Another user already has this email.", details=[{"field": "email"}])
@@ -466,3 +502,86 @@ def email_test(data: TestEmailIn, p: Principal = Depends(require("settings.manag
     audit_p(db, p, "admin.email_test", detail={"to": to})
     db.commit()
     return {"message": f"Test email sent to {to}."}
+
+
+# ------------------------------------------------------------------ admin: announcements
+class AnnouncementIn(StrictIn):
+    title: str = Field(min_length=3, max_length=200)
+    body: str = Field(min_length=3, max_length=2000)
+    severity: str = Field("info", pattern="^(info|warning|outage)$")
+    hours: int | None = Field(None, ge=1, le=24 * 90)   # show for N hours; empty = until removed
+
+
+class AnnouncementAdminOut(BaseModel):
+    id: int
+    title: str
+    body: str
+    severity: str
+    starts_at: datetime
+    ends_at: datetime | None
+    active: bool
+    created_by: str | None
+
+
+def _ann_out(a) -> AnnouncementAdminOut:
+    now = utcnow()
+    return AnnouncementAdminOut(id=a.id, title=a.title, body=a.body, severity=a.severity, starts_at=a.starts_at,
+                                ends_at=a.ends_at, active=a.starts_at <= now and (a.ends_at is None or a.ends_at > now),
+                                created_by=db_user_name(a))
+
+
+def db_user_name(a) -> str | None:
+    from sqlalchemy.orm import object_session
+    if not a.created_by:
+        return None
+    u = object_session(a).get(User, a.created_by)
+    return u.full_name if u else None
+
+
+@router.get("/admin/announcements", response_model=list[AnnouncementAdminOut], tags=["Administration"])
+def list_announcements(p: Principal = Depends(require("ticket.manage_all")), db: Session = Depends(get_db)):
+    from app.models import Announcement
+    return [_ann_out(a) for a in db.scalars(select(Announcement).order_by(Announcement.starts_at.desc()).limit(50))]
+
+
+@router.post("/admin/announcements", response_model=AnnouncementAdminOut, status_code=201, tags=["Administration"])
+def create_announcement(data: AnnouncementIn, p: Principal = Depends(require("ticket.manage_all")),
+                        db: Session = Depends(get_db)):
+    """Post a banner everyone sees (e.g. 'Email is down 3–4 pm')."""
+    from datetime import timedelta
+
+    from app.models import Announcement
+    now = utcnow()
+    a = Announcement(title=data.title.strip(), body=data.body.strip(), severity=data.severity, starts_at=now,
+                     ends_at=now + timedelta(hours=data.hours) if data.hours else None, created_by=p.id)
+    db.add(a)
+    db.flush()
+    audit_p(db, p, "announcement.create", entity_type="announcement", entity_id=a.id, detail={"title": a.title})
+    db.commit()
+    return _ann_out(a)
+
+
+@router.post("/admin/announcements/{aid}/end", response_model=AnnouncementAdminOut, tags=["Administration"])
+def end_announcement(aid: int, p: Principal = Depends(require("ticket.manage_all")), db: Session = Depends(get_db)):
+    from app.models import Announcement
+    a = db.get(Announcement, aid)
+    if not a:
+        raise NotFound("Announcement not found.")
+    a.ends_at = utcnow()
+    audit_p(db, p, "announcement.end", entity_type="announcement", entity_id=a.id)
+    db.commit()
+    return _ann_out(a)
+
+
+@router.delete("/admin/announcements/{aid}", status_code=204, tags=["Administration"])
+def delete_announcement(aid: int, p: Principal = Depends(require("ticket.manage_all")), db: Session = Depends(get_db)):
+    from fastapi import Response
+
+    from app.models import Announcement
+    a = db.get(Announcement, aid)
+    if not a:
+        raise NotFound("Announcement not found.")
+    db.delete(a)
+    audit_p(db, p, "announcement.delete", entity_type="announcement", entity_id=aid)
+    db.commit()
+    return Response(status_code=204)

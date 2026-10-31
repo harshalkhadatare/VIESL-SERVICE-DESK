@@ -34,7 +34,7 @@ Only two roles exist: **Employee** (raise and track own tickets) and **IT Admini
 manage everything). Add people under *Users & roles → Add user*, or upload an Excel sheet (USER_ID, USER_NAME, optional
 EMAIL/DEPARTMENT/…) with *Import from Excel*. Employees sign in with their **Employee ID** or email.
 
-Tests: `cd backend && python -m pytest` → **135 passed** (auth, two-role matrix, lifecycle, assignment, SLA, email, attachments, exports, audit).
+Tests: `cd backend && python -m pytest` → **141 passed** (auth, two-role matrix, lifecycle, assignment, SLA, email, attachments, exports, audit).
 **Free hosting with permanent data:** Vercel + Neon PostgreSQL — step by step in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#g-vercel--free-neon-postgresql-permanent-data-no-cost).
 Databases supported: SQLite (local), PostgreSQL (Neon / any), Microsoft SQL Server. Tests pass on SQLite and PostgreSQL.
 
@@ -48,6 +48,8 @@ Databases supported: SQLite (local), PostgreSQL (Neon / any), Microsoft SQL Serv
 - Employee home, operations dashboard (live vs period metrics, trend, mix, workload), global search, CSV export
 - In-app **and email** notifications that always show the assigned IT administrator; ⋮ menu on every ticket row to assign it
 - Employee ID shown next to every name; employees can delete their own tickets (until resolved)
+- Simple admin dashboard (needs-attention list with one-click *Take it*, team board), announcements banner,
+  quick-help tiles for employees, ticket progress tracker, quick replies for IT, permanent user delete
 - Built-in *How to use* guide, 7 colour themes and dark mode (palette button next to your name)
 - Attachments limited to images and PDF; users & roles admin (add users), email settings page with test send, audit log, mobile layout
 

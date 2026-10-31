@@ -17,7 +17,7 @@ function sections(staff) {
 
     { id: "raise", icon: "plus", title: "Raise a ticket", body: html`
       ${steps([
-        html`Click <b>Raise a ticket</b> in the left menu.`,
+        html`Click <b>Raise a ticket</b> in the left menu — or use a <b>Quick help</b> tile on the Home page (Forgot password, Printer, ERP…) to get a form that's already filled in.`,
         html`Choose what the problem is about — e.g. <i>ERP</i>, <i>Email</i>, <i>Hardware</i>, <i>Network</i>.`,
         html`Write a short <b>Subject</b> and a clear <b>Description</b>: what happened, since when, and any error text.`,
         html`Add <b>screenshots or a PDF</b> right below the description (images and PDF only).`,
@@ -26,7 +26,9 @@ function sections(staff) {
       <p class="g-tip">${icon("zap")} Before submitting, look at the suggested articles on the right — many common problems have a ready fix.</p>` },
 
     { id: "track", icon: "ticket", title: "Track your ticket", body: html`
-      <p>Open <b>My tickets</b> to see everything you raised. Click a ticket to see its details and messages. The coloured label shows where it is:</p>
+      <p>Open <b>My tickets</b> to see everything you raised. Click a ticket to see its details and messages.
+        The <b>progress bar</b> at the top shows how far it has got: Submitted → Assigned → In progress → Resolved → Closed.
+        The coloured label shows the exact status:</p>
       <dl class="g-status">
         <dt>${S("SUBMITTED", "Submitted")}</dt><dd>Received. The IT team will pick it up shortly.</dd>
         <dt>${S("ASSIGNED", "Assigned")}</dt><dd>An IT administrator has been assigned — their name is shown on the ticket.</dd>
@@ -59,6 +61,10 @@ function sections(staff) {
       <p>The bell at the top shows updates on your tickets: who it is assigned to, new replies, and status changes.
         If your email is registered, you also get the same update by email. Click a notification to open the ticket.</p>` },
 
+    { id: "ann", icon: "megaphone", title: "Announcements", body: html`
+      <p>When IT has planned maintenance or an outage, a coloured banner appears at the top of every page.
+        Click ✕ to hide it. Red outage banners stay until the problem is fixed.</p>` },
+
     { id: "kb", icon: "book", title: "Find answers yourself", body: html`
       <p>Use the <b>Knowledge base</b> (or the search box at the top — press <span class="kbd">/</span>) to find step-by-step fixes
         for common problems like Outlook, VPN, printers and ERP errors.</p>` },
@@ -79,15 +85,17 @@ function sections(staff) {
     { id: "it-queue", icon: "inbox", title: "IT: work the queue", body: html`
       ${steps([
         html`Open <b>Tickets</b>. Use the tabs: <i>All open</i>, <i>Assigned to me</i>, <i>Unassigned</i>.`,
+        html`The <b>Dashboard</b> shows what needs you now: tickets with no owner, overdue ones and urgent ones. Click <b>Take it</b> to assign one to yourself.`,
         html`Click <b>⋮</b> on any row to assign it to an IT administrator (or unassign it).`,
         html`Open a ticket and click <b>Accept & start</b> to take it, then <b>Update status</b> as you work.`,
-        html`Use <b>Internal note</b> for notes the employee must not see. Use <b>Reply to requester</b> to talk to them.`,
+        html`Use <b>Internal note</b> for notes the employee must not see. Use <b>Reply to requester</b> to talk to them — the <b>Quick reply</b> buttons fill in common answers for you.`,
         html`Set <b>Resolved</b> with a short resolution note when done — the employee confirms, or it closes automatically after 5 days.`])}` },
     { id: "it-users", icon: "users", title: "IT: manage users", body: html`
       ${steps([
         html`<b>Users & roles</b> → <b>Add user</b> for one person, or <b>Import from Excel</b> for many (download the template there).`,
         html`Use <b>Password</b> to reset someone's password, <b>Roles</b> to make them IT Administrator, <b>Deactivate</b> when they leave.`,
-        html`<b>Email notifications</b> shows whether email is set up and lets you send a test.`])}` },
+        html`<b>Delete</b> (bin icon) removes an account permanently with the tickets they raised — use it for test or wrong accounts only.`,
+        html`<b>Announcements</b> posts a banner for everyone (maintenance, outages). <b>Email notifications</b> shows whether email is set up.`])}` },
   ];
   return staff ? [...all, ...admin] : all;
 }

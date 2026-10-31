@@ -9,6 +9,22 @@ const FIELD_LABEL = { status: "Status", assignee: "Assignee", support_group: "Su
   link: "Linked", rating: "Rating", sla: "SLA" };
 const IMPACT = { 1: "High", 2: "Medium", 3: "Low" };
 
+// Ready-made replies for IT administrators ({name} = requester's first name)
+const QUICK_REPLIES = [
+  ["Looking into it", "Hi {name}, thanks for reporting this. I'm looking into it now and will update you shortly."],
+  ["Need more details", "Hi {name}, could you please share a screenshot of the error and tell me when it started?"],
+  ["Remote session", "Hi {name}, I'd like to connect to your computer remotely to check this. What time suits you today?"],
+  ["Please restart", "Hi {name}, please restart your computer once and try again. Let me know if the problem continues."],
+  ["Fixed — please check", "Hi {name}, this should be fixed now. Please check and confirm it's working on your side."],
+  ["Waiting for vendor", "Hi {name}, we've raised this with the vendor and are waiting for their reply. I'll update you as soon as we hear back."],
+  ["Visiting your desk", "Hi {name}, I'll come to your desk shortly to have a look."],
+];
+
+// Progress tracker steps
+const STEPS = ["Submitted", "Assigned", "In progress", "Resolved", "Closed"];
+const STEP_OF = { NEW: 0, SUBMITTED: 0, TRIAGED: 0, ASSIGNED: 1, IN_PROGRESS: 2, PENDING_EMPLOYEE: 2, PENDING_APPROVAL: 2,
+  PENDING_VENDOR: 2, PENDING_CHANGE: 2, REOPENED: 2, RESOLVED: 3, CLOSED: 4 };
+
 export async function render(view, [number]) {
   let t, comments, history, attachments, tab = "conversation", composeInternal = false;
   const statusNames = Object.fromEntries((await catalog()).statuses.map((s) => [s.code, s.name]));
@@ -55,6 +71,7 @@ export async function render(view, [number]) {
         </div>
       </div>
 
+      ${progress()}
       ${t.status.code === "PENDING_EMPLOYEE" && isRequester() ? html`<div class="notice warn" style="margin-bottom:20px">${icon("alert")}
         <div><b>IT is waiting for your reply</b>Answer in the conversation below — the ticket resumes automatically when you reply.</div></div>` : ""}
       ${t.status.code === "RESOLVED" && isRequester() ? html`<div class="notice" style="margin-bottom:20px">${icon("info")}
@@ -204,6 +221,19 @@ export async function render(view, [number]) {
     })}</ol>`;
   }
 
+  function progress() {
+    if (t.status.code === "CANCELLED") return html`<div class="notice" style="margin-bottom:20px">${icon("x")}<div><b>This ticket was cancelled</b>No further work will be done on it.</div></div>`;
+    const cur = STEP_OF[t.status.code] ?? 0;
+    const when = [t.created_at, t.assigned_at, t.first_response_at, t.resolved_at, t.closed_at];
+    const waiting = { PENDING_EMPLOYEE: isRequester() ? "Waiting for you" : "Waiting for employee", PENDING_VENDOR: "Waiting for vendor",
+      PENDING_APPROVAL: "Waiting for approval", PENDING_CHANGE: "Waiting for change", REOPENED: "Reopened" }[t.status.code];
+    return html`<ol class="progress" aria-label="Ticket progress">${STEPS.map((name, i) => html`
+      <li class="${i < cur ? "done" : i === cur ? "now" : ""} ${i === cur && i < 4 && t.status.code !== "RESOLVED" ? "pulse" : ""}">
+        <span class="pg-dot">${i < cur || (i === cur && i === 4) ? icon("check") : i + 1}</span>
+        <span class="pg-name">${i === cur && waiting ? waiting : name}</span>
+        <span class="pg-when">${i <= cur && when[i] ? fmtRelative(when[i]) : ""}</span></li>`)}</ol>`;
+  }
+
   function composer() {
     const staffNote = t.can_comment_internal;
     return html`<form class="composer ${composeInternal ? "internal-mode" : ""}" id="composer">
@@ -211,6 +241,8 @@ export async function render(view, [number]) {
         <button type="button" data-v="public" class="${composeInternal ? "" : "on"}">${icon("send")} Reply to requester</button>
         <button type="button" data-v="internal" class="${composeInternal ? "on" : ""}">${icon("lock")} Internal note</button></div>` : ""}
       <div class="compose-box">
+        ${t.can_work && !composeInternal ? html`<div class="quick-replies" id="qr"><span class="small muted">${icon("zap")} Quick reply:</span>
+          ${QUICK_REPLIES.map(([label], i) => html`<button type="button" class="qr" data-qr="${i}">${label}</button>`)}</div>` : ""}
         <label class="sr-only" for="cbody">Message</label>
         <textarea id="cbody" name="body" rows="3" maxlength="8000" placeholder="${composeInternal ? "Write a note only the IT team will see…" : t.can_work ? `Write a reply to ${t.requester.full_name.split(" ")[0]}…` : "Type your message to the IT team…"}"></textarea>
         <div class="composer-foot">
@@ -251,6 +283,12 @@ export async function render(view, [number]) {
       composeInternal = b.dataset.v === "internal"; draw(); $("#cbody", view).value = keep; $("#cbody", view).focus();
     });
     const comp = $("#composer", view);
+    $("#qr", view)?.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-qr]"); if (!b) return;
+      const first = t.requester.full_name.split(" ")[0];
+      comp.body.value = QUICK_REPLIES[Number(b.dataset.qr)][1].replace("{name}", first);
+      comp.body.focus(); comp.body.setSelectionRange(comp.body.value.length, comp.body.value.length);
+    });
     if (comp) {
       comp.body.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) comp.requestSubmit(); });
       comp.addEventListener("submit", async (e) => {

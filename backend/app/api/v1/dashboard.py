@@ -27,6 +27,12 @@ def employee(p: Principal = Depends(get_principal), db: Session = Depends(get_db
     }
 
 
+@router.get("/admin-home")
+def admin_home(p: Principal = Depends(require("dashboard.ops")), db: Session = Depends(get_db)):
+    """Simple admin dashboard: tickets needing attention, my open work, team this week."""
+    return dash.admin_home(db, p, p.user.timezone)
+
+
 @router.get("/ops")
 def ops(start: date | None = None, end: date | None = None, category_id: int | None = None,
         department_id: int | None = None, group_id: int | None = None, assignee_id: int | None = None,

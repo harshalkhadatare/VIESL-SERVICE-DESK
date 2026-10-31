@@ -11,6 +11,7 @@ import * as kbPage from "./pages/kb.js";
 import * as guidePage from "./pages/guide.js";
 import * as notificationsPage from "./pages/notifications.js";
 import * as adminPage from "./pages/admin.js";
+import * as annPage from "./pages/announcements.js";
 import { setupThemeMenu } from "./theme.js";
 
 export const COMPANY = "Vision Infra Equipment Solutions Ltd.";
@@ -27,10 +28,12 @@ const ROUTES = [
   [/^\/admin\/users$/, adminPage.renderUsers, "users", "user.manage"],
   [/^\/admin\/audit$/, adminPage.renderAudit, "audit", "audit.view"],
   [/^\/admin\/email$/, adminPage.renderEmail, "email", "settings.manage"],
+  [/^\/admin\/announcements$/, annPage.renderAdmin, "announcements", "ticket.manage_all"],
 ];
 
 let cleanup = null;
 let pollTimer = null;
+let annTimer = null;
 
 function parseHash() {
   const h = location.hash.replace(/^#/, "") || "/";
@@ -61,8 +64,9 @@ function renderShell() {
         <div class="nav-section">Self-service</div>
         ${navLink("/kb", "kb", "book", "Knowledge base")}
         ${navLink("/kb/guide", "guide", "info", "How to use")}
-        ${can("user.manage") || can("audit.view") ? html`<div class="nav-section">Administration</div>` : ""}
+        ${can("user.manage") || can("audit.view") || can("ticket.manage_all") ? html`<div class="nav-section">Administration</div>` : ""}
         ${can("user.manage") ? navLink("/admin/users", "users", "users", "Users & roles") : ""}
+        ${can("ticket.manage_all") ? navLink("/admin/announcements", "announcements", "megaphone", "Announcements") : ""}
         ${can("settings.manage") ? navLink("/admin/email", "email", "mail", "Email notifications") : ""}
         ${can("audit.view") ? navLink("/admin/audit", "audit", "shield", "Audit log") : ""}
       </nav>
@@ -88,6 +92,7 @@ function renderShell() {
           </button>
         </div>
       </header>
+      <div id="ann-bar" class="ann-bar" aria-live="polite"></div>
       <main class="content" id="view" tabindex="-1"></main>
     </div>
   </div>`);
@@ -96,6 +101,9 @@ function renderShell() {
   $(".sidebar").addEventListener("click", (e) => { if (e.target.closest("a")) $("#shell").classList.remove("nav-open"); });
   setupUserMenu();
   setupThemeMenu($("#theme-btn"));
+  annPage.loadBanner();
+  clearInterval(annTimer);
+  annTimer = setInterval(() => { if (!document.hidden && $("#ann-bar")) annPage.loadBanner(); }, 300000);
   setupSearch();
   pollUnread();
 }
