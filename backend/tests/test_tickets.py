@@ -316,7 +316,7 @@ def test_notifications_show_assigned_person(client):
         expected_version=t["version"])
     items = client.get("/api/v1/notifications", headers=auth("employee")).json()["items"]
     mine = [n for n in items if n["ticket_number"] == t["number"]]
-    assert mine and all(n["assignee_name"] == "Sneha Iyer" for n in mine)
+    assert mine and all(n["assignee_name"].startswith("Sneha Iyer (") for n in mine)
     assert any("Sneha Iyer" in n["title"] for n in mine)            # "IT-… assigned to Sneha Iyer"
     staff = client.get("/api/v1/notifications", headers=auth("sd_admin")).json()["items"]
     assert any(n["ticket_number"] == t["number"] and "assigned to you" in n["title"] for n in staff)

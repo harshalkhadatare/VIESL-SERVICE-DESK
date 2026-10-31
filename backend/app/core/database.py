@@ -3,7 +3,6 @@ from collections.abc import Iterator
 import os
 
 from sqlalchemy import create_engine, event
-from sqlalchemy.pool import NullPool
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -17,8 +16,13 @@ def build_engine(url: str | None = None, echo: bool = False) -> Engine:
     if url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
     elif os.environ.get("VERCEL"):
-        # Serverless: don't hold idle connections between invocations (Neon suspends idle compute)
-        kwargs["poolclass"] = NullPool
+        # Serverless: a warm function instance handles many requests, so keep one or two connections open
+        # instead of a new TLS handshake to the database on every request. Recycled quickly so Neon can
+        # still suspend idle compute; pool_pre_ping replaces any connection that went stale while frozen.
+        kwargs["pool_size"] = 2
+        kwargs["max_overflow"] = 3
+        kwargs["pool_recycle"] = 240
+        kwargs["pool_timeout"] = 10
     else:
         kwargs["pool_size"] = 10
         kwargs["max_overflow"] = 20

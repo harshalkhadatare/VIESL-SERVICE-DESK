@@ -72,6 +72,7 @@ export const api = {
   post: (p, body, opts = {}) => request("POST", p, { body, ...opts }),
   put: (p, body) => request("PUT", p, { body }),
   patch: (p, body) => request("PATCH", p, { body }),
+  del: (p) => request("DELETE", p),
   upload: (p, form) => request("POST", p, { form }),
   async login(email, password) {
     const data = await request("POST", "/auth/login", { body: { email, password } }, false);

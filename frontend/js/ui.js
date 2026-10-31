@@ -63,6 +63,8 @@ const P = {
   megaphone: '<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
   send: '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
+  trash: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/>',
+  palette: '<path d="M12 3a9 9 0 1 0 0 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1.1.9-2 2-2h2.4A4.6 4.6 0 0 0 21 9.8C21 6 17 3 12 3z"/><circle cx="7.5" cy="11" r="1.2" fill="currentColor" stroke="none"/><circle cx="10" cy="7" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="7" r="1.2" fill="currentColor" stroke="none"/>',
   more: '<circle cx="12" cy="5" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.6" fill="currentColor" stroke="none"/>',
   mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>',
 };
@@ -104,6 +106,10 @@ export function fmtMinutes(m) {
   return neg ? `-${s}` : s;
 }
 export const fmtNum = (n) => (n === null || n === undefined ? "—" : new Intl.NumberFormat("en-IN").format(n));
+/** Employee ID shown next to a name, e.g. "Atharv Shinde  [12520]". */
+export const empId = (code) => code ? html`<span class="emp-id" title="Employee ID">${code}</span>` : "";
+export const nameId = (u) => u ? html`<span class="name-id">${u.full_name}${empId(u.employee_code)}</span>` : "";
+export const nameIdText = (u) => u ? (u.employee_code ? `${u.full_name} (${u.employee_code})` : u.full_name) : "";
 export const initials = (name = "") => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 export function fileSize(b) {
   if (b < 1024) return `${b} B`;

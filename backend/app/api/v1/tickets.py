@@ -29,6 +29,7 @@ from app.services.access import (
 from app.services.attachments import MAX_FILES_PER_TICKET, path_for, store_upload
 from app.services.audit import audit_p
 from app.services.sla import sla_snapshot
+from app.services.ticket_delete import can_delete_ticket, delete_ticket
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
@@ -55,8 +56,9 @@ def _list_item(t: Ticket, now: datetime) -> TicketListItem:
         number=t.number, version=t.version, assignee_id=t.assignee_id, subject=t.subject, ticket_type=t.ticket_type,
         status=CodeRef(code=t.status.code, name=t.status.name),
         priority=CodeRef(code=t.priority.code, name=t.priority.name), category=t.category.name,
-        requester=t.requester.full_name, department=t.department.name if t.department else None,
+        requester=t.requester.full_name, requester_code=t.requester.employee_code, department=t.department.name if t.department else None,
         assignee=t.assignee.full_name if t.assignee else None,
+        assignee_code=t.assignee.employee_code if t.assignee else None,
         support_group=t.support_group.name if t.support_group else None,
         created_at=t.created_at, updated_at=t.updated_at, sla_state=sla_state,
         resolution_due_at=t.sla.resolution_due_at if t.sla else None,
@@ -73,13 +75,12 @@ def _detail(db: Session, p: Principal, t: Ticket) -> TicketDetail:
         priority=CodeRef(code=t.priority.code, name=t.priority.name), impact=t.impact, urgency=t.urgency,
         category=Ref(id=t.category.id, name=t.category.name),
         subcategory=Ref(id=t.subcategory.id, name=t.subcategory.name) if t.subcategory else None,
-        requester=UserRef(id=t.requester.id, full_name=t.requester.full_name, email=t.requester.email),
+        requester=UserRef.model_validate(t.requester),
         requester_phone=t.requester.phone if (staff or is_requester(p, t)) else None,
         department=Ref(id=t.department.id, name=t.department.name) if t.department else None,
         location=Ref(id=t.location.id, name=t.location.name) if t.location else None,
         support_group=Ref(id=t.support_group.id, name=t.support_group.name) if t.support_group else None,
-        assignee=UserRef(id=t.assignee.id, full_name=t.assignee.full_name, email=t.assignee.email)
-        if t.assignee else None,
+        assignee=UserRef.model_validate(t.assignee) if t.assignee else None,
         contact_method=t.contact_method,
         root_cause=t.root_cause if (staff or p.can("ticket.view_all")) else None,  # internal field
         resolution_notes=t.resolution_notes, created_at=t.created_at, updated_at=t.updated_at,
@@ -91,6 +92,7 @@ def _detail(db: Session, p: Principal, t: Ticket) -> TicketDetail:
         can_set_priority=p.can("ticket.set_priority") and (can_assign_ticket(p, t) or p.can("ticket.manage_all")),
         can_comment_internal=p.can("ticket.comment_internal") and (staff or p.can("ticket.manage_all")),
         can_rate=is_requester(p, t) and t.status_code in ("RESOLVED", "CLOSED") and rating is None,
+        can_delete=can_delete_ticket(p, t),
         allowed_transitions=[CodeRef(code=s.code, name=s.name) for s in svc.allowed_transitions(db, p, t)],
     )
 
@@ -187,14 +189,14 @@ def export_csv(f: ListFilters = Depends(list_filters), p: Principal = Depends(re
     z = ZoneInfo(p.user.timezone)
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["Ticket", "Subject", "Type", "Status", "Priority", "Category", "Requester", "Department",
+    w.writerow(["Ticket", "Subject", "Type", "Status", "Priority", "Category", "Requester", "Employee ID", "Department",
                 "Support group", "Assignee", f"Created ({p.user.timezone})", "Resolved", "SLA breached"])
     count = 0
     for t in db.scalars(stmt).all():
         count += 1
         w.writerow([_csv_safe(x) for x in [
             t.number, t.subject, t.ticket_type, t.status.name, t.priority.code, t.category.name,
-            t.requester.full_name, t.department.name if t.department else "",
+            t.requester.full_name, t.requester.employee_code or "", t.department.name if t.department else "",
             t.support_group.name if t.support_group else "", t.assignee.full_name if t.assignee else "",
             t.created_at.astimezone(z).strftime("%Y-%m-%d %H:%M"),
             t.resolved_at.astimezone(z).strftime("%Y-%m-%d %H:%M") if t.resolved_at else "",
@@ -229,6 +231,13 @@ def create_ticket(data: TicketCreate, p: Principal = Depends(require("ticket.cre
 @router.get("/{number}", response_model=TicketDetail)
 def get_ticket(number: str, p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     return _detail(db, p, get_visible_ticket(db, p, number))
+
+
+@router.delete("/{number}", status_code=204)
+def remove_ticket(number: str, p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Permanently delete a ticket: the requester (until resolved) or an IT administrator."""
+    delete_ticket(db, p, get_visible_ticket(db, p, number, for_update=True))
+    return Response(status_code=204)
 
 
 def _sees_internal(p: Principal, t: Ticket) -> bool:

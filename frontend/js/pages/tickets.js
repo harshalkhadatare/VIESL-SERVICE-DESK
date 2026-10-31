@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { can, isStaff, catalog, supportGroups } from "../state.js";
 import { $, $$, html, mount, icon, fmtRelative, fmtDate, statusBadge, prioBadge, slaBadge, skeletonRows, emptyState,
-  errorToast, debounce, toast, initials } from "../ui.js";
+  errorToast, debounce, toast, initials, empId } from "../ui.js";
 
 const STAFF_TABS = [
   ["open", "All open", { scope: "all", status: "open" }],
@@ -89,8 +89,8 @@ export async function render(view, _p, query) {
           <td><span class="t-id">${t.number}</span></td>
           <td><span class="t-subject" title="${t.subject}">${t.subject}</span><span class="t-sub2">${staff ? t.category : t.ticket_type === "incident" ? "Incident" : "Service request"}${canAssign ? html` · ${fmtRelative(t.updated_at)}` : ""}</span></td>
           <td>${statusBadge(t.status)}</td><td>${prioBadge(t.priority.code)}</td>
-          <td class="hide-sm">${staff ? html`${t.requester}<div class="t-sub2">${t.department || ""}</div>` : t.category}</td>
-          <td class="hide-sm">${t.assignee || html`<span class="muted">Unassigned</span>`}</td>
+          <td class="hide-sm">${staff ? html`<span class="name-id">${t.requester}${empId(t.requester_code)}</span><div class="t-sub2">${t.department || ""}</div>` : t.category}</td>
+          <td class="hide-sm">${t.assignee ? html`<span class="name-id">${t.assignee}${empId(t.assignee_code)}</span>` : html`<span class="muted">Unassigned</span>`}</td>
           <td class="hide-sm" title="${t.resolution_due_at ? "Due " + fmtDate(t.resolution_due_at) : ""}">${slaBadge(t.sla_state)}</td>
           <td class="hide-sm muted ${canAssign ? "hide-md" : ""}" title="${fmtDate(t.updated_at)}">${fmtRelative(t.updated_at)}</td>
           ${canAssign ? html`<td class="row-menu">${["CLOSED", "CANCELLED"].includes(t.status.code) ? "" :
@@ -163,7 +163,7 @@ export async function render(view, _p, query) {
       ${admins.length ? admins.map((a) => html`<button role="menuitem" data-id="${a.id}">
         <span class="tick">${a.id === t.assignee_id ? icon("check") : ""}</span>
         <span class="avatar sm">${initials(a.full_name)}</span>
-        <span class="grow"><b>${a.full_name}</b><span>${a.job_title || "IT Administrator"}</span></span>
+        <span class="grow"><b>${a.full_name}</b><span>${a.employee_code ? `ID ${a.employee_code} · ` : ""}${a.job_title || "IT Administrator"}</span></span>
         <span class="load" title="Open tickets">${a.open_tickets} open</span></button>`) :
         html`<div class="muted small" style="padding:8px 10px">No IT administrators found.</div>`}
       ${t.assignee_id ? html`<hr><button role="menuitem" data-id="none"><span class="tick"></span>${icon("x")}<span class="grow"><b>Unassign</b><span>Return to the IT queue</span></span></button>` : ""}

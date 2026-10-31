@@ -91,7 +91,7 @@ def render_email(n: Notification, user: User, ticket: Ticket | None) -> tuple[st
     base = s.app_base_url.rstrip("/")
     url = f"{base}/{n.link}" if n.link else base
     subject = f"[{ticket.number}] {n.title}" if ticket and ticket.number not in n.title else n.title
-    assigned = ticket.assignee.full_name if ticket and ticket.assignee else "Not yet assigned"
+    assigned = ticket.assignee.label if ticket and ticket.assignee else "Not yet assigned"
     body = n.body
     if body and ticket:  # the details table already shows the assignee
         body = "\n".join(l for l in body.split("\n") if not l.startswith("Assigned to:")).strip() or None
@@ -102,7 +102,7 @@ def render_email(n: Notification, user: User, ticket: Ticket | None) -> tuple[st
     if ticket:
         lines += ["", f"Ticket:       {ticket.number}", f"Subject:      {ticket.subject}",
                   f"Status:       {ticket.status.name}", f"Priority:     {ticket.priority.code} {ticket.priority.name}",
-                  f"Assigned to:  {assigned}", f"Raised by:    {ticket.requester.full_name}"]
+                  f"Assigned to:  {assigned}", f"Raised by:    {ticket.requester.label}"]
     lines += ["", f"Open the ticket: {url}", "", f"— {s.smtp_from_name}",
               "This is an automated message. Reply in the portal, not to this email."]
     text = "\n".join(lines)
@@ -116,7 +116,7 @@ def render_email(n: Notification, user: User, ticket: Ticket | None) -> tuple[st
                    + _row("Status", html.escape(ticket.status.name))
                    + _row("Priority", html.escape(f"{ticket.priority.code} · {ticket.priority.name}"))
                    + _row("Assigned to", html.escape(assigned))
-                   + _row("Raised by", html.escape(ticket.requester.full_name))
+                   + _row("Raised by", html.escape(ticket.requester.label))
                    + "</table>")
     body_html = (f'<p style="margin:12px 0 0;color:#4a5c74;white-space:pre-wrap">{html.escape(body)}</p>'
                  if body else "")

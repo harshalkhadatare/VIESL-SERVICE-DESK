@@ -128,8 +128,10 @@ class TicketListItem(BaseModel):
     priority: CodeRef
     category: str
     requester: str
+    requester_code: str | None = None
     department: str | None
     assignee: str | None
+    assignee_code: str | None = None
     support_group: str | None
     created_at: datetime
     updated_at: datetime
@@ -220,6 +222,7 @@ class TicketDetail(BaseModel):
     can_set_priority: bool
     can_comment_internal: bool
     can_rate: bool
+    can_delete: bool = False
     allowed_transitions: list[CodeRef]
 
 

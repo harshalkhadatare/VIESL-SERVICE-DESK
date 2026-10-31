@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { state, catalog, supportGroups, can } from "../state.js";
-import { $, $$, html, mount, icon, fmtDate, fmtRelative, fmtMinutes, statusBadge, prioBadge, initials, toast, errorToast,
-  openModal, busy, emptyState, fileSize, showFieldErrors, realEmail } from "../ui.js";
+import { $, $$, html, mount, icon, fmtDate, fmtRelative, statusBadge, prioBadge, initials, toast, errorToast,
+  openModal, busy, emptyState, fileSize, showFieldErrors, realEmail, confirmDialog, nameId, nameIdText, empId } from "../ui.js";
 import { refreshUnread } from "../app.js";
 
 const FIELD_LABEL = { status: "Status", assignee: "Assignee", support_group: "Support group", priority: "Priority",
@@ -38,7 +38,7 @@ export async function render(view, [number]) {
           <div class="ticket-title"><span class="t-id" style="font-size:13.5px">${t.number}</span>${statusBadge(t.status)}${prioBadge(t.priority)}
             ${t.is_demo ? html`<span class="pill demo">Demo data</span>` : ""}</div>
           <h1 style="margin-top:8px">${t.subject}</h1>
-          <div class="meta-line"><span>${icon("user")} ${t.requester.full_name}</span><span>${icon("clock")} Raised ${fmtRelative(t.created_at)}</span>
+          <div class="meta-line"><span>${icon("user")} ${nameId(t.requester)}</span><span>${icon("clock")} Raised ${fmtRelative(t.created_at)}</span>
             <span>${icon("layers")} ${t.category.name}${t.subcategory ? ` › ${t.subcategory.name}` : ""}</span>
             <span>${t.ticket_type === "incident" ? "Incident" : "Service request"}</span></div>
         </div>
@@ -51,6 +51,7 @@ export async function render(view, [number]) {
           ${!t.can_work && isRequester() && allowed.includes("CLOSED") ? html`<button class="btn primary" data-act="confirm">${icon("check")} Confirm it's fixed</button>` : ""}
           ${!t.can_work && isRequester() && allowed.includes("REOPENED") ? html`<button class="btn" data-act="reopen">Still not working</button>` : ""}
           ${!t.can_work && isRequester() && allowed.includes("CANCELLED") ? html`<button class="btn danger" data-act="cancel">Cancel ticket</button>` : ""}
+          ${t.can_delete ? html`<button class="btn danger" data-act="remove" title="Delete this ticket permanently">${icon("trash")} Delete</button>` : ""}
         </div>
       </div>
 
@@ -86,16 +87,14 @@ export async function render(view, [number]) {
         </div>
 
         <aside class="stack">
-          ${slaCard()}
           <div class="card"><div class="card-head"><h2>Details</h2></div><div class="card-body">
             <dl class="kv">
-              <dt>Requester</dt><dd>${t.requester.full_name}<div class="t-sub2">${realEmail(t.requester.email) || "No email on file"}${t.requester_phone ? html`<br>${t.requester_phone}` : ""}</div></dd>
+              <dt>Requester</dt><dd>${nameId(t.requester)}<div class="t-sub2">${realEmail(t.requester.email) || "No email on file"}${t.requester_phone ? html`<br>${t.requester_phone}` : ""}</div></dd>
               <dt>Department</dt><dd>${t.department?.name || "—"}</dd>
               <dt>Location</dt><dd>${t.location?.name || "—"}</dd>
               <dt>Support group</dt><dd>${t.support_group?.name || html`<span class="muted">Awaiting triage</span>`}</dd>
-              <dt>Assigned to</dt><dd>${t.assignee ? html`<span class="row" style="gap:8px"><span class="avatar sm">${initials(t.assignee.full_name)}</span>${t.assignee.full_name}</span>` : html`<span class="muted">Unassigned</span>`}</dd>
+              <dt>Assigned to</dt><dd>${t.assignee ? html`<span class="row" style="gap:8px"><span class="avatar sm">${initials(t.assignee.full_name)}</span>${nameId(t.assignee)}</span>` : html`<span class="muted">Unassigned</span>`}</dd>
               <dt>Impact / urgency</dt><dd>${IMPACT[t.impact]} / ${IMPACT[t.urgency]}</dd>
-              <dt>Contact via</dt><dd style="text-transform:capitalize">${t.contact_method || "portal"}</dd>
               <dt>First response</dt><dd>${t.first_response_at ? fmtDate(t.first_response_at) : html`<span class="muted">Not yet</span>`}</dd>
               <dt>Last updated</dt><dd>${fmtRelative(t.updated_at)}</dd>
               ${t.reopen_count ? html`<dt>Reopened</dt><dd>${t.reopen_count}×</dd>` : ""}
@@ -123,26 +122,6 @@ export async function render(view, [number]) {
       ${long.map(([k, v]) => html`<dt>${k}</dt><dd class="prose">${v}</dd>`)}</dl></div>`;
   };
   const closureLabel = (r) => ({ confirmed: "confirmed by requester", auto: "closed automatically", staff: "closed by IT", cancelled: "cancelled" }[r] || "");
-
-  function slaCard() {
-    const s = t.sla;
-    if (!s) return "";
-    const label = { on_track: "On track", at_risk: "At risk", breached: "Breached", paused: "Paused", met: "Met" }[s.state];
-    const tone = { on_track: "ok", at_risk: "warn", breached: "danger", paused: "", met: "ok" }[s.state];
-    const done = ["met", "breached"].includes(s.state) && ["RESOLVED", "CLOSED", "CANCELLED"].includes(t.status.code);
-    return html`<div class="card"><div class="card-head"><h2>Service level</h2><span class="badge ${tone}">${label}</span></div>
-      <div class="card-body">
-        <div class="sla-state"><span class="big">${done ? fmtMinutes(s.resolution_target_minutes - s.remaining_business_minutes) : s.remaining_business_minutes >= 0 ? fmtMinutes(s.remaining_business_minutes) : fmtMinutes(-s.remaining_business_minutes)}</span>
-          <span class="muted small">${done ? "business time used" : s.remaining_business_minutes >= 0 ? "business time left" : "over target"}</span></div>
-        <div class="sla-bar ${s.state}"><div style="width:${Math.max(3, s.percent_used)}%"></div></div>
-        <dl class="kv small" style="grid-template-columns:110px 1fr">
-          <dt>Resolve by</dt><dd>${fmtDate(s.resolution_due_at)}${s.is_paused && !done ? html` <span class="muted">(paused)</span>` : ""}</dd>
-          <dt>Respond by</dt><dd>${fmtDate(s.response_due_at)} ${t.first_response_at ? html`<span class="badge ${s.response_breached ? "danger" : "ok"} plain">${s.response_breached ? "late" : "met"}</span>` : ""}</dd>
-          <dt>Target</dt><dd>${fmtMinutes(s.resolution_target_minutes)} <span class="muted">business</span></dd>
-          ${s.paused_minutes ? html`<dt>Paused</dt><dd>${fmtMinutes(s.paused_minutes)}</dd>` : ""}
-          ${s.escalation_level ? html`<dt>Escalation</dt><dd>Level ${s.escalation_level}</dd>` : ""}
-        </dl></div></div>`;
-  }
 
   // ---- conversation: chat bubbles + quiet activity lines, grouped by day
   const day = (v) => fmtDate(v, false);
@@ -191,7 +170,7 @@ export async function render(view, [number]) {
       : html`<span class="who-role">${fromRequester ? "Requester" : "IT team"}</span>`;
     return html`<div class="msg ${right ? "right" : "left"} ${c.is_internal ? "internal" : fromRequester ? "req" : "it"}">
       <span class="avatar sm">${initials(c.author.full_name)}</span>
-      <div class="msg-col"><div class="msg-meta"><b>${c.author.id === me ? "You" : c.author.full_name}</b>${role}</div>
+      <div class="msg-col"><div class="msg-meta"><b>${c.author.id === me ? "You" : c.author.full_name}</b>${empId(c.author.employee_code)}${role}</div>
         <div class="bubble prose">${c.body}</div>
         <time datetime="${c.created_at}" title="${fmtDate(c.created_at)}">${clock(c.created_at)} · ${fmtRelative(c.created_at)}</time></div></div>`;
   }
@@ -235,7 +214,7 @@ export async function render(view, [number]) {
         <label class="sr-only" for="cbody">Message</label>
         <textarea id="cbody" name="body" rows="3" maxlength="8000" placeholder="${composeInternal ? "Write a note only the IT team will see…" : t.can_work ? `Write a reply to ${t.requester.full_name.split(" ")[0]}…` : "Type your message to the IT team…"}"></textarea>
         <div class="composer-foot">
-          ${composeInternal ? html`<span class="small" style="color:var(--internal)">${icon("lock")} Hidden from the requester</span>` : html`<span class="small muted">${t.can_work ? t.requester.full_name : t.assignee ? t.assignee.full_name : "The IT team"} will be notified</span>`}
+          ${composeInternal ? html`<span class="small" style="color:var(--internal)">${icon("lock")} Hidden from the requester</span>` : html`<span class="small muted">${t.can_work ? nameIdText(t.requester) : t.assignee ? nameIdText(t.assignee) : "The IT team"} will be notified</span>`}
           <span class="spacer"></span><span class="small muted hide-sm">Ctrl + Enter</span>
           <button class="btn primary" type="submit">${icon("send")} ${composeInternal ? "Add note" : "Send"}</button></div>
       </div></form>`;
@@ -245,7 +224,7 @@ export async function render(view, [number]) {
     return html`<div class="card"><div class="card-head"><h2>Attachments</h2><span class="hint">${attachments.length}</span></div>
       <div class="card-body">${attachments.length ? attachments.map((a) => html`<div class="attach"><span class="ic">${icon("file")}</span>
         <div style="flex:1;min-width:0"><a href="#" data-dl="${a.id}" data-name="${a.original_name}" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.original_name}</a>
-        <span class="t-sub2">${fileSize(a.size_bytes)} · ${a.uploader.full_name}${a.is_internal ? html` · <span class="tag-internal">internal</span>` : ""}</span></div></div>`) :
+        <span class="t-sub2">${fileSize(a.size_bytes)} · ${nameIdText(a.uploader)}${a.is_internal ? html` · <span class="tag-internal">internal</span>` : ""}</span></div></div>`) :
         html`<p class="muted small">No files attached.</p>`}
       ${!closed && (t.can_work || isRequester()) ? html`<div class="dropzone" id="up" tabindex="0" role="button" style="margin-top:12px">${icon("clip")} Add an image or PDF</div>
         <input type="file" id="upf" hidden accept="image/*,.heic,.heif,.pdf">` : ""}</div></div>`;
@@ -329,6 +308,13 @@ export async function render(view, [number]) {
   };
 
   const ACTIONS = {
+    async remove() {
+      const ok = await confirmDialog({ title: `Delete ${t.number}?`, danger: true, confirmText: "Delete ticket",
+        message: `“${t.subject}” and all its messages and attachments will be removed permanently. This cannot be undone.` });
+      if (!ok) return;
+      try { await api.del(`/tickets/${number}`); toast(`${t.number} deleted.`); refreshUnread(); location.hash = "#/tickets"; }
+      catch (ex) { errorToast(ex); }
+    },
     async accept() {
       try { await api.post(`/tickets/${number}/accept`, { expected_version: t.version }); await reload("Ticket accepted — you're on it."); }
       catch (ex) { await handle409(ex).catch(errorToast); }
@@ -405,7 +391,7 @@ export async function render(view, [number]) {
       body: html`<form id="af" class="stack" style="gap:14px">
         <label class="field"><span class="lbl">Assign to</span><select name="assignee_id">
           <option value="">— Unassigned (IT queue) —</option>
-          ${admins.map((a) => html`<option value="${a.id}" ${a.id === t.assignee?.id ? "selected" : ""}>${a.full_name} · ${a.open_tickets} open</option>`)}</select></label>
+          ${admins.map((a) => html`<option value="${a.id}" ${a.id === t.assignee?.id ? "selected" : ""}>${nameIdText(a)} · ${a.open_tickets} open</option>`)}</select></label>
         <label class="field"><span class="lbl">Support team</span><select name="support_group_id">
           ${groups.map((g) => html`<option value="${g.id}" ${g.id === t.support_group?.id ? "selected" : ""}>${g.name}</option>`)}</select></label>
         <label class="field"><span class="lbl">Note for the assignee</span><input type="text" name="reason" maxlength="500" placeholder="Optional"></label></form>`,

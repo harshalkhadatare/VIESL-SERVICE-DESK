@@ -74,6 +74,11 @@ class User(Base, TimestampMixin):
     )
 
     @property
+    def label(self) -> str:
+        """Name with employee ID, e.g. 'Atharv Shinde (12520)'."""
+        return f"{self.full_name} ({self.employee_code})" if self.employee_code else self.full_name
+
+    @property
     def role_codes(self) -> set[str]:
         return {r.code for r in self.roles}
 

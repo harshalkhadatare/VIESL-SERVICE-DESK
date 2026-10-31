@@ -128,7 +128,8 @@ def group_members(group_id: int, p: Principal = Depends(require("ticket.work")),
 class StaffOut(BaseModel):
     id: int
     full_name: str
-    email: str
+    employee_code: str | None = None
+    email: str | None
     job_title: str | None
     open_tickets: int
 
@@ -145,7 +146,7 @@ def it_admins(p: Principal = Depends(require("ticket.assign")), db: Session = De
     loads = dict(db.execute(select(Ticket.assignee_id, func.count()).where(
         Ticket.assignee_id.in_([u.id for u in staff] or [-1]), Ticket.status_code.in_(OPEN_WORK_STATUSES + (
             "PENDING_EMPLOYEE", "PENDING_APPROVAL"))).group_by(Ticket.assignee_id)).all())
-    return [StaffOut(id=u.id, full_name=u.full_name, email=u.email, job_title=u.job_title,
+    return [StaffOut(id=u.id, full_name=u.full_name, employee_code=u.employee_code, email=u.email, job_title=u.job_title,
                      open_tickets=loads.get(u.id, 0)) for u in staff]
 
 

@@ -92,7 +92,7 @@ def _group_leads(db: Session, group_id: int | None) -> list[int]:
 
 
 def _assigned_line(t: Ticket) -> str:
-    return f"Assigned to: {t.assignee.full_name}" if t.assignee else "Assigned to: not yet assigned"
+    return f"Assigned to: {t.assignee.label}" if t.assignee else "Assigned to: not yet assigned"
 
 
 # ------------------------------------------------------------------ create
@@ -165,12 +165,12 @@ def create_ticket(db: Session, p: Principal, data: TicketCreate, idempotency_key
            f"We received your request '{t.subject}'.\n{_assigned_line(t)}", t, dedupe_key=f"created:{t.id}")
     if assignee_id:
         notify(db, assignee_id, "ticket_assigned", f"{t.number} assigned to you",
-               f"{t.subject}\nRaised by {user.full_name} · {prio.code}", t,
+               f"{t.subject}\nRaised by {user.label} · {prio.code}", t,
                dedupe_key=f"assigned:{t.id}:{assignee_id}:{now.timestamp()}")
     else:  # nobody picked automatically: alert the team (or all IT administrators)
         for uid in _group_leads(db, group_id):
             notify(db, uid, "ticket_created", f"New {prio.code} ticket {t.number} — not assigned",
-                   f"{t.subject}\nRaised by {user.full_name}", t, dedupe_key=f"created-staff:{t.id}:{uid}")
+                   f"{t.subject}\nRaised by {user.label}", t, dedupe_key=f"created-staff:{t.id}:{uid}")
     _check_recurring(db, t)
     audit_p(db, p, "ticket.create", entity_type="ticket", entity_id=t.number,
             detail={"category": cat.code, "priority": prio.code})
@@ -334,7 +334,7 @@ def assign(db: Session, p: Principal, number: str, data: AssignIn) -> Ticket:
     if new_assignee != old_assignee:
         if data.assignee_id and data.assignee_id != p.id:
             notify(db, data.assignee_id, "ticket_assigned", f"{t.number} assigned to you by {p.user.full_name}",
-                   f"{t.subject}\nRaised by {t.requester.full_name} · {t.priority.code}"
+                   f"{t.subject}\nRaised by {t.requester.label} · {t.priority.code}"
                    + (f"\nNote: {data.reason}" if data.reason else ""), t,
                    dedupe_key=f"assigned:{t.id}:{data.assignee_id}:{stamp}")
         if t.requester_id != p.id:

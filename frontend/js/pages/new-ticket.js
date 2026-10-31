@@ -1,6 +1,6 @@
 import { api } from "../api.js";
 import { state, catalog } from "../state.js";
-import { $, $$, html, mount, icon, debounce, busy, toast, errorToast, showFieldErrors, prioBadge, fileSize } from "../ui.js";
+import { $, $$, html, mount, icon, debounce, busy, toast, errorToast, showFieldErrors, prioBadge, fileSize, empId } from "../ui.js";
 
 const ALLOWED = ".png,.jpg,.jpeg,.gif,.webp,.bmp,.tif,.tiff,.heic,.heif,.pdf";
 
@@ -15,7 +15,7 @@ export async function render(view) {
   mount(view, html`
     <div class="crumbs"><a href="#/tickets">Tickets</a> / <span>New</span></div>
     <div class="page-head"><div><h1>Raise a ticket</h1>
-      <div class="sub">Raising as <b>${me.full_name}</b>${me.department ? html` · ${me.department}` : ""}${me.location ? html` · ${me.location}` : ""}</div></div></div>
+      <div class="sub">Raising as <b>${me.full_name}</b>${empId(me.employee_code)}${me.department ? html` · ${me.department}` : ""}${me.location ? html` · ${me.location}` : ""}</div></div></div>
     <div class="grid grid-main-side">
       <form class="card" id="tf" novalidate>
         <div class="card-body" style="padding:22px 24px">
@@ -45,6 +45,10 @@ export async function render(view) {
               <label class="field"><span class="lbl">Description<span class="req">*</span></span>
                 <textarea name="description" rows="5" maxlength="8000" required placeholder="What happened? When did it start? Who else is affected?"></textarea>
                 <div class="help"><span id="desc-count">0</span> / 8000</div></label>
+              <div class="field"><span class="lbl">Screenshots or PDF <span class="muted" style="font-weight:400">(optional)</span></span>
+                <div class="dropzone" id="drop" tabindex="0" role="button">${icon("clip")} Drop files here or <u>browse</u> · up to ${MAX_MB} MB each · images and PDF only</div>
+                <input type="file" id="file" multiple accept="image/*,${ALLOWED}" hidden>
+                <div id="file-list"></div></div>
             </div>
           </section>
 
@@ -80,15 +84,9 @@ export async function render(view) {
           </section>
 
           <section class="form-section">
-            <div class="fieldset-title">Contact & attachments</div>
+            <div class="fieldset-title">Related ticket <span class="muted" style="font-weight:400">(optional)</span></div>
             <div class="form-grid" style="margin-top:12px">
-              <label class="field"><span class="lbl">Preferred contact</span><select name="contact_method">
-                <option value="portal">This portal</option><option value="email">Email</option><option value="phone">Phone</option><option value="teams">Teams</option></select></label>
-              <label class="field"><span class="lbl">Related ticket (optional)</span><input type="text" name="related_ticket_number" placeholder="IT-2026-000123" pattern="IT-\\d{4}-\\d{6}"></label>
-              <div class="field full"><span class="lbl">Screenshots or PDF</span>
-                <div class="dropzone" id="drop" tabindex="0" role="button">${icon("clip")} Drop files here or <u>browse</u> · up to ${MAX_MB} MB each · images and PDF only</div>
-                <input type="file" id="file" multiple accept="image/*,${ALLOWED}" hidden>
-                <div id="file-list"></div></div>
+              <label class="field"><span class="lbl">Earlier ticket number about the same problem</span><input type="text" name="related_ticket_number" placeholder="IT-2026-000123" pattern="IT-\\d{4}-\\d{6}"></label>
             </div>
           </section>
         </div>
@@ -216,7 +214,7 @@ export async function render(view) {
     const body = {
       subject: v.subject.trim(), description: v.description.trim(), category_id: Number(v.category_id),
       subcategory_id: v.subcategory_id ? Number(v.subcategory_id) : null, ticket_type: ticketType,
-      impact, urgency, contact_method: v.contact_method || "portal",
+      impact, urgency, contact_method: "portal",
       related_ticket_number: v.related_ticket_number?.trim() || null,
     };
     if (c?.uses_erp_fields) {

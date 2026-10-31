@@ -14,7 +14,7 @@ uvicorn app.main:app --reload --port 8000
 Open http://localhost:8000 — demo accounts are listed on the sign-in page (development only).
 API docs: http://localhost:8000/api/docs
 
-Run tests: `cd backend && python -m pytest` (uses a throwaway SQLite DB; 131 tests).
+Run tests: `cd backend && python -m pytest` (uses a throwaway SQLite DB; 135 tests).
 
 ## B. Development with SQL Server (Docker Compose)
 ```bash
@@ -127,6 +127,13 @@ How it works on Vercel
 - There is no always-on background process, so SLA checks, auto-close and email retries run after user actions
   (at most every 10 minutes) plus once a day via Vercel Cron (`vercel.json` → `/api/v1/internal/jobs`).
 - Neon's free compute pauses after 5 minutes without use; the first request afterwards takes about a second longer.
+
+**Speed tip — put the app next to the database.** Every request talks to Neon, so the Vercel function should run in
+the same region as your Neon database. Check Neon's region (Neon console → project → Settings), then in Vercel open
+Project → Settings → Functions → **Function Region** and pick the matching one (e.g. Neon *Singapore* → Vercel
+*Singapore, sin1*; Neon *US East* → Vercel *Washington, iad1*), then redeploy. A mismatch adds a delay to every click.
+Start-up is fast after the first deployment: migrations and reference data run only when they change, static files are
+cached on Vercel's CDN, and database connections are reused between requests.
 
 Free-plan limits to keep in mind: Neon 1 GB storage (roughly tens of thousands of tickets plus a few hundred
 screenshots) and 100 compute hours per month; Vercel Hobby is for non-commercial use — check Vercel's terms for

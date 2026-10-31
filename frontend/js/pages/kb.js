@@ -12,6 +12,9 @@ export async function render(view, _p, query) {
       <div class="search-inline" style="max-width:520px">${icon("search")}<input type="search" id="kq" placeholder="Describe your problem, e.g. outlook not syncing" value="${q}" aria-label="Search articles"></div>
       <select id="kc" aria-label="Category"><option value="">All categories</option>${cat.categories.map((c) => html`<option value="${c.id}" ${String(c.id) === category ? "selected" : ""}>${c.name}</option>`)}</select>
     </div></div>
+    <a class="guide-banner" href="#/kb/guide"><span class="g-ic">${icon("book")}</span>
+      <span class="grow"><b>New here? How to use the IT Service Desk</b><span>Raise a ticket, talk to IT, track progress — a 5-minute guide.</span></span>
+      <span class="btn primary sm">Open guide</span></a>
     <div class="grid grid-2" id="kl"></div>`);
 
   async function load() {

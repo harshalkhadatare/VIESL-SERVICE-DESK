@@ -80,19 +80,60 @@ def _bootstrap_admin(db) -> None:
     log.info("bootstrap administrator created: %s", email)
 
 
+def _fingerprint() -> str:
+    """Changes whenever a migration or the reference seed changes, i.e. whenever start-up work is needed."""
+    import hashlib
+    h = hashlib.sha256((BACKEND / "app" / "seed.py").read_bytes())
+    for f in sorted((BACKEND / "alembic" / "versions").glob("*.py")):
+        h.update(f.name.encode())
+    return h.hexdigest()[:32]
+
+
+FP_KEY = "system.bootstrap_fingerprint"
+
+
+def _already_bootstrapped(fp: str) -> bool:
+    """One query instead of ~200: skip migrations + reference seeding when nothing changed since last start."""
+    from sqlalchemy import text
+
+    from app.core.database import engine
+    try:
+        with engine.connect() as c:
+            v = c.execute(text("SELECT value FROM application_settings WHERE key = :k"), {"k": FP_KEY}).scalar()
+        return v == fp
+    except Exception:  # noqa: BLE001 - fresh database: tables don't exist yet
+        return False
+
+
+def _remember(db, fp: str) -> None:
+    from app.models import ApplicationSetting
+    row = db.get(ApplicationSetting, FP_KEY)
+    if row:
+        row.value = fp
+    else:
+        db.add(ApplicationSetting(key=FP_KEY, value=fp, description="Start-up check (do not edit)"))
+    db.commit()
+
+
 def _bootstrap() -> None:
     from app.core.database import SessionLocal
     from app.seed import seed_demo, seed_reference
-    try:
-        _migrate()
-    except Exception:  # noqa: BLE001 - another cold start may be migrating at the same moment
-        log.exception("migration step failed (will retry on next start)")
+    fp = _fingerprint() if _persistent else ""
+    fast = _persistent and _already_bootstrapped(fp)
+    if not fast:
+        try:
+            _migrate()
+        except Exception:  # noqa: BLE001 - another cold start may be migrating at the same moment
+            log.exception("migration step failed (will retry on next start)")
     with SessionLocal() as db:
         try:
-            seed_reference(db)
+            if not fast:
+                seed_reference(db)
             _bootstrap_admin(db)
             if os.environ.get("DEMO_SEED", "false").lower() == "true":
                 seed_demo(db)  # skips itself if demo users already exist
+            if _persistent and not fast:
+                _remember(db, fp)
         except Exception:  # noqa: BLE001
             db.rollback()
             log.exception("seeding failed (will retry on next start)")

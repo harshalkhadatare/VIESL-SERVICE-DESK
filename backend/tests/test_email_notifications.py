@@ -65,7 +65,7 @@ def test_emails_sent_with_assignee_name(client, mail):
     to_emp = [m for m in mail.sent if m["to"] == "ravi.employee@visioninfra.co.in"]
     assert to_admin and "assigned to you" in to_admin[0]["subject"]
     assert to_emp and "Kiran Admin" in to_emp[0]["subject"]
-    assert "Assigned to:  Kiran Admin" in to_emp[0]["text"] and "Kiran Admin" in to_emp[0]["html"]
+    assert "Assigned to:  Kiran Admin (" in to_emp[0]["text"] and "Kiran Admin" in to_emp[0]["html"]
     assert f"https://servicedesk.vision.test/#/tickets/{t['number']}" in to_emp[0]["text"]
     with SessionLocal() as db:
         tid = db.scalar(select(Ticket.id).where(Ticket.number == t["number"]))

@@ -41,7 +41,7 @@ def _notif_out(n: Notification, t: Ticket | None) -> NotificationOut:
         created_at=n.created_at, email_status=n.email_status,
         ticket_number=t.number if t else None, ticket_subject=t.subject if t else None,
         ticket_status=t.status.name if t else None,
-        assignee_name=t.assignee.full_name if t and t.assignee else None)
+        assignee_name=t.assignee.label if t and t.assignee else None)
 
 
 @router.get("/notifications", response_model=Page[NotificationOut], tags=["Notifications"])

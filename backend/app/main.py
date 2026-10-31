@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
@@ -75,6 +76,7 @@ app = FastAPI(
     openapi_url=None if settings.is_production else "/api/openapi.json",
 )
 register_error_handlers(app)
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 app.add_middleware(StripFunctionPrefix)
 
 app.add_middleware(
@@ -83,6 +85,8 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Requested-With"],
 )
 
+INDEX_CACHE = "public, max-age=0, s-maxage=31536000, must-revalidate"
+STATIC_CACHE = "public, max-age=300, s-maxage=31536000, stale-while-revalidate=86400"
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
        "font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
 
@@ -121,7 +125,7 @@ async def request_context(request: Request, call_next):
                 "code": "rate_limited", "message": "Too many requests.", "details": [],
                 "request_id": request.state.request_id}})
     response = await call_next(request)
-    if (request.method in ("POST", "PUT", "PATCH") and request.url.path.startswith("/api/")
+    if (request.method in ("POST", "PUT", "PATCH", "DELETE") and request.url.path.startswith("/api/")
             and response.status_code < 400):
         await _send_queued_emails()
     response.headers["X-Request-ID"] = request.state.request_id
@@ -132,8 +136,13 @@ async def request_context(request: Request, call_next):
     response.headers["Content-Security-Policy"] = CSP
     if settings.cookie_secure:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    if request.url.path.startswith("/api/"):
+    path = request.url.path
+    if path.startswith("/api/"):
         response.headers.setdefault("Cache-Control", "no-store")
+    elif path.startswith("/static/") and response.status_code in (200, 304):
+        # Browser re-checks after 5 min; Vercel's CDN keeps a copy (s-maxage) so files load from the edge
+        # instead of waking the Python function. Vercel clears the CDN copy on every new deployment.
+        response.headers["Cache-Control"] = STATIC_CACHE
     return response
 
 
@@ -173,11 +182,11 @@ if settings.serve_frontend and frontend.exists():
 
     @app.get("/", include_in_schema=False)
     def index():
-        return FileResponse(frontend / "index.html", headers={"Cache-Control": "no-cache"})
+        return FileResponse(frontend / "index.html", headers={"Cache-Control": INDEX_CACHE})
 
     @app.get("/index.html", include_in_schema=False)
     def index_html():
-        return FileResponse(frontend / "index.html", headers={"Cache-Control": "no-cache"})
+        return FileResponse(frontend / "index.html", headers={"Cache-Control": INDEX_CACHE})
 elif settings.serve_frontend:
     log.warning("Frontend folder not found at %s — only the API is served", frontend)
 

@@ -35,6 +35,7 @@ class CodeRef(ORM):
 class UserRef(ORM):
     id: int
     full_name: str
+    employee_code: str | None = None
     email: str | None = None
 
 

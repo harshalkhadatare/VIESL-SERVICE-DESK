@@ -1,5 +1,5 @@
 import { api, refreshSession, setSessionLostHandler } from "./api.js";
-import { state, loadMe, can, isStaff, roleLabel, resetState } from "./state.js";
+import { state, loadMe, can, isStaff, roleLabel, resetState, catalog } from "./state.js";
 import { $, $$, html, mount, icon, brandMark, initials, toast, errorToast, openModal, busy, debounce, esc, realEmail,
   setTimezone, showFieldErrors } from "./ui.js";
 import * as loginPage from "./pages/login.js";
@@ -8,8 +8,10 @@ import * as ticketsPage from "./pages/tickets.js";
 import * as newTicketPage from "./pages/new-ticket.js";
 import * as detailPage from "./pages/ticket-detail.js";
 import * as kbPage from "./pages/kb.js";
+import * as guidePage from "./pages/guide.js";
 import * as notificationsPage from "./pages/notifications.js";
 import * as adminPage from "./pages/admin.js";
+import { setupThemeMenu } from "./theme.js";
 
 export const COMPANY = "Vision Infra Equipment Solutions Ltd.";
 
@@ -18,6 +20,7 @@ const ROUTES = [
   [/^\/tickets\/new$/, newTicketPage.render, "new"],
   [/^\/tickets\/(IT-\d{4}-\d{6})$/, detailPage.render, "tickets"],
   [/^\/tickets$/, ticketsPage.render, "tickets"],
+  [/^\/kb\/guide$/, guidePage.render, "guide"],
   [/^\/kb\/(\d+)$/, kbPage.renderArticle, "kb"],
   [/^\/kb$/, kbPage.render, "kb"],
   [/^\/notifications$/, notificationsPage.render, "notifications"],
@@ -57,6 +60,7 @@ function renderShell() {
         ${navLink("/notifications", "notifications", "bell", "Notifications", html`<span class="count" id="nav-unread" hidden></span>`)}
         <div class="nav-section">Self-service</div>
         ${navLink("/kb", "kb", "book", "Knowledge base")}
+        ${navLink("/kb/guide", "guide", "info", "How to use")}
         ${can("user.manage") || can("audit.view") ? html`<div class="nav-section">Administration</div>` : ""}
         ${can("user.manage") ? navLink("/admin/users", "users", "users", "Users & roles") : ""}
         ${can("settings.manage") ? navLink("/admin/email", "email", "mail", "Email notifications") : ""}
@@ -77,9 +81,10 @@ function renderShell() {
         <div class="topbar-right">
           <a class="icon-btn" href="#/notifications" aria-label="Notifications" title="Notifications">${icon("bell")}
             <span class="dot-count" id="bell-count" hidden></span></a>
+          <button class="icon-btn theme-btn" id="theme-btn" aria-label="Colour theme and dark mode" title="Colour theme & dark mode" aria-haspopup="dialog" aria-expanded="false">${icon("palette")}</button>
           <button class="user-chip" id="user-btn" aria-haspopup="menu" aria-expanded="false">
             <span class="avatar">${initials(me.full_name)}</span>
-            <span class="who"><b>${me.full_name}</b><span>${roleLabel()}</span></span>
+            <span class="who"><b>${me.full_name}</b><span>${roleLabel()}${me.employee_code ? ` · ${me.employee_code}` : ""}</span></span>
           </button>
         </div>
       </header>
@@ -90,6 +95,7 @@ function renderShell() {
   $("#menu-btn").addEventListener("click", () => $("#shell").classList.toggle("nav-open"));
   $(".sidebar").addEventListener("click", (e) => { if (e.target.closest("a")) $("#shell").classList.remove("nav-open"); });
   setupUserMenu();
+  setupThemeMenu($("#theme-btn"));
   setupSearch();
   pollUnread();
 }
@@ -238,7 +244,8 @@ async function route() {
 
 async function boot() {
   try {
-    await loadMe();
+    // load the profile and the (rarely changing) catalog together: saves one round trip on most pages
+    await Promise.all([loadMe(), catalog().catch(() => null)]);
     setTimezone(state.me.timezone);
     $("#app").innerHTML = "";
     if (parseHash().path === "/login") navigate("/"); // hashchange triggers route()

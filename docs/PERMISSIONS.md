@@ -8,6 +8,8 @@ There are exactly **two roles**. All checks run on the server for every request.
 | See own tickets | ✓ | ✓ |
 | See **all** tickets | | ✓ |
 | Confirm / reopen (within 7 days) / cancel own ticket, rate the service | ✓ | ✓ |
+| Delete own ticket permanently (until it is resolved) | ✓ | ✓ |
+| Delete any ticket | | ✓ |
 | Work tickets: change status, resolve, reply, internal notes, link tickets | | ✓ |
 | Assign tickets to any IT administrator (⋮ menu or ticket page), move between teams | | ✓ |
 | Change priority | | ✓ |
