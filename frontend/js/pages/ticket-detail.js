@@ -77,11 +77,11 @@ export async function render(view, [number]) {
 
           <div class="card">
             <div class="tabs" role="tablist">
-              <button role="tab" data-tab="conversation" class="${tab === "conversation" ? "on" : ""}">Conversation<span class="n">${comments.length}</span></button>
+              <button role="tab" data-tab="conversation" class="${tab === "conversation" ? "on" : ""}">Messages<span class="n">${comments.length}</span></button>
               <button role="tab" data-tab="history" class="${tab === "history" ? "on" : ""}">History<span class="n">${history.length}</span></button>
             </div>
             ${tab === "conversation" ? conversation() : historyList()}
-            ${tab === "conversation" ? (closed ? html`<div class="composer muted small">${icon("lock")} This ticket is ${t.status.name.toLowerCase()}. Raise a new ticket if you need more help.</div>` : composer()) : ""}
+            ${tab === "conversation" ? (closed ? html`<div class="composer closed-note muted small">${icon("lock")} This ticket is ${t.status.name.toLowerCase()}. Raise a new ticket if you need more help.</div>` : composer()) : ""}
           </div>
         </div>
 
@@ -144,51 +144,101 @@ export async function render(view, [number]) {
         </dl></div></div>`;
   }
 
+  // ---- conversation: chat bubbles + quiet activity lines, grouped by day
+  const day = (v) => fmtDate(v, false);
+  const clock = (v) => fmtDate(v).split(", ").pop();
+  function dayLabel(v) {
+    const d = day(v), now = new Date();
+    if (d === day(now)) return "Today";
+    if (d === day(new Date(now.getTime() - 864e5))) return "Yesterday";
+    return d;
+  }
+  const EVENT_FIELDS = ["created", "status", "assignee", "support_group", "priority"];
+  const EV_ICON = { created: "ticket", status: "refresh", assignee: "user", support_group: "layers", priority: "zap" };
+  const statusChip = (code) => code ? statusBadge({ code, name: statusNames[code] || code }) : "";
+
   function conversation() {
-    const events = history.filter((h) => ["status", "assignee", "support_group", "priority"].includes(h.field) || h.field === "created")
-      .map((h) => ({ kind: "event", at: h.created_at, h }));
-    const items = [...comments.map((c) => ({ kind: "comment", at: c.created_at, c })), ...events]
+    const events = history.filter((h) => EVENT_FIELDS.includes(h.field)).map((h) => ({ kind: "event", at: h.created_at, h }));
+    const items = [...comments.map((c) => ({ kind: "msg", at: c.created_at, c })), ...events]
       .sort((a, b) => new Date(a.at) - new Date(b.at));
-    if (!items.length) return html`<div class="card-body muted small">No messages yet.</div>`;
-    return html`<ul class="timeline">${items.map((it) => it.kind === "comment" ? html`
-      <li class="${it.c.is_internal ? "internal" : ""}"><span class="avatar sm">${initials(it.c.author.full_name)}</span><div style="min-width:0">
-        <div class="msg-head"><b>${it.c.author.full_name}</b>${it.c.author.id === t.requester.id ? html`<span class="pill">Requester</span>` : ""}
-          ${it.c.is_internal ? html`<span class="tag-internal">${icon("lock")} Internal note</span>` : ""}
-          <time datetime="${it.c.created_at}" title="${fmtDate(it.c.created_at)}">${fmtRelative(it.c.created_at)}</time></div>
-        <div class="prose">${it.c.body}</div></div></li>` : html`
-      <li class="event"><div class="ev-dot"></div><div>${eventText(it.h)} <span class="muted">· ${fmtRelative(it.h.created_at)}</span></div></li>`)}</ul>`;
+    // group consecutive activity lines so they don't drown out real messages
+    const blocks = [];
+    for (const it of items) {
+      const label = dayLabel(it.at), last = blocks[blocks.length - 1];
+      if (!last || last.day !== label) blocks.push({ kind: "day", day: label });
+      const prev = blocks[blocks.length - 1];
+      if (it.kind === "event") { if (prev.kind === "events") prev.list.push(it.h); else blocks.push({ kind: "events", day: label, list: [it.h] }); }
+      else blocks.push({ kind: "msg", day: label, c: it.c });
+    }
+    return html`<div class="chat">
+      ${comments.length ? "" : html`<div class="chat-empty">${icon("send")}<div><b>No messages yet</b><span>${t.can_work ? "Send the requester an update or ask for details below." : "Write below if you want to add details or ask the IT team something."}</span></div></div>`}
+      ${blocks.map((b) => b.kind === "day" ? html`<div class="chat-day"><span>${b.day}</span></div>`
+        : b.kind === "events" ? activity(b.list) : bubble(b.c))}
+    </div>`;
   }
-  const who = (h) => h.actor ? h.actor.full_name : "System";
+  function activity(list) {
+    const row = (h) => html`<li><span class="act-ic">${icon(EV_ICON[h.field] || "info")}</span><span class="act-txt">${eventText(h)}</span><time title="${fmtDate(h.created_at)}">${clock(h.created_at)}</time></li>`;
+    if (list.length <= 3) return html`<ul class="chat-activity">${list.map(row)}</ul>`;
+    const hidden = list.slice(0, -2), shown = list.slice(-2);
+    return html`<ul class="chat-activity"><li class="act-more"><details><summary>${icon("layers")} ${hidden.length} earlier updates</summary>
+      <ul class="chat-activity inner">${hidden.map(row)}</ul></details></li>${shown.map(row)}</ul>`;
+  }
+  function bubble(c) {
+    const me = state.me?.id;
+    const fromRequester = c.author.id === t.requester.id;
+    const right = c.author.id === me || (t.can_work && !fromRequester);
+    const role = c.is_internal ? html`<span class="tag-internal">${icon("lock")} Internal note · IT only</span>`
+      : html`<span class="who-role">${fromRequester ? "Requester" : "IT team"}</span>`;
+    return html`<div class="msg ${right ? "right" : "left"} ${c.is_internal ? "internal" : fromRequester ? "req" : "it"}">
+      <span class="avatar sm">${initials(c.author.full_name)}</span>
+      <div class="msg-col"><div class="msg-meta"><b>${c.author.id === me ? "You" : c.author.full_name}</b>${role}</div>
+        <div class="bubble prose">${c.body}</div>
+        <time datetime="${c.created_at}" title="${fmtDate(c.created_at)}">${clock(c.created_at)} · ${fmtRelative(c.created_at)}</time></div></div>`;
+  }
+  const who = (h) => h.actor ? (h.actor.id === state.me?.id ? "You" : h.actor.full_name) : "System";
   function eventText(h) {
-    if (h.field === "created") return html`<b>${who(h)}</b> raised the ticket`;
-    if (h.field === "status") return html`<b>${who(h)}</b> changed status to <b>${statusNames[h.new_value] || h.new_value}</b>${h.reason ? html` — “${h.reason}”` : ""}`;
-    if (h.field === "assignee") return h.new_value ? html`<b>${who(h)}</b> assigned to <b>${h.new_value}</b>` : html`<b>${who(h)}</b> unassigned ${h.old_value}`;
-    if (h.field === "support_group") return html`<b>${who(h)}</b> routed to <b>${h.new_value}</b>${h.reason ? html` — ${h.reason}` : ""}`;
-    if (h.field === "priority") return html`<b>${who(h)}</b> changed priority ${h.old_value} → <b>${h.new_value}</b>${h.reason ? html` — “${h.reason}”` : ""}`;
-    return html`<b>${who(h)}</b> ${h.field}`;
+    const why = h.reason ? html` <span class="act-why">“${h.actor ? h.reason : h.reason.replace(/_/g, " ")}”</span>` : "";
+    if (h.field === "created") return html`<b>${who(h)}</b> raised this ticket`;
+    if (h.field === "status") return html`<b>${who(h)}</b> moved it to ${statusChip(h.new_value)}${why}`;
+    if (h.field === "assignee") return h.new_value ? html`<b>${who(h)}</b> assigned it to <b>${h.new_value}</b>` : html`<b>${who(h)}</b> removed ${h.old_value}`;
+    if (h.field === "support_group") return html`${h.actor ? html`<b>${who(h)}</b> sent` : "Sent"} to the <b>${h.new_value}</b> team`;
+    if (h.field === "priority") return html`<b>${who(h)}</b> changed priority to <b>${h.new_value}</b>${why}`;
+    return html`<b>${who(h)}</b> updated ${FIELD_LABEL[h.field] || h.field}`;
   }
+
+  // ---- history: simple vertical timeline, newest first
   function historyList() {
-    return html`<div class="table-wrap"><table class="data"><thead><tr><th>When</th><th>Change</th><th>From</th><th>To</th><th>By</th><th class="hide-sm">Reason</th></tr></thead><tbody>
-      ${history.slice().reverse().map((h) => html`<tr${h.is_internal ? html` style="background:var(--internal-soft)"` : ""}>
-        <td class="muted small" style="white-space:nowrap">${fmtDate(h.created_at)}</td>
-        <td>${FIELD_LABEL[h.field] || h.field}${h.is_internal ? html` <span class="tag-internal">${icon("lock")}</span>` : ""}</td>
-        <td class="muted">${h.field === "status" ? statusNames[h.old_value] || h.old_value || "—" : h.old_value || "—"}</td>
-        <td>${h.field === "status" ? statusNames[h.new_value] || h.new_value : h.new_value || "—"}</td>
-        <td>${who(h)}</td><td class="hide-sm small">${h.reason || ""}</td></tr>`)}</tbody></table></div>`;
+    if (!history.length) return html`<div class="card-body muted small">No changes recorded yet.</div>`;
+    const list = history.slice().reverse();
+    let lastDay = "";
+    const val = (h, v) => h.field === "status" ? statusChip(v) : html`<b>${v}</b>`;
+    return html`<ol class="hist">${list.map((h) => {
+      const d = dayLabel(h.created_at), head = d !== lastDay; lastDay = d;
+      return html`${head ? html`<li class="hist-day">${d}</li>` : ""}
+      <li class="hist-item ${h.is_internal ? "internal" : ""}"><span class="hist-dot">${icon(EV_ICON[h.field] || "info")}</span>
+        <div class="hist-body"><div class="hist-title">${FIELD_LABEL[h.field] || h.field}${h.is_internal ? html` <span class="tag-internal">${icon("lock")} internal</span>` : ""}</div>
+          ${h.field !== "created" && (h.old_value || h.new_value) ? html`<div class="hist-change">
+            ${h.old_value ? html`<span class="hist-old">${h.field === "status" ? statusNames[h.old_value] || h.old_value : h.old_value}</span><span class="hist-arrow">→</span>` : ""}
+            ${h.new_value ? val(h, h.new_value) : html`<span class="muted">none</span>`}</div>` : ""}
+          ${h.reason ? html`<div class="hist-reason">“${h.reason}”</div>` : ""}
+          <div class="hist-meta">${who(h)} · <time title="${fmtDate(h.created_at)}">${clock(h.created_at)}</time></div></div></li>`;
+    })}</ol>`;
   }
 
   function composer() {
     const staffNote = t.can_comment_internal;
     return html`<form class="composer ${composeInternal ? "internal-mode" : ""}" id="composer">
-      ${staffNote ? html`<div class="seg" style="margin-bottom:10px" id="mode">
-        <button type="button" data-v="public" class="${composeInternal ? "" : "on"}">Reply to requester</button>
+      ${staffNote ? html`<div class="compose-modes" id="mode" role="tablist">
+        <button type="button" data-v="public" class="${composeInternal ? "" : "on"}">${icon("send")} Reply to requester</button>
         <button type="button" data-v="internal" class="${composeInternal ? "on" : ""}">${icon("lock")} Internal note</button></div>` : ""}
-      <label class="sr-only" for="cbody">Message</label>
-      <textarea id="cbody" name="body" rows="3" maxlength="8000" placeholder="${composeInternal ? "Visible to IT staff only…" : t.can_work ? "Write a reply the requester will see…" : "Add a comment or answer IT's question…"}"></textarea>
-      <div class="composer-foot">
-        ${composeInternal ? html`<span class="small" style="color:var(--internal)">${icon("lock")} The requester will not see this note.</span>` : html`<span class="small muted">The ${t.can_work ? "requester" : "assigned engineer"} will be notified.</span>`}
-        <span class="spacer"></span><span class="small muted">Ctrl + Enter to send</span>
-        <button class="btn primary" type="submit">${icon("send")} ${composeInternal ? "Add note" : "Send"}</button></div></form>`;
+      <div class="compose-box">
+        <label class="sr-only" for="cbody">Message</label>
+        <textarea id="cbody" name="body" rows="3" maxlength="8000" placeholder="${composeInternal ? "Write a note only the IT team will see…" : t.can_work ? `Write a reply to ${t.requester.full_name.split(" ")[0]}…` : "Type your message to the IT team…"}"></textarea>
+        <div class="composer-foot">
+          ${composeInternal ? html`<span class="small" style="color:var(--internal)">${icon("lock")} Hidden from the requester</span>` : html`<span class="small muted">${t.can_work ? t.requester.full_name : t.assignee ? t.assignee.full_name : "The IT team"} will be notified</span>`}
+          <span class="spacer"></span><span class="small muted hide-sm">Ctrl + Enter</span>
+          <button class="btn primary" type="submit">${icon("send")} ${composeInternal ? "Add note" : "Send"}</button></div>
+      </div></form>`;
   }
 
   function attachmentsCard(closed) {

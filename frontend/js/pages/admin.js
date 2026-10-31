@@ -119,6 +119,8 @@ export async function renderUsers(view) {
     openModal({ title: "Import employees from Excel", wide: true,
       subtitle: "Upload an .xlsx or .csv file. Required columns: employee ID (e.g. USER_ID) and name (e.g. USER_NAME). Optional: EMAIL, DEPARTMENT, DESIGNATION, PHONE, ROLE, PASSWORD.",
       body: html`<form id="imp" class="stack" style="gap:14px" novalidate>
+        <div class="notice">${icon("info")}<div>New to this? <a href="/static/assets/Employee_Upload_Template.xlsx" download>Download the Excel template</a>
+          — fill the first sheet and upload it here.</div></div>
         <div class="field"><span class="lbl">File</span>
           <div class="dropzone" id="imp-drop" tabindex="0" role="button">${icon("file")} <span id="imp-name">Choose or drop your Excel file here</span></div>
           <input type="file" id="imp-file" accept=".xlsx,.csv" hidden></div>
