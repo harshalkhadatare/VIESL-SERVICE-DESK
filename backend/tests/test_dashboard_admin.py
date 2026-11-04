@@ -113,8 +113,10 @@ def test_admin_creates_real_user(client):
     r = client.post("/api/v1/admin/users", json=body, headers=auth("admin"))
     assert r.status_code == 201 and r.json()["email"] == "suresh.patil@visioninfra.co.in" and not r.json()["is_demo"]
     assert client.post("/api/v1/admin/users", json=body, headers=auth("admin")).status_code == 422  # duplicate
-    weak = {**body, "email": "x@visioninfra.co.in", "employee_code": "E1043", "password": "weakpassword"}
-    assert client.post("/api/v1/admin/users", json=weak, headers=auth("admin")).status_code == 422
+    short = {**body, "email": "x@visioninfra.co.in", "employee_code": "E1043", "password": "1"}
+    assert client.post("/api/v1/admin/users", json=short, headers=auth("admin")).status_code == 201  # any length allowed
+    empty = {**body, "email": "z@visioninfra.co.in", "employee_code": "E1045", "password": ""}
+    assert client.post("/api/v1/admin/users", json=empty, headers=auth("admin")).status_code == 422
     bad_role = {**body, "email": "y@visioninfra.co.in", "employee_code": "E1044", "role": "it_lead"}
     assert client.post("/api/v1/admin/users", json=bad_role, headers=auth("admin")).status_code == 422
     login = client.post("/api/v1/auth/login", json={"email": "suresh.patil@visioninfra.co.in", "password": "Welcome@2026x"},

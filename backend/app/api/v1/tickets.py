@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, Form, Header, Query, Response, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -14,8 +15,7 @@ from app.core.database import get_db
 from app.core.errors import BusinessRuleError, Forbidden, NotFound
 from app.models import (
     Priority, SatisfactionRating, SLATracking, Ticket, TicketAttachment, TicketAttachmentBlob, TicketComment,
-    TicketHistory,
-    TicketStatus,
+    Department, TicketHistory, TicketStatus, TicketUserFlag, User,
 )
 from app.schemas.common import CodeRef, Page, Ref, UserRef
 from app.schemas.tickets import (
@@ -30,6 +30,7 @@ from app.services.attachments import MAX_FILES_PER_TICKET, path_for, store_uploa
 from app.services.audit import audit_p
 from app.services.sla import sla_snapshot
 from app.services.ticket_delete import can_delete_ticket, delete_ticket
+from app.services.ticket_flags import flags_for, is_new, mark_viewed, set_star
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
@@ -41,7 +42,7 @@ SORTS = {
 
 
 # ------------------------------------------------------------------ serialisers
-def _list_item(t: Ticket, now: datetime) -> TicketListItem:
+def _list_item(t: Ticket, now: datetime, flag=None, p: Principal | None = None) -> TicketListItem:
     sla_state = None
     if t.sla:
         if t.status_code in ("RESOLVED", "CLOSED", "CANCELLED"):
@@ -56,7 +57,8 @@ def _list_item(t: Ticket, now: datetime) -> TicketListItem:
         number=t.number, version=t.version, assignee_id=t.assignee_id, subject=t.subject, ticket_type=t.ticket_type,
         status=CodeRef(code=t.status.code, name=t.status.name),
         priority=CodeRef(code=t.priority.code, name=t.priority.name), category=t.category.name,
-        requester=t.requester.full_name, requester_code=t.requester.employee_code, department=t.department.name if t.department else None,
+        requester=t.requester.full_name, requester_code=t.requester.employee_code, requester_id=t.requester_id,
+        starred=bool(flag and flag.starred), is_new=bool(p and is_new(p, t, flag, now)), department=t.department.name if t.department else None,
         assignee=t.assignee.full_name if t.assignee else None,
         assignee_code=t.assignee.employee_code if t.assignee else None,
         support_group=t.support_group.name if t.support_group else None,
@@ -99,7 +101,7 @@ def _detail(db: Session, p: Principal, t: Ticket) -> TicketDetail:
 
 # ------------------------------------------------------------------ list / search
 def _filtered(db: Session, p: Principal, *, q, status, priority, category_id, group_id, assignee, scope,
-              sla, date_from, date_to, tz):
+              sla, date_from, date_to, tz, requester=None, starred=False, department_id=None):
     stmt = (select(Ticket).join(Priority, Priority.id == Ticket.priority_id)
             .outerjoin(SLATracking, SLATracking.ticket_id == Ticket.id)
             .where(ticket_visibility_clause(p)))
@@ -110,8 +112,29 @@ def _filtered(db: Session, p: Principal, *, q, status, priority, category_id, gr
     elif scope == "queue":
         stmt = stmt.where(Ticket.support_group_id.in_(p.group_ids or {-1}))
     if q:
-        like = f"%{q.strip()[:100]}%"
-        stmt = stmt.where(or_(Ticket.number.ilike(like), Ticket.subject.ilike(like)))
+        # one box finds tickets by number, subject, or the employee who raised it (ID, name, email),
+        # the IT administrator it is assigned to, or the department
+        term = q.strip()[:100]
+        like = f"%{term}%"
+        people = select(User.id).where(or_(User.full_name.ilike(like), User.employee_code.ilike(like),
+                                           User.email.ilike(like)))
+        depts = select(Department.id).where(Department.name.ilike(like))
+        stmt = stmt.where(or_(Ticket.number.ilike(like), Ticket.subject.ilike(like),
+                              Ticket.requester_id.in_(people), Ticket.assignee_id.in_(people),
+                              Ticket.department_id.in_(depts)))
+    if requester:
+        r = requester.strip()
+        # employee ID (code) first; "id:<n>" selects by internal user id
+        if r.lower().startswith("id:") and r[3:].isdigit():
+            rid = int(r[3:])
+        else:
+            rid = db.scalar(select(User.id).where(func.upper(User.employee_code) == r.upper())) or -1
+        stmt = stmt.where(Ticket.requester_id == rid)
+    if department_id:
+        stmt = stmt.where(Ticket.department_id == department_id)
+    if starred:
+        stmt = stmt.where(Ticket.id.in_(select(TicketUserFlag.ticket_id).where(
+            TicketUserFlag.user_id == p.id, TicketUserFlag.starred.is_(True))))
     if status == "open":
         stmt = stmt.where(Ticket.status_code.in_(select(TicketStatus.code).where(TicketStatus.is_open.is_(True))))
     elif status:
@@ -157,9 +180,12 @@ def list_filters(
     scope: Literal["all", "mine", "assigned", "queue"] = "all",
     sla: Literal["breached", "at_risk"] | None = None,
     date_from: date | None = None, date_to: date | None = None,
+    requester: str | None = Query(None, max_length=40, description="Employee ID (code) or user id of the requester"),
+    starred: bool = False, department_id: int | None = None,
 ) -> ListFilters:
     return dict(q=q, status=status, priority=priority, category_id=category_id, group_id=group_id,
-                assignee=assignee, scope=scope, sla=sla, date_from=date_from, date_to=date_to)
+                assignee=assignee, scope=scope, sla=sla, date_from=date_from, date_to=date_to,
+                requester=requester, starred=starred, department_id=department_id)
 
 
 @router.get("", response_model=Page[TicketListItem])
@@ -171,7 +197,9 @@ def list_tickets(f: ListFilters = Depends(list_filters), page: int = Query(1, ge
     order = SORTS.get(sort, SORTS["updated_desc"])
     rows = db.scalars(stmt.order_by(order, Ticket.id.desc()).offset((page - 1) * page_size).limit(page_size)).all()
     now = datetime.now(timezone.utc)
-    return Page(items=[_list_item(t, now) for t in rows], total=total, page=page, page_size=page_size)
+    flags = flags_for(db, p.id, [t.id for t in rows])
+    return Page(items=[_list_item(t, now, flags.get(t.id), p) for t in rows], total=total, page=page,
+                page_size=page_size)
 
 
 def _csv_safe(v) -> str:
@@ -230,7 +258,22 @@ def create_ticket(data: TicketCreate, p: Principal = Depends(require("ticket.cre
 # ------------------------------------------------------------------ detail + timeline
 @router.get("/{number}", response_model=TicketDetail)
 def get_ticket(number: str, p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
-    return _detail(db, p, get_visible_ticket(db, p, number))
+    t = get_visible_ticket(db, p, number)
+    flag = mark_viewed(db, p.id, t.id)       # opening a ticket clears its green "New" mark for you
+    d = _detail(db, p, t)
+    d.starred = flag.starred
+    return d
+
+
+class StarIn(BaseModel):
+    starred: bool
+
+
+@router.put("/{number}/star", tags=["Tickets"])
+def star_ticket(number: str, data: StarIn, p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """★ Star / un-star a ticket for yourself (shown in the list and the Starred tab)."""
+    t = get_visible_ticket(db, p, number)
+    return {"number": t.number, "starred": set_star(db, p.id, t.id, data.starred).starred}
 
 
 @router.delete("/{number}", status_code=204)

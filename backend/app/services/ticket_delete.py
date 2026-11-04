@@ -16,7 +16,7 @@ from app.core.errors import Forbidden
 from app.models import (
     AutomationExecutionLog, IdempotencyKey, KnowledgeArticle, Notification, SatisfactionRating, SLATracking, Ticket,
     TicketAssignment, TicketAttachment, TicketAttachmentBlob, TicketComment, TicketErpDetail, TicketHistory,
-    TicketRelationship, TicketWatcher,
+    TicketRelationship, TicketUserFlag, TicketWatcher,
 )
 from app.services.audit import audit_p
 from app.services.notifications import notify
@@ -69,6 +69,7 @@ def purge_tickets(db: Session, ids: list[int]) -> list[str]:
         delete(TicketHistory).where(TicketHistory.ticket_id.in_(ids)),
         delete(TicketAssignment).where(TicketAssignment.ticket_id.in_(ids)),
         delete(TicketWatcher).where(TicketWatcher.ticket_id.in_(ids)),
+        delete(TicketUserFlag).where(TicketUserFlag.ticket_id.in_(ids)),
         delete(TicketRelationship).where(or_(TicketRelationship.source_ticket_id.in_(ids),
                                              TicketRelationship.target_ticket_id.in_(ids))),
         delete(TicketErpDetail).where(TicketErpDetail.ticket_id.in_(ids)),

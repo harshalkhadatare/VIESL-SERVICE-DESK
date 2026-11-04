@@ -56,27 +56,45 @@ def _migrate() -> None:
     command.upgrade(cfg, "head")
 
 
+ADMIN_KEY = "system.bootstrap_admin_created"
+
+
 def _bootstrap_admin(db) -> None:
-    from sqlalchemy import select
+    """Create the first IT administrator from BOOTSTRAP_ADMIN_* — once only.
+
+    After it has been created (or found) once, it is never re-created, so deleting that account in
+    Users & roles is permanent. Exception: if the system has no active IT Administrator at all, it is
+    created again so nobody is locked out.
+    """
+    from sqlalchemy import func, select
 
     from app.core.config import get_settings
     from app.core.security import set_user_password
-    from app.models import Role, User, UserRole
+    from app.models import ApplicationSetting, Role, User, UserRole
     s = get_settings()
     email = s.bootstrap_admin_email.strip().lower()
     if not email or not s.bootstrap_admin_password:
         return
+    admin_role = db.scalar(select(Role.id).where(Role.code == "it_admin"))
+    flag = db.get(ApplicationSetting, ADMIN_KEY)
+
+    def remember():
+        if flag is None:
+            db.add(ApplicationSetting(key=ADMIN_KEY, value=email, description="First admin already created (do not edit)"))
+        db.commit()
+
     if db.scalar(select(User.id).where(User.email == email)):
-        return  # already created; the password variable can now be removed
-    if len(s.bootstrap_admin_password) < 6:
-        log.error("BOOTSTRAP_ADMIN_PASSWORD must be at least 6 characters — admin not created")
-        return
+        return remember()  # exists; the password variable can now be removed
+    active_admins = db.scalar(select(func.count()).select_from(UserRole).join(User, User.id == UserRole.user_id)
+                              .where(UserRole.role_id == admin_role, User.is_active.is_(True))) or 0
+    if flag is not None and active_admins:
+        return  # created before and deliberately deleted — don't bring it back
     u = User(employee_code="ADMIN-1", email=email, full_name=s.bootstrap_admin_name, timezone=s.app_timezone)
     set_user_password(u, s.bootstrap_admin_password)
     db.add(u)
     db.flush()
-    db.add(UserRole(user_id=u.id, role_id=db.scalar(select(Role.id).where(Role.code == "it_admin"))))
-    db.commit()
+    db.add(UserRole(user_id=u.id, role_id=admin_role))
+    remember()
     log.info("bootstrap administrator created: %s", email)
 
 

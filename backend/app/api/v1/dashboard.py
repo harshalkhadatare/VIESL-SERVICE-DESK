@@ -55,13 +55,29 @@ def global_search(q: str = Query(min_length=2, max_length=100), p: Principal = D
     """Global search over tickets the user may see and published knowledge articles."""
     from app.models import KnowledgeArticle
     like = f"%{q.strip()}%"
-    tickets = db.scalars(select(Ticket).where(ticket_visibility_clause(p),
-                                              (Ticket.number.ilike(like)) | (Ticket.subject.ilike(like)))
+    from sqlalchemy import func, or_
+
+    from app.models import User
+    people_q = select(User.id).where(or_(User.full_name.ilike(like), User.employee_code.ilike(like),
+                                         User.email.ilike(like)))
+    tickets = db.scalars(select(Ticket).where(ticket_visibility_clause(p), or_(
+        Ticket.number.ilike(like), Ticket.subject.ilike(like), Ticket.requester_id.in_(people_q)))
                          .order_by(Ticket.updated_at.desc()).limit(6)).all()
+    people = []
+    if p.can("ticket.work") or p.can("ticket.view_all"):
+        counts = db.execute(select(User.full_name, User.employee_code, func.count(Ticket.id))
+                            .join(Ticket, Ticket.requester_id == User.id)
+                            .where(User.id.in_(people_q), ticket_visibility_clause(p))
+                            .group_by(User.id, User.full_name, User.employee_code)
+                            .order_by(func.count(Ticket.id).desc()).limit(5)).all()
+        people = [{"name": n, "employee_code": c, "tickets": k} for n, c, k in counts]
     arts = db.scalars(select(KnowledgeArticle).where(KnowledgeArticle.status == "published",
                                                      (KnowledgeArticle.title.ilike(like)) |
                                                      (KnowledgeArticle.keywords.ilike(like))).limit(5)).all()
     return {
-        "tickets": [{"number": t.number, "subject": t.subject, "status": t.status.name} for t in tickets],
+        "tickets": [{"number": t.number, "subject": t.subject, "status": t.status.name,
+                     "requester": t.requester.full_name, "requester_code": t.requester.employee_code}
+                    for t in tickets],
+        "people": people,
         "articles": [{"id": a.id, "title": a.title} for a in arts],
     }

@@ -52,9 +52,10 @@ export async function render(view, [number]) {
       <div class="page-head" style="align-items:flex-start">
         <div style="min-width:0;flex:1">
           <div class="ticket-title"><span class="t-id" style="font-size:13.5px">${t.number}</span>${statusBadge(t.status)}${prioBadge(t.priority)}
-            ${t.is_demo ? html`<span class="pill demo">Demo data</span>` : ""}</div>
+            ${t.is_demo ? html`<span class="pill demo">Demo data</span>` : ""}
+            <button class="ticket-star ${t.starred ? "on" : ""}" id="star-btn" aria-pressed="${t.starred}" title="Star tickets to find them quickly in the ★ Starred tab">${icon("star")} ${t.starred ? "Starred" : "Star"}</button></div>
           <h1 style="margin-top:8px">${t.subject}</h1>
-          <div class="meta-line"><span>${icon("user")} ${nameId(t.requester)}</span><span>${icon("clock")} Raised ${fmtRelative(t.created_at)}</span>
+          <div class="meta-line"><span>${icon("user")} ${t.can_work && t.requester.employee_code ? html`<a href="#/tickets?scope=all&requester=${encodeURIComponent(t.requester.employee_code)}" title="All tickets raised by ${t.requester.full_name}">${nameId(t.requester)}</a>` : nameId(t.requester)}</span><span>${icon("clock")} Raised ${fmtRelative(t.created_at)}</span>
             <span>${icon("layers")} ${t.category.name}${t.subcategory ? ` › ${t.subcategory.name}` : ""}</span>
             <span>${t.ticket_type === "incident" ? "Incident" : "Service request"}</span></div>
         </div>
@@ -276,6 +277,11 @@ export async function render(view, [number]) {
   }
 
   function wire() {
+    $("#star-btn", view)?.addEventListener("click", async () => {
+      const on = !t.starred;
+      try { await api.put(`/tickets/${number}/star`, { starred: on }); t.starred = on; draw(); toast(on ? "Starred — find it in the ★ Starred tab." : "Star removed."); }
+      catch (ex) { errorToast(ex); }
+    });
     $$(".tabs [data-tab]", view).forEach((b) => b.addEventListener("click", () => { tab = b.dataset.tab; draw(); }));
     $("#mode", view)?.addEventListener("click", (e) => {
       const b = e.target.closest("button"); if (!b) return;

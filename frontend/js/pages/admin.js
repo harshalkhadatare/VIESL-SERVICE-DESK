@@ -32,7 +32,8 @@ export async function renderUsers(view) {
         <td>${u.roles.map((c) => html`<span class="pill" style="margin:1px 3px 1px 0">${roleName[c] || c}</span>`)}</td>
         <td class="hide-sm hide-md muted small">${u.last_login_at ? fmtRelative(u.last_login_at) : "Never"}</td>
         <td>${!u.is_active ? html`<span class="badge">Inactive</span>` : u.locked ? html`<span class="badge warn">Locked</span>` : html`<span class="badge ok">Active</span>`}</td>
-        <td style="text-align:right;white-space:nowrap"><button class="btn sm" data-edit="${u.id}">Edit</button>
+        <td style="text-align:right;white-space:nowrap"><a class="btn sm ghost" href="#/tickets?scope=all&requester=${encodeURIComponent(u.employee_code)}" title="All tickets raised by ${u.full_name}">${icon("ticket")} Tickets</a>
+          <button class="btn sm" data-edit="${u.id}">Edit</button>
           <button class="btn sm" data-roles="${u.id}">Roles</button>
           <button class="btn sm" data-pw="${u.id}">Password</button>
           ${u.id !== state.me.id ? html`<button class="btn sm ghost" data-active="${u.id}" data-on="${u.is_active}">${u.is_active ? "Deactivate" : "Activate"}</button>
@@ -68,13 +69,13 @@ export async function renderUsers(view) {
     openModal({ title: `Set password for ${u.full_name}`, subtitle: "The account is also unlocked and signed out on other devices.",
       body: html`<form id="pwf" class="stack" style="gap:12px" novalidate>
         <label class="field"><span class="lbl">New password<span class="req">*</span></span>
-          <input type="text" name="password" minlength="6" maxlength="200" autocomplete="off" required>
-          <div class="help">At least 6 characters. Tell the user privately.</div></label></form>`,
+          <input type="text" name="password" maxlength="200" autocomplete="off" required>
+          <div class="help">Any password. Tell the user privately.</div></label></form>`,
       actions: html`<button class="btn" data-close>Cancel</button><button class="btn primary" id="pw-save">Save password</button>`,
       onMount: (el, close) => $("#pw-save", el).addEventListener("click", async (e) => {
         const f = $("#pwf", el);
         const pw = f.password.value;
-        if (pw.length < 6) return showFieldErrors(f, { password: "At least 6 characters." });
+        if (!pw.length) return showFieldErrors(f, { password: "Enter a password." });
         busy(e.currentTarget);
         try { await api.post(`/admin/users/${u.id}/password`, { password: pw }); close(); toast(`Password updated for ${u.full_name}.`); load(); }
         catch (ex) { busy(e.currentTarget, false); showFieldErrors(f, ex.fieldErrors?.() || {}); errorToast(ex); }
@@ -156,7 +157,7 @@ export async function renderUsers(view) {
           <input type="file" id="imp-file" accept=".xlsx,.csv" hidden></div>
         <div class="form-grid">
           <label class="field"><span class="lbl">Starting password for everyone<span class="req">*</span></span>
-            <input type="text" name="default_password" minlength="6" maxlength="200" value="Viesl@2026" autocomplete="off">
+            <input type="text" name="default_password" maxlength="200" value="Viesl@2026" autocomplete="off">
             <div class="help">Used unless the file has a PASSWORD column. Employees can change it after signing in.</div></label>
           <label class="field"><span class="lbl">Role for imported people</span><select name="default_role">
             <option value="employee">Employee</option><option value="it_admin">IT Administrator</option></select>
@@ -180,7 +181,7 @@ export async function renderUsers(view) {
 
         async function send(dry, btn) {
           if (!file) { toast("Choose a file first.", "err"); return; }
-          if (f.default_password.value.length < 6) { showFieldErrors(f, { default_password: "At least 6 characters." }); return; }
+          if (!f.default_password.value.length) { showFieldErrors(f, { default_password: "Enter a starting password." }); return; }
           const fd = new FormData();
           fd.append("file", file); fd.append("default_password", f.default_password.value);
           fd.append("default_role", f.default_role.value); fd.append("update_existing", f.update_existing.checked ? "true" : "false");
@@ -232,8 +233,8 @@ export async function renderUsers(view) {
             <div class="choice" data-v="it_admin" role="radio" tabindex="0"><b>IT Administrator</b><span>Works and assigns all tickets</span></div>
           </div></div>
         <label class="field full"><span class="lbl">Temporary password<span class="req">*</span></span>
-          <input type="text" name="password" minlength="10" required autocomplete="off">
-          <div class="help">At least 10 characters with upper and lower case letters and a digit. Share it privately; the user can change it after signing in.</div></label>
+          <input type="text" name="password" required autocomplete="off">
+          <div class="help">Any password. Share it privately; the user can change it after signing in.</div></label>
         </form>`,
       actions: html`<button class="btn" data-close>Cancel</button><button class="btn primary" id="nu-save">Create user</button>`,
       onMount: (el, close) => {

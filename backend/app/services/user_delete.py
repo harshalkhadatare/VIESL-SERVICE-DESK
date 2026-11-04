@@ -16,7 +16,7 @@ from app.models import (
     Announcement, ApplicationSetting, AuditLog, AutomationRule, IdempotencyKey, KnowledgeArticle,
     KnowledgeArticleVersion, Notification, NotificationPreference, RefreshToken, Role, SatisfactionRating,
     SupportGroup, SupportGroupMember, Ticket, TicketAssignment, TicketAttachment, TicketAttachmentBlob,
-    TicketComment, TicketHistory, TicketRelationship, TicketWatcher, User, UserRole,
+    TicketComment, TicketHistory, TicketRelationship, TicketUserFlag, TicketWatcher, User, UserRole,
 )
 from app.services.audit import audit_p
 from app.services.ticket_delete import purge_tickets, remove_files
@@ -91,6 +91,7 @@ def delete_user(db: Session, p: Principal, uid: int) -> dict:
         update(KnowledgeArticle).where(KnowledgeArticle.reviewer_id == v).values(reviewer_id=None),
         # 5. the user's own rows, then the user
         delete(TicketWatcher).where(TicketWatcher.user_id == v),
+        delete(TicketUserFlag).where(TicketUserFlag.user_id == v),
         delete(Notification).where(Notification.user_id == v),
         delete(NotificationPreference).where(NotificationPreference.user_id == v),
         delete(IdempotencyKey).where(IdempotencyKey.user_id == v),

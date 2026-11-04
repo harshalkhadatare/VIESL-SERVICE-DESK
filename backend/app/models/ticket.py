@@ -164,6 +164,17 @@ class TicketWatcher(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
 
 
+class TicketUserFlag(Base):
+    """Per-person marks on a ticket: starred (★ in the list) and when they last opened it (drives the green 'New')."""
+    __tablename__ = "ticket_user_flags"
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    starred: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
+    starred_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    viewed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    __table_args__ = (Index("ix_ticket_user_flags_user_starred", "user_id", "starred"),)
+
+
 class TicketRelationship(Base):
     __tablename__ = "ticket_relationships"
     __table_args__ = (

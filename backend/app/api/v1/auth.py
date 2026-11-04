@@ -32,7 +32,7 @@ class LoginIn(StrictIn):
 
 class ChangePasswordIn(StrictIn):
     current_password: str = Field(max_length=200)
-    new_password: str = Field(min_length=10, max_length=200)
+    new_password: str = Field(min_length=1, max_length=200)
 
 
 class TokenOut(BaseModel):

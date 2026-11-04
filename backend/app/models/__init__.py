@@ -10,7 +10,7 @@ from app.models.catalog import (  # noqa: F401
 from app.models.ticket import (  # noqa: F401
     IdempotencyKey, SatisfactionRating, SLATracking, Ticket, TicketAssignment, TicketAttachment, TicketAttachmentBlob,
     TicketComment,
-    TicketErpDetail, TicketHistory, TicketRelationship, TicketSequence, TicketWatcher,
+    TicketErpDetail, TicketHistory, TicketRelationship, TicketSequence, TicketUserFlag, TicketWatcher,
 )
 from app.models.platform import (  # noqa: F401
     Announcement, ApplicationSetting, AuditLog, AutomationExecutionLog, AutomationRule, KnowledgeArticle,

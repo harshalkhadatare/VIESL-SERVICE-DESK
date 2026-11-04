@@ -207,7 +207,7 @@ class UserCreateIn(StrictIn):
     job_title: str | None = Field(None, max_length=120)
     phone: str | None = Field(None, max_length=30)
     role: str = Field(pattern="^(employee|it_admin)$")
-    password: str = Field(min_length=10, max_length=200)
+    password: str = Field(min_length=1, max_length=200)
 
 
 @router.post("/admin/users", response_model=UserAdminOut, status_code=201, tags=["Administration"])
@@ -271,11 +271,11 @@ def user_delete(uid: int, p: Principal = Depends(require("user.manage")), db: Se
 
 
 class ResetPasswordIn(StrictIn):
-    password: str = Field(min_length=6, max_length=200)
+    password: str = Field(min_length=1, max_length=200)
 
 
 @router.post("/admin/users/import", tags=["Administration"])
-async def import_users(file: UploadFile = File(...), default_password: str = Form(..., min_length=6, max_length=200),
+async def import_users(file: UploadFile = File(...), default_password: str = Form(..., min_length=1, max_length=200),
                        default_role: str = Form("employee", pattern="^(employee|it_admin)$"),
                        update_existing: bool = Form(False), dry_run: bool = Form(True),
                        p: Principal = Depends(require("user.manage")), db: Session = Depends(get_db)):

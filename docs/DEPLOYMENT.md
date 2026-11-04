@@ -14,7 +14,7 @@ uvicorn app.main:app --reload --port 8000
 Open http://localhost:8000 — demo accounts are listed on the sign-in page (development only).
 API docs: http://localhost:8000/api/docs
 
-Run tests: `cd backend && python -m pytest` (uses a throwaway SQLite DB; 141 tests).
+Run tests: `cd backend && python -m pytest` (uses a throwaway SQLite DB; 145 tests).
 
 ## B. Development with SQL Server (Docker Compose)
 ```bash
@@ -116,7 +116,8 @@ Users, tickets, comments, notifications and attachments (stored inside the datab
 
 4. **Redeploy** (Deployments → ⋯ → Redeploy). On start-up the app creates all tables and reference data,
    then your administrator account.
-5. Sign in with the bootstrap email/password, change the password (your name → Change password), then add
+5. The bootstrap administrator is created **once**; deleting it later in Users & roles is permanent.
+   Sign in with the bootstrap email/password, change the password (your name → Change password), then add
    colleagues under **Users & roles → Add user**. You can delete `BOOTSTRAP_ADMIN_PASSWORD` afterwards.
 
 How it works on Vercel

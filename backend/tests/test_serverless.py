@@ -51,3 +51,46 @@ def test_cron_endpoint_requires_secret(client, monkeypatch):
     assert client.get("/api/v1/internal/jobs", headers={"Authorization": "Bearer wrong"}).status_code == 401
     r = client.get("/api/v1/internal/jobs", headers={"Authorization": "Bearer s3cret-value"})
     assert r.status_code == 200 and "sla" in r.json()["ran"]
+
+
+def test_bootstrap_admin_is_created_once_and_stays_deleted(monkeypatch):
+    """Deleting the BOOTSTRAP_ADMIN account must be permanent (it used to come back on the next cold start)."""
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    from sqlalchemy import select
+
+    from app.core.config import get_settings
+    from app.models import User
+    from tests.conftest import SessionLocal
+    root = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location("vindex_boot", root / "api" / "index.py")
+    src = (root / "api" / "index.py").read_text()
+    ns: dict = {"__name__": "vindex_boot", "__file__": str(root / "api" / "index.py")}
+    # load only the helper, not the module-level bootstrap
+    exec(compile(src.split("\ndef _fingerprint")[0].split("log = logging.getLogger")[0], "index_head", "exec"), ns)
+    exec(compile("import logging\nlog = logging.getLogger('t')\n" + src[src.index("ADMIN_KEY ="):src.index("\ndef _fingerprint")],
+                 "index_admin", "exec"), ns)
+    s = get_settings()
+    monkeypatch.setattr(s, "bootstrap_admin_email", "boot.admin@vision.test")
+    monkeypatch.setattr(s, "bootstrap_admin_password", "x")
+    monkeypatch.setattr(s, "bootstrap_admin_name", "Boot Admin")
+    with SessionLocal() as db:
+        ns["_bootstrap_admin"](db)
+        u = db.scalar(select(User).where(User.email == "boot.admin@vision.test"))
+        assert u is not None
+        uid = u.id
+    from app.services.user_delete import delete_user
+
+    from tests.conftest import EMAILS, user_id
+
+    class P:  # minimal principal for the service
+        id = user_id(EMAILS["admin"])
+        ip = request_id = None
+        user = type("U", (), {"email": "test", "label": "test"})()
+    with SessionLocal() as db:
+        delete_user(db, P(), uid)
+    with SessionLocal() as db:
+        ns["_bootstrap_admin"](db)      # next "cold start"
+        assert db.scalar(select(User).where(User.email == "boot.admin@vision.test")) is None

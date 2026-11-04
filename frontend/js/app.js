@@ -78,7 +78,7 @@ function renderShell() {
         <div class="company-title" title="${COMPANY}">${COMPANY}</div>
         <div class="search" role="search">
           ${icon("search")}
-          <input type="search" id="global-search" placeholder="Search tickets and articles…  ( / )" autocomplete="off"
+          <input type="search" id="global-search" placeholder="${isStaff() ? "Search tickets, employee ID or name…  ( / )" : "Search tickets and articles…  ( / )"}" autocomplete="off"
             aria-label="Search tickets and knowledge articles">
           <div class="search-results" id="search-results" hidden></div>
         </div>
@@ -136,10 +136,10 @@ function setupUserMenu() {
 
 function changePassword() {
   openModal({
-    title: "Change password", subtitle: "At least 10 characters with upper and lower case letters and a digit.",
+    title: "Change password", subtitle: "Choose any password you like.",
     body: html`<form id="pw-form" class="stack" style="gap:14px" novalidate>
       <label class="field"><span class="lbl">Current password</span><input type="password" name="current_password" autocomplete="current-password" required></label>
-      <label class="field"><span class="lbl">New password</span><input type="password" name="new_password" autocomplete="new-password" minlength="10" required></label>
+      <label class="field"><span class="lbl">New password</span><input type="password" name="new_password" autocomplete="new-password" required></label>
       <label class="field"><span class="lbl">Confirm new password</span><input type="password" name="confirm" autocomplete="new-password" required></label></form>`,
     actions: html`<button class="btn" data-close>Cancel</button><button class="btn primary" id="pw-save">Update password</button>`,
     onMount: (el, close) => {
@@ -165,10 +165,12 @@ function setupSearch() {
     if (q.length < 2) return hide();
     try {
       const r = await api.get("/dashboard/search", { q });
-      const none = !r.tickets.length && !r.articles.length;
+      const none = !r.tickets.length && !r.articles.length && !(r.people || []).length;
       mount(box, none ? html`<div class="muted small" style="padding:12px">No matches for “${q}”.</div>` : html`
+        ${(r.people || []).length ? html`<div class="group-label">Employees — all their tickets</div>${r.people.map((m) => html`
+          <a href="#/tickets?scope=all&requester=${encodeURIComponent(m.employee_code)}">${icon("user")}<span style="flex:1;min-width:0">${m.name} <span class="emp-id">${m.employee_code}</span></span><span class="muted small">${m.tickets} ticket${m.tickets === 1 ? "" : "s"}</span></a>`)}` : ""}
         ${r.tickets.length ? html`<div class="group-label">Tickets</div>${r.tickets.map((t) => html`
-          <a href="#/tickets/${t.number}"><span class="t-id">${t.number}</span><span style="flex:1;min-width:0" class="t-subject">${t.subject}</span><span class="muted small">${t.status}</span></a>`)}` : ""}
+          <a href="#/tickets/${t.number}"><span class="t-id">${t.number}</span><span style="flex:1;min-width:0" class="t-subject">${t.subject}${t.requester ? html`<span class="t-sub2">${t.requester}${t.requester_code ? ` (${t.requester_code})` : ""}</span>` : ""}</span><span class="muted small">${t.status}</span></a>`)}` : ""}
         ${r.articles.length ? html`<div class="group-label">Knowledge base</div>${r.articles.map((a) => html`
           <a href="#/kb/${a.id}">${icon("book")}<span>${a.title}</span></a>`)}` : ""}`);
       box.hidden = false;

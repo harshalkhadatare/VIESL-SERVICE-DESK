@@ -129,6 +129,9 @@ class TicketListItem(BaseModel):
     category: str
     requester: str
     requester_code: str | None = None
+    requester_id: int | None = None
+    starred: bool = False
+    is_new: bool = False
     department: str | None
     assignee: str | None
     assignee_code: str | None = None
@@ -223,6 +226,7 @@ class TicketDetail(BaseModel):
     can_comment_internal: bool
     can_rate: bool
     can_delete: bool = False
+    starred: bool = False
     allowed_transitions: list[CodeRef]
 
 

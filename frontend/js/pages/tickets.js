@@ -9,15 +9,18 @@ const STAFF_TABS = [
   ["unassigned", "Unassigned", { scope: "all", status: "open", assignee: "unassigned" }],
   ["all", "All tickets", { scope: "all" }],
   ["mine", "Raised by me", { scope: "mine" }],
+  ["starred", "★ Starred", { scope: "all", starred: "true" }],
 ];
 const EMP_TABS = [
   ["open", "Open", { scope: "mine", status: "open" }],
   ["waiting", "Awaiting my reply", { scope: "mine", status: "PENDING_EMPLOYEE" }],
   ["resolved", "Resolved", { scope: "mine", status: "RESOLVED" }],
   ["all", "All my tickets", { scope: "mine" }],
+  ["starred", "★ Starred", { scope: "mine", starred: "true" }],
 ];
 const VIEWER_TABS = [["all", "All tickets", { scope: "all", status: "open" }], ["mine", "Raised by me", { scope: "mine" }]];
-const KEYS = ["q", "scope", "status", "priority", "category_id", "group_id", "assignee", "sla", "sort", "page"];
+const KEYS = ["q", "scope", "status", "priority", "category_id", "group_id", "assignee", "sla", "sort", "page",
+  "requester", "starred", "department_id"];
 
 export async function render(view, _p, query) {
   const staff = isStaff();
@@ -26,17 +29,19 @@ export async function render(view, _p, query) {
   const f = hasExplicit ? { scope: "all", ...query } : { ...tabs[0][2] };
   if (!staff && !can("ticket.view_all") && !can("ticket.view_department")) f.scope = "mine";
   const activeTab = () => tabs.find(([, , p]) => Object.keys(p).every((k) => String(f[k] ?? "") === String(p[k]))
-    && ["priority", "category_id", "sla", "q", "group_id"].every((k) => !f[k]) && (p.assignee || !f.assignee))?.[0];
+    && ["priority", "category_id", "sla", "q", "group_id", "requester", "department_id"].every((k) => !f[k])
+    && (p.assignee || !f.assignee) && (p.starred || !f.starred))?.[0];
 
   const canAssign = can("ticket.assign");
-  const cols = canAssign ? 9 : 8;
+  const cols = canAssign ? 10 : 9;
   let admins = [];
-  const [cat, groups] = await Promise.all([catalog(), staff || can("dashboard.ops") ? supportGroups() : [],
+  const [cat, groups, depts] = await Promise.all([catalog(), staff || can("dashboard.ops") ? supportGroups() : [],
+    staff ? api.get("/departments").catch(() => []) : [],
     canAssign ? api.get("/it-admins").then((a) => { admins = a; }).catch(() => {}) : null]);
   mount(view, html`
     <div class="page-head">
       <div><h1>${staff || can("ticket.view_all") ? "Tickets" : "My tickets"}</h1>
-        <div class="sub">${canAssign ? "Use the ⋮ menu on any row to assign a ticket to an IT administrator." : "Track the status of everything you have raised."}</div></div>
+        <div class="sub">${canAssign ? "Search by employee ID or name, click a requester to see all their tickets, ★ to star, ⋮ to assign. Green rows are new tickets you haven't opened yet." : "Track the status of everything you have raised. Click ★ to star a ticket."}</div></div>
       <div class="row">
         ${can("report.export") ? html`<button class="btn" id="exp">${icon("download")} Export</button>` : ""}
         <a class="btn primary" href="#/tickets/new">${icon("plus")} Raise a ticket</a></div>
@@ -44,7 +49,9 @@ export async function render(view, _p, query) {
     <div class="card">
       <div class="tabs" role="tablist" id="tabs">${tabs.map(([k, l]) => html`<button role="tab" data-tab="${k}">${l}</button>`)}</div>
       <div class="toolbar">
-        <div class="search-inline">${icon("search")}<input type="search" id="f-q" placeholder="Ticket number or subject" value="${f.q || ""}" aria-label="Search tickets"></div>
+        <div class="search-inline ${staff ? "wide" : ""}">${icon("search")}<input type="search" id="f-q" placeholder="${staff ? "Search ticket no., subject, employee ID, name, email…" : "Ticket number or subject"}" value="${f.q || ""}" aria-label="Search tickets"></div>
+        ${staff ? html`<div class="search-inline emp-filter" title="Show every ticket raised by one employee">${icon("user")}<input type="search" id="f-req" placeholder="Employee ID" value="${f.requester || ""}" aria-label="Raised by employee ID"></div>
+          ${depts.length ? html`<select id="f-dept" aria-label="Department"><option value="">Any department</option>${depts.map((d) => html`<option value="${d.id}">${d.name}</option>`)}</select>` : ""}` : ""}
         <select id="f-status" aria-label="Status"><option value="">Any status</option><option value="open">All open</option>
           ${cat.statuses.map((s) => html`<option value="${s.code}">${s.name}</option>`)}</select>
         <select id="f-priority" aria-label="Priority"><option value="">Any priority</option>
@@ -58,15 +65,16 @@ export async function render(view, _p, query) {
         <select id="f-sort" aria-label="Sort"><option value="updated_desc">Recently updated</option><option value="created_desc">Newest</option>
           <option value="created_asc">Oldest</option><option value="priority">Priority</option><option value="due">SLA due soonest</option></select>
       </div>
+      <div id="req-chip"></div>
       <div class="table-wrap"><table class="data ${canAssign ? "compact-admin" : ""}">
-        <thead><tr><th>Ticket</th><th>Subject</th><th>Status</th><th>Priority</th>
+        <thead><tr><th class="star-col"><span class="sr-only">Starred</span></th><th>Ticket</th><th>Subject</th><th>Status</th><th>Priority</th>
           <th class="hide-sm">${staff ? "Requester" : "Category"}</th><th class="hide-sm">${staff ? "Assignee" : "Assigned to"}</th>
           <th class="hide-sm">SLA</th><th class="hide-sm ${canAssign ? "hide-md" : ""}">Updated</th>${canAssign ? html`<th class="row-menu"><span class="sr-only">Actions</span></th>` : ""}</tr></thead>
         <tbody id="rows">${skeletonRows(8, cols)}</tbody></table></div>
       <div class="pager" id="pager"></div>
     </div>`);
 
-  const sel = { status: "#f-status", priority: "#f-priority", category_id: "#f-category", group_id: "#f-group", sla: "#f-sla", sort: "#f-sort" };
+  const sel = { status: "#f-status", priority: "#f-priority", category_id: "#f-category", group_id: "#f-group", sla: "#f-sla", sort: "#f-sort", department_id: "#f-dept" };
   for (const [k, s] of Object.entries(sel)) { const el = $(s, view); if (el && f[k]) el.value = f[k]; }
 
   const syncTabs = () => { const a = activeTab(); $$("#tabs button", view).forEach((b) => b.classList.toggle("on", b.dataset.tab === a)); };
@@ -84,12 +92,19 @@ export async function render(view, _p, query) {
       const page = Number(f.page || 1);
       const r = await api.get("/tickets", { ...Object.fromEntries(KEYS.filter((k) => k !== "page").map((k) => [k, f[k]])), page, page_size: 25 });
       if (!$("#rows", view)?.isConnected) return;
+      mount($("#req-chip", view), f.requester ? html`<div class="filter-chip-bar">${icon("user")}
+        Showing tickets raised by <b>${r.items[0]?.requester_code?.toUpperCase() === f.requester.toUpperCase() ? r.items[0].requester : "employee"}</b>
+        <span class="emp-id">${f.requester}</span> · ${r.total} ticket${r.total === 1 ? "" : "s"}
+        <button class="btn sm ghost" id="req-clear">${icon("x")} Clear</button></div>` : "");
+      $("#req-clear", view)?.addEventListener("click", () => { delete f.requester; $("#f-req", view).value = ""; f.page = 1; load(); });
       mount($("#rows", view), r.items.length ? html`${r.items.map((t) => html`
-        <tr class="clickable" data-href="#/tickets/${t.number}" tabindex="0">
-          <td><span class="t-id">${t.number}</span></td>
+        <tr class="clickable ${t.is_new ? "row-new" : ""}" data-href="#/tickets/${t.number}" tabindex="0">
+          <td class="star-col"><button class="star-btn ${t.starred ? "on" : ""}" data-star="${t.number}" aria-pressed="${t.starred}"
+            title="${t.starred ? "Starred — click to remove" : "Star this ticket"}" aria-label="Star ${t.number}">${icon("star")}</button></td>
+          <td><span class="t-id">${t.number}</span>${t.is_new ? html`<span class="new-pill">New</span>` : ""}</td>
           <td><span class="t-subject" title="${t.subject}">${t.subject}</span><span class="t-sub2">${staff ? t.category : t.ticket_type === "incident" ? "Incident" : "Service request"}${canAssign ? html` · ${fmtRelative(t.updated_at)}` : ""}</span></td>
           <td>${statusBadge(t.status)}</td><td>${prioBadge(t.priority.code)}</td>
-          <td class="hide-sm">${staff ? html`<span class="name-id">${t.requester}${empId(t.requester_code)}</span><div class="t-sub2">${t.department || ""}</div>` : t.category}</td>
+          <td class="hide-sm">${staff ? html`<a class="req-link name-id" data-req="${t.requester_code || ""}" title="Show all tickets raised by ${t.requester}">${t.requester}${empId(t.requester_code)}</a><div class="t-sub2">${t.department || ""}</div>` : t.category}</td>
           <td class="hide-sm">${t.assignee ? html`<span class="name-id">${t.assignee}${empId(t.assignee_code)}</span>` : html`<span class="muted">Unassigned</span>`}</td>
           <td class="hide-sm" title="${t.resolution_due_at ? "Due " + fmtDate(t.resolution_due_at) : ""}">${slaBadge(t.sla_state)}</td>
           <td class="hide-sm muted ${canAssign ? "hide-md" : ""}" title="${fmtDate(t.updated_at)}">${fmtRelative(t.updated_at)}</td>
@@ -99,7 +114,7 @@ export async function render(view, _p, query) {
         html`<tr><td colspan="${cols}">${emptyState("No tickets match", "Try a different tab or clear the filters.", "inbox")}</td></tr>`);
       rows = Object.fromEntries(r.items.map((t) => [t.number, t]));
       $$("tr[data-href]", view).forEach((tr) => {
-        tr.addEventListener("click", (e) => { if (!e.target.closest(".row-menu")) location.hash = tr.dataset.href; });
+        tr.addEventListener("click", (e) => { if (!e.target.closest(".row-menu, .star-col, .req-link")) location.hash = tr.dataset.href; });
         tr.addEventListener("keydown", (e) => { if (e.key === "Enter") location.hash = tr.dataset.href; });
       });
       const pages = Math.max(1, Math.ceil(r.total / r.page_size));
@@ -117,13 +132,36 @@ export async function render(view, _p, query) {
     KEYS.forEach((k) => { if (k !== "sort") delete f[k]; });
     Object.assign(f, preset);
     for (const [k, s] of Object.entries(sel)) { const el = $(s, view); if (el && k !== "sort") el.value = f[k] || ""; }
-    $("#f-q", view).value = "";
+    $("#f-q", view).value = ""; if ($("#f-req", view)) $("#f-req", view).value = "";
     load();
   }));
   for (const [k, s] of Object.entries(sel)) {
     $(s, view)?.addEventListener("change", (e) => { f[k] = e.target.value; f.page = 1; load(); });
   }
   $("#f-q", view).addEventListener("input", debounce((e) => { f.q = e.target.value.trim(); f.page = 1; load(); }, 300));
+  $("#f-req", view)?.addEventListener("input", debounce((e) => { f.requester = e.target.value.trim(); f.page = 1; load(); }, 350));
+  // ★ star toggle and "click a requester to see all their tickets"
+  const onRowAction = async (e) => {
+    const star = e.target.closest("[data-star]");
+    if (star) {
+      e.stopPropagation();
+      const on = !star.classList.contains("on");
+      star.classList.toggle("on", on); star.setAttribute("aria-pressed", on);
+      try { await api.put(`/tickets/${star.dataset.star}/star`, { starred: on }); if (f.starred && !on) load(); }
+      catch (ex) { star.classList.toggle("on", !on); errorToast(ex); }
+      return;
+    }
+    const req = e.target.closest("[data-req]");
+    if (req && req.dataset.req) {
+      e.stopPropagation();
+      KEYS.forEach((k) => { if (!["sort"].includes(k)) delete f[k]; });
+      Object.assign(f, { scope: "all", requester: req.dataset.req });
+      for (const [k, s2] of Object.entries(sel)) { const el = $(s2, view); if (el && k !== "sort") el.value = ""; }
+      $("#f-q", view).value = ""; if ($("#f-req", view)) $("#f-req", view).value = req.dataset.req;
+      load();
+    }
+  };
+  view.addEventListener("click", onRowAction, true);
   $("#exp", view)?.addEventListener("click", async () => {
     try { await api.download("/tickets/export.csv", Object.fromEntries(KEYS.filter((k) => k !== "page" && k !== "sort").map((k) => [k, f[k]])), "tickets.csv"); toast("Export downloaded."); }
     catch (e) { errorToast(e); }
@@ -209,6 +247,7 @@ export async function render(view, _p, query) {
   return () => {
     closeMenu();
     view.removeEventListener("click", onKebab);
+    view.removeEventListener("click", onRowAction, true);
     document.removeEventListener("click", outside);
   };
 }

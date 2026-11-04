@@ -88,7 +88,8 @@ def test_import_rejects_bad_files_and_non_admins(client):
     assert imp(client, b"hello", name="notes.txt").status_code == 422
     r = imp(client, xlsx([("A", "B"), (1, 2)]))
     assert r.status_code == 422 and "columns" in r.json()["error"]["message"]
-    assert imp(client, xlsx([("USER_ID", "USER_NAME"), (1, "X Y")]), pw="123").status_code == 422
+    assert imp(client, xlsx([("USER_ID", "USER_NAME"), (1, "X Y")]), pw="1").status_code == 200   # any length
+    assert imp(client, xlsx([("USER_ID", "USER_NAME"), (1, "X Y")]), pw="").status_code == 422
 
 
 def test_edit_user_adds_real_email(client):

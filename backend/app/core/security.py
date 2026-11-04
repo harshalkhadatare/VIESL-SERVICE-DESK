@@ -54,16 +54,8 @@ def needs_rehash(password_hash: str) -> bool:
 
 
 def validate_password_strength(password: str) -> list[str]:
-    problems = []
-    if len(password) < 10:
-        problems.append("at least 10 characters")
-    if not any(c.isupper() for c in password):
-        problems.append("an uppercase letter")
-    if not any(c.islower() for c in password):
-        problems.append("a lowercase letter")
-    if not any(c.isdigit() for c in password):
-        problems.append("a digit")
-    return problems
+    """Owner's decision (04 Nov 2026): no length or complexity rules — any password of 1+ characters."""
+    return [] if password else ["at least 1 character"]
 
 
 def create_access_token(user_id: int, token_version: str | None = None) -> tuple[str, int]:

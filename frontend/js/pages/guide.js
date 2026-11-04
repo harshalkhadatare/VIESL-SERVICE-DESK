@@ -28,6 +28,7 @@ function sections(staff) {
     { id: "track", icon: "ticket", title: "Track your ticket", body: html`
       <p>Open <b>My tickets</b> to see everything you raised. Click a ticket to see its details and messages.
         The <b>progress bar</b> at the top shows how far it has got: Submitted → Assigned → In progress → Resolved → Closed.
+        Click the <b>★</b> next to any ticket to star it — starred tickets are collected in the <b>★ Starred</b> tab.
         The coloured label shows the exact status:</p>
       <dl class="g-status">
         <dt>${S("SUBMITTED", "Submitted")}</dt><dd>Received. The IT team will pick it up shortly.</dd>
@@ -86,6 +87,8 @@ function sections(staff) {
       ${steps([
         html`Open <b>Tickets</b>. Use the tabs: <i>All open</i>, <i>Assigned to me</i>, <i>Unassigned</i>.`,
         html`The <b>Dashboard</b> shows live numbers (open, unassigned, overdue…) — click any number to see those tickets.`,
+        html`<b>Light-green rows marked NEW</b> are tickets raised in the last 3 days that you haven't opened yet.`,
+        html`<b>Find an employee's tickets:</b> type their Employee ID, name or email in the search box (or the <i>Employee ID</i> box), or click the requester's name in the list. In <i>Users & roles</i>, the <b>Tickets</b> button does the same.`,
         html`Click <b>⋮</b> on any row to assign it to an IT administrator (or unassign it).`,
         html`Open a ticket and click <b>Accept & start</b> to take it, then <b>Update status</b> as you work.`,
         html`Use <b>Internal note</b> for notes the employee must not see. Use <b>Reply to requester</b> to talk to them — the <b>Quick reply</b> buttons fill in common answers for you.`,
