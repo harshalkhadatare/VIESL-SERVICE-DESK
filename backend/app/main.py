@@ -82,7 +82,7 @@ app.add_middleware(StripFunctionPrefix)
 app.add_middleware(
     CORSMiddleware, allow_origins=settings.cors_origin_list, allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Requested-With"],
+    allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Requested-With", "X-Device-Id"],
 )
 
 INDEX_CACHE = "public, max-age=0, s-maxage=31536000, must-revalidate"
@@ -118,8 +118,12 @@ async def _send_queued_emails() -> None:
 async def request_context(request: Request, call_next):
     rid = request.headers.get("X-Request-ID")
     request.state.request_id = rid if rid and len(rid) <= 36 else str(uuid.uuid4())
+    from app.api.deps import client_ip
+    from app.core.request_ctx import clean_device_id, describe_user_agent, device_id_var, user_agent_var
+    device_id_var.set(clean_device_id(request.headers.get("X-Device-Id")))
+    user_agent_var.set((describe_user_agent(request.headers.get("User-Agent")) or "")[:160] or None)
     if request.url.path.startswith("/api/"):
-        key = f"api:{request.client.host if request.client else 'x'}"
+        key = f"api:{client_ip(request) or 'x'}"
         if not api_limiter.allow(key, 600, 60):
             return JSONResponse(status_code=429, content={"error": {
                 "code": "rate_limited", "message": "Too many requests.", "details": [],

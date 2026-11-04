@@ -97,7 +97,7 @@ def test_login_events_are_audited(client):
     login(client, EMAILS["infra_admin"])
     with SessionLocal() as db:
         outcomes = {a.outcome for a in db.scalars(select(AuditLog).where(
-            AuditLog.action == "auth.login", AuditLog.actor_label == EMAILS["infra_admin"]))}
+            AuditLog.action == "auth.login", AuditLog.actor_label.like("Rahul Kulkarni (%")))}
     assert {"success", "failure"} <= outcomes
 
 

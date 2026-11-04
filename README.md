@@ -34,7 +34,7 @@ Only two roles exist: **Employee** (raise and track own tickets) and **IT Admini
 manage everything). Add people under *Users & roles → Add user*, or upload an Excel sheet (USER_ID, USER_NAME, optional
 EMAIL/DEPARTMENT/…) with *Import from Excel*. Employees sign in with their **Employee ID** or email.
 
-Tests: `cd backend && python -m pytest` → **152 passed** (auth, two-role matrix, lifecycle, assignment, SLA, email, attachments, exports, audit).
+Tests: `cd backend && python -m pytest` → **155 passed** (auth, two-role matrix, lifecycle, assignment, SLA, email, attachments, exports, audit).
 **Free hosting with permanent data:** Vercel + Neon PostgreSQL — step by step in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#g-vercel--free-neon-postgresql-permanent-data-no-cost).
 Databases supported: SQLite (local), PostgreSQL (Neon / any), Microsoft SQL Server. Tests pass on SQLite and PostgreSQL.
 

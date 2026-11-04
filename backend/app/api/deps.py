@@ -35,7 +35,19 @@ class Principal:
 
 
 def client_ip(request: Request) -> str | None:
-    # Behind a reverse proxy, run uvicorn with --proxy-headers --forwarded-allow-ips=<proxy ip>
+    """The user's public IP address.
+
+    On Vercel every request passes through Vercel's edge, which puts the visitor's real address in
+    x-vercel-forwarded-for / x-real-ip (Vercel overwrites these, so users cannot fake them). On your own server
+    behind Nginx/IIS, run uvicorn with --proxy-headers --forwarded-allow-ips=<proxy ip>; on the office network
+    without a proxy this is the PC's own LAN address.
+    """
+    import os
+    if os.environ.get("VERCEL"):
+        for h in ("x-vercel-forwarded-for", "x-real-ip", "x-forwarded-for"):
+            v = request.headers.get(h)
+            if v:
+                return v.split(",")[0].strip()[:45]
     return request.client.host if request.client else None
 
 

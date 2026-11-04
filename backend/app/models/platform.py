@@ -131,6 +131,8 @@ class AuditLog(Base):
     entity_id: Mapped[str | None] = mapped_column(Unicode(40))
     detail: Mapped[str | None] = mapped_column(Unicode(2000))
     ip_address: Mapped[str | None] = mapped_column(Unicode(45))
+    device_id: Mapped[str | None] = mapped_column(Unicode(40), index=True)   # browser's permanent device ID
+    device: Mapped[str | None] = mapped_column(Unicode(160))                 # e.g. "Chrome 130 · Windows 10/11"
     request_id: Mapped[str | None] = mapped_column(Unicode(36))
     outcome: Mapped[str] = mapped_column(Unicode(10), default="success", nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)

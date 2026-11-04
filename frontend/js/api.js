@@ -21,12 +21,23 @@ export class ApiError extends Error {
   }
 }
 
+// A random ID this browser creates once and keeps, so the audit log can tell devices apart
+// (shown as e.g. PC-7F3A9C). It identifies the browser on a PC — websites cannot read a PC's hardware ID.
+export const DEVICE_ID = (() => {
+  const make = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[b % 32]).join("");
+  try {
+    let id = localStorage.getItem("sd-device-id");
+    if (!id || !/^[A-Za-z0-9]{8,32}$/.test(id)) { id = make(); localStorage.setItem("sd-device-id", id); }
+    return id;
+  } catch { return make(); }   // storage blocked: one ID per visit
+})();
+
 export function setSessionLostHandler(fn) { onSessionLost = fn; }
 export function hasToken() { return !!accessToken; }
 
 async function doRefresh() {
   const r = await fetch(`${BASE}/auth/refresh`, {
-    method: "POST", credentials: "same-origin", headers: { "X-Requested-With": "fetch" },
+    method: "POST", credentials: "same-origin", headers: { "X-Requested-With": "fetch", "X-Device-Id": DEVICE_ID },
   });
   if (!r.ok) { accessToken = null; return false; }
   accessToken = (await r.json()).access_token;
@@ -46,7 +57,7 @@ export async function request(method, path, { body, query, headers = {}, raw = f
     const s = q.toString();
     if (s) url += (url.includes("?") ? "&" : "?") + s;
   }
-  const h = { "X-Requested-With": "fetch", ...headers };
+  const h = { "X-Requested-With": "fetch", "X-Device-Id": DEVICE_ID, ...headers };
   if (accessToken) h.Authorization = `Bearer ${accessToken}`;
   let payload;
   if (form) payload = form;

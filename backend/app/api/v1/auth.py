@@ -98,7 +98,7 @@ def login(data: LoginIn, request: Request, response: Response, db: Session = Dep
 
     if user and user.locked_until and user.locked_until > now:
         verify_password(data.password, None)  # equalise timing
-        audit(db, "auth.login", actor_id=user.id, actor_label=email, ip=ip, outcome="locked")
+        audit(db, "auth.login", actor_id=user.id, actor_label=user.label, ip=ip, outcome="locked")
         db.commit()
         raise Unauthorized("Account temporarily locked after repeated failures. Try again later.",
                            code="account_locked")
@@ -110,7 +110,8 @@ def login(data: LoginIn, request: Request, response: Response, db: Session = Dep
             if user.failed_logins >= s.max_failed_logins:
                 user.locked_until = now + timedelta(minutes=s.lockout_minutes)
                 user.failed_logins = 0
-        audit(db, "auth.login", actor_id=user.id if user else None, actor_label=email, ip=ip, outcome="failure")
+        audit(db, "auth.login", actor_id=user.id if user else None, actor_label=user.label if user else login_id[:100], ip=ip,
+              outcome="failure")
         db.commit()
         raise generic
 
@@ -118,7 +119,7 @@ def login(data: LoginIn, request: Request, response: Response, db: Session = Dep
     if user.password_hash is None or needs_rehash(user.password_hash) or not verify_password(data.password, user.password_hash):
         user.password_hash = hash_password(data.password)  # keep the hash in step with an edited plain password
     out = _issue(db, user, response, request)
-    audit(db, "auth.login", actor_id=user.id, actor_label=email, ip=ip)
+    audit(db, "auth.login", actor_id=user.id, actor_label=user.label, ip=ip)
     db.commit()
     return out
 

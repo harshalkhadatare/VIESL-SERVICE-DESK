@@ -4,6 +4,7 @@ import logging
 
 from sqlalchemy.orm import Session
 
+from app.core.request_ctx import device_id_var, user_agent_var
 from app.models import AuditLog
 
 log = logging.getLogger("servicedesk.audit")
@@ -22,11 +23,12 @@ def audit(
         actor_id=actor_id, actor_label=actor_label, action=action, entity_type=entity_type,
         entity_id=str(entity_id) if entity_id is not None else None, detail=detail,
         ip_address=ip, request_id=request_id, outcome=outcome,
+        device_id=device_id_var.get(), device=(user_agent_var.get() or None),
     ))
     log.info("audit action=%s actor=%s entity=%s:%s outcome=%s", action, actor_id, entity_type, entity_id, outcome)
 
 
 def audit_p(db: Session, principal, action: str, **kw) -> None:
     """Convenience wrapper using a Principal."""
-    audit(db, action, actor_id=principal.id, actor_label=principal.user.email, ip=principal.ip,
+    audit(db, action, actor_id=principal.id, actor_label=principal.user.label, ip=principal.ip,
           request_id=principal.request_id, **kw)

@@ -46,3 +46,13 @@ Legend: ✅ implemented & tested · ☑ implemented (configuration/operational) 
 - ⬜ Shared rate-limit store (Redis) when running multiple instances
 - ⬜ Data-retention purge jobs (policy in DEPLOYMENT.md)
 - ⬜ External penetration test before go-live
+
+## Audit log: IP address and device
+- **IP address** is the user's public internet address (on Vercel read from Vercel's `x-vercel-forwarded-for` header,
+  which visitors cannot fake). Office users usually share one public IP. Hosted on a server inside the office network,
+  it is each PC's own LAN address instead.
+- **Device ID** (e.g. `PC-7F3A9C`) is a random code each browser creates once and keeps in its local storage. It tells
+  devices apart over time, but it is per browser: a second browser, a private window or clearing site data gives a new ID.
+  Websites cannot read a PC's name, MAC address or serial number.
+- **Device** is the browser and operating system, e.g. "Chrome 130 · Windows 10/11".
+

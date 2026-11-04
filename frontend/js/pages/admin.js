@@ -281,31 +281,43 @@ function matrix(roles) {
 }
 
 // =================================================================== audit log
-export async function renderAudit(view) {
-  let page = 1, action = "", actor = "";
-  mount(view, html`<div class="page-head"><div><h1>Audit log</h1><div class="sub">Sign-ins, role changes, ticket actions, exports and downloads. Read-only.</div></div></div>
+const deviceCode = (id) => id ? `PC-${id.slice(0, 6).toUpperCase()}` : "";
+
+export async function renderAudit(view, _p, query = {}) {
+  let page = 1, action = "", actor = "", device = query.device || "", ip = query.ip || "";
+  mount(view, html`<div class="page-head"><div><h1>Audit log</h1><div class="sub">Sign-ins, role changes, ticket actions, exports and downloads — with the user's public IP, browser/device and a device ID. Read-only.</div></div></div>
     <div class="card"><div class="toolbar">
       <select id="aa" aria-label="Action"><option value="">All actions</option><option value="auth.">Authentication</option><option value="admin.">Administration</option>
         <option value="ticket.">Ticket actions</option><option value="report.">Exports</option></select>
-      <div class="search-inline">${icon("search")}<input type="search" id="au" placeholder="Filter by user email" aria-label="Filter by user"></div></div>
-      <div class="table-wrap"><table class="data"><thead><tr><th>When</th><th>User</th><th>Action</th><th>Entity</th><th class="hide-sm">Detail</th><th class="hide-sm">IP</th><th>Result</th></tr></thead>
-      <tbody id="al">${skeletonRows(8, 7)}</tbody></table></div><div class="pager" id="ap"></div></div>`);
+      <div class="search-inline">${icon("search")}<input type="search" id="au" placeholder="Filter by name, employee ID or email" aria-label="Filter by user"></div></div>
+      <div id="af-chip"></div>
+      <div class="table-wrap"><table class="data"><thead><tr><th>When</th><th>User</th><th>Action</th><th>Entity</th><th class="hide-sm">Detail</th><th class="hide-sm">IP address</th><th class="hide-sm">Device</th><th>Result</th></tr></thead>
+      <tbody id="al">${skeletonRows(8, 8)}</tbody></table></div><div class="pager" id="ap"></div></div>`);
   async function load() {
     try {
-      const r = await api.get("/audit-logs", { page, page_size: 50, action, actor });
+      const r = await api.get("/audit-logs", { page, page_size: 50, action, actor, device_id: device, ip });
+      mount($("#af-chip", view), device || ip ? html`<div class="filter-chip-bar">${icon(device ? "inbox" : "zap")}
+        Showing everything from ${device ? html`device <b class="mono">${deviceCode(device)}</b>` : html`IP <b class="mono">${ip}</b>`} · ${r.total} entries
+        <button class="btn sm ghost" id="af-clear">${icon("x")} Clear</button></div>` : "");
+      $("#af-clear", view)?.addEventListener("click", () => { device = ""; ip = ""; page = 1; history.replaceState(null, "", "#/admin/audit"); load(); });
       if (!$("#al", view)?.isConnected) return;
       mount($("#al", view), r.items.length ? html`${r.items.map((a) => html`<tr>
         <td class="small" style="white-space:nowrap">${fmtDate(a.created_at)}</td><td class="small">${a.actor_label || "System"}</td>
         <td><span class="mono">${a.action}</span></td>
         <td class="small">${a.entity_type === "ticket" && a.entity_id ? html`<a href="#/tickets/${a.entity_id}">${a.entity_id}</a>` : a.entity_id ? `${a.entity_type} ${a.entity_id}` : "—"}</td>
         <td class="hide-sm small muted" style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${a.detail || ""}">${a.detail || ""}</td>
-        <td class="hide-sm small mono">${a.ip_address || ""}</td>
+        <td class="hide-sm small mono">${a.ip_address ? html`<a href="#/admin/audit?ip=${encodeURIComponent(a.ip_address)}" data-ip="${a.ip_address}" title="Everything from this IP">${a.ip_address}</a>` : ""}</td>
+        <td class="hide-sm small">${a.device_id ? html`<a class="dev-chip" href="#/admin/audit?device=${a.device_id}" data-dev="${a.device_id}" title="Everything done from this device">${deviceCode(a.device_id)}</a>` : ""}
+          <div class="t-sub2">${a.device || ""}</div></td>
         <td>${a.outcome === "success" ? html`<span class="badge ok">OK</span>` : html`<span class="badge danger">${a.outcome}</span>`}</td></tr>`)}` :
-        html`<tr><td colspan="7">${emptyState("No audit entries", "Nothing matches these filters.", "shield")}</td></tr>`);
+        html`<tr><td colspan="8">${emptyState("No audit entries", "Nothing matches these filters.", "shield")}</td></tr>`);
       const pages = Math.max(1, Math.ceil(r.total / r.page_size));
       mount($("#ap", view), html`<span>${r.total} entries</span><div class="row"><button class="btn sm" id="pv" ${page <= 1 ? "disabled" : ""}>Previous</button><button class="btn sm" id="nx" ${page >= pages ? "disabled" : ""}>Next</button></div>`);
       $("#pv", view).addEventListener("click", () => { page--; load(); });
       $("#nx", view).addEventListener("click", () => { page++; load(); });
+      $$("[data-dev], [data-ip]", view).forEach((x) => x.addEventListener("click", (ev) => {
+        ev.preventDefault(); device = x.dataset.dev || ""; ip = x.dataset.ip || ""; page = 1; load();
+      }));
     } catch (e) { errorToast(e); }
   }
   $("#aa", view).addEventListener("change", (e) => { action = e.target.value; page = 1; load(); });
