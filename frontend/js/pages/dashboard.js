@@ -191,8 +191,6 @@ async function load(view, quiet = false) {
     ${kpi("Tickets created", fmtNum(H.created))}
     ${kpi("Avg first response", fmtMinutes(H.avg_first_response_minutes), null, "", "business time")}
     ${kpi("Avg resolution", fmtMinutes(H.avg_resolution_minutes), null, "", "business time, net of pauses")}
-    ${kpi("SLA compliance", H.sla_compliance_percent === null ? "—" : html`${H.sla_compliance_percent}<small>%</small>`, null,
-      H.sla_compliance_percent !== null && H.sla_compliance_percent < 80 ? "warn" : "", `${H.sla_measured} resolved tickets`)}
     ${kpi("Reopen rate", H.reopen_rate_percent === null ? "—" : html`${H.reopen_rate_percent}<small>%</small>`)}
     ${kpi("Satisfaction", H.csat_average === null ? "—" : html`${H.csat_average}<small>/ 5</small>`, null, "", `${H.csat_responses} ratings`)}`);
 
