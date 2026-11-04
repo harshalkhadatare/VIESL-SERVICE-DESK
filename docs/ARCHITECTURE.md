@@ -109,7 +109,7 @@ vision-servicedesk/
 │  │  │                          scheduler, dashboard, attachments, audit, settings_service
 │  │  └─ api/  deps.py · v1/{auth,tickets,meta,dashboard,platform}.py
 │  ├─ alembic/                   migrations (0001_initial_schema)
-│  ├─ tests/                     145 tests incl. role × action matrix
+│  ├─ tests/                     152 tests incl. role × action matrix
 │  ├─ Dockerfile · requirements*.txt · pytest.ini · .env.example
 ├─ frontend/
 │  ├─ index.html · css/app.css · assets/favicon.svg
@@ -133,7 +133,7 @@ vision-servicedesk/
 2. SLA targets (business minutes): P1 30/240, P2 60/540, P3 240/1620, P4 480/2700; Security P1 15/180. These are examples to be confirmed by IT management.
 3. New tickets start in **Submitted**; **New** is reserved for future email-to-ticket intake.
 4. Pauses: Pending Employee, Pending Approval, Resolved, Closed, Cancelled pause the SLA. Pending Vendor / Pending Change do **not** pause by default (configurable in `ticket_statuses.pauses_sla`).
-5. Two roles only: Employee and IT Administrator. IT administrators belong to support teams (ERP, Infrastructure, End-User Computing, Service Desk, Security) used for automatic routing; any administrator can assign any ticket.
+5. Two IT departments: **IT** and **ERP-IT** (`categories.desk`, `tickets.desk` = it/erp/both, `users.desk` for administrators). Categories ERP_APP, ERP_DATA, ERP_REPORT, DB_INTEG and ENHANCE belong to ERP-IT. Two roles only: Employee and IT Administrator. IT administrators belong to support teams (ERP, Infrastructure, End-User Computing, Service Desk, Security) used for automatic routing; any administrator can assign any ticket.
 6. Reopen window 7 days; auto-close 5 days after resolution with a reminder at day 3.
 7. Local accounts are used now; SSO (Azure AD / Entra ID via OIDC) is a planned enhancement — `users.auth_provider` already exists.
 

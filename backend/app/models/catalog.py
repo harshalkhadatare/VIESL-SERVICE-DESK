@@ -23,11 +23,14 @@ class Category(Base, TimestampMixin):
     is_protected: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true(), nullable=False)
+    # Which IT department handles this category: 'it' (hardware, network, email…) or 'erp' (ERP-IT)
+    desk: Mapped[str] = mapped_column(Unicode(10), default="it", server_default="it", nullable=False)
 
     subcategories: Mapped[list["Subcategory"]] = relationship(back_populates="category", lazy="selectin",
                                                               order_by="Subcategory.name")
 
-    __table_args__ = (CheckConstraint("default_ticket_type IN ('incident','service_request')", name="ticket_type"),)
+    __table_args__ = (CheckConstraint("default_ticket_type IN ('incident','service_request')", name="ticket_type"),
+                      CheckConstraint("desk IN ('it','erp')", name="desk"))
 
 
 class Subcategory(Base):

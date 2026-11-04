@@ -37,6 +37,7 @@ class CategoryOut(BaseModel):
     default_ticket_type: str
     uses_erp_fields: bool
     requires_approval: bool
+    desk: str = "it"
     subcategories: list[SubOut]
 
 
@@ -76,7 +77,7 @@ def catalog(p: Principal = Depends(get_principal), db: Session = Depends(get_db)
     return CatalogOut(
         categories=[CategoryOut(id=c.id, code=c.code, name=c.name, description=c.description,
                                 default_ticket_type=c.default_ticket_type, uses_erp_fields=c.uses_erp_fields,
-                                requires_approval=c.requires_approval,
+                                requires_approval=c.requires_approval, desk=c.desk,
                                 subcategories=[SubOut(id=s.id, name=s.name) for s in c.subcategories if s.is_active])
                     for c in cats],
         priorities=[PriorityOut(id=x.id, code=x.code, name=x.name, description=x.description) for x in prios],

@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { state } from "../state.js";
 import { $, $$, html, mount, icon, fmtDate, fmtRelative, initials, emptyState, errorToast, toast, openModal, busy,
-  confirmDialog, debounce, skeletonRows, showFieldErrors } from "../ui.js";
+  confirmDialog, debounce, skeletonRows, showFieldErrors, deskBadge } from "../ui.js";
 
 // =================================================================== users & roles
 export async function renderUsers(view) {
@@ -15,7 +15,7 @@ export async function renderUsers(view) {
       <button class="btn primary" id="add-user">${icon("plus")} Add user</button></div></div>
     <div class="card">
       <div class="toolbar"><div class="search-inline">${icon("search")}<input type="search" id="uq" placeholder="Name, email or employee code" aria-label="Search users"></div></div>
-      <div class="table-wrap"><table class="data"><thead><tr><th>User</th><th class="hide-sm">Employee code</th><th class="hide-sm hide-md">Department</th>
+      <div class="table-wrap"><table class="data ulist"><thead><tr><th>User</th><th class="hide-sm">Employee code</th><th class="hide-sm hide-md">Department</th>
         <th>Roles</th><th class="hide-sm hide-md">Last sign-in</th><th>Status</th><th></th></tr></thead><tbody id="ur">${skeletonRows(6, 7)}</tbody></table></div>
       <div class="pager" id="up"></div></div>
     <div class="card" style="margin-top:20px"><div class="card-head"><h2>Role permission matrix</h2><span class="hint">Enforced on the server for every request</span></div>
@@ -26,13 +26,13 @@ export async function renderUsers(view) {
       const r = await api.get("/admin/users", { q, page, page_size: 25 });
       if (!$("#ur", view)?.isConnected) return;
       mount($("#ur", view), r.items.length ? html`${r.items.map((u) => html`<tr>
-        <td><div class="row" style="flex-wrap:nowrap"><span class="avatar sm">${initials(u.full_name)}</span><div style="min-width:0"><b style="font-weight:600">${u.full_name}</b>
+        <td class="u-user"><div class="row" style="flex-wrap:nowrap"><span class="avatar sm">${initials(u.full_name)}</span><div style="min-width:0"><b style="font-weight:600">${u.full_name}</b>
           ${u.is_demo ? html` <span class="pill demo">demo</span>` : ""}<div class="t-sub2">${u.has_email ? u.email : html`<span style="color:var(--warn)">No email yet</span>`}</div></div></div></td>
-        <td class="hide-sm mono">${u.employee_code}</td><td class="hide-sm hide-md">${u.department || "—"}</td>
-        <td>${u.roles.map((c) => html`<span class="pill" style="margin:1px 3px 1px 0">${roleName[c] || c}</span>`)}</td>
-        <td class="hide-sm hide-md muted small">${u.last_login_at ? fmtRelative(u.last_login_at) : "Never"}</td>
-        <td>${!u.is_active ? html`<span class="badge">Inactive</span>` : u.locked ? html`<span class="badge warn">Locked</span>` : html`<span class="badge ok">Active</span>`}</td>
-        <td style="text-align:right;white-space:nowrap"><a class="btn sm ghost" href="#/tickets?scope=all&requester=${encodeURIComponent(u.employee_code)}" title="All tickets raised by ${u.full_name}">${icon("ticket")} Tickets</a>
+        <td class="hide-sm mono u-code" data-label="Employee ID">${u.employee_code}</td><td class="hide-sm hide-md u-dept">${u.department || "—"}</td>
+        <td class="u-roles">${u.roles.map((c) => html`<span class="pill" style="margin:1px 3px 1px 0">${roleName[c] || c}</span>`)}${u.roles.includes("it_admin") && u.desk ? html` ${deskBadge(u.desk)}` : ""}</td>
+        <td class="hide-sm hide-md muted small u-last">${u.last_login_at ? fmtRelative(u.last_login_at) : "Never"}</td>
+        <td class="u-status">${!u.is_active ? html`<span class="badge">Inactive</span>` : u.locked ? html`<span class="badge warn">Locked</span>` : html`<span class="badge ok">Active</span>`}</td>
+        <td class="u-actions" style="text-align:right;white-space:nowrap"><a class="btn sm ghost" href="#/tickets?scope=all&requester=${encodeURIComponent(u.employee_code)}" title="All tickets raised by ${u.full_name}">${icon("ticket")} Tickets</a>
           <button class="btn sm" data-edit="${u.id}">Edit</button>
           <button class="btn sm" data-roles="${u.id}">Roles</button>
           <button class="btn sm" data-pw="${u.id}">Password</button>
@@ -131,13 +131,18 @@ export async function renderUsers(view) {
         <label class="field"><span class="lbl">Department</span><select name="department_id"><option value="">—</option>
           ${depts.map((d) => html`<option value="${d.id}" ${d.id === u.department_id ? "selected" : ""}>${d.name}</option>`)}</select></label>
         <label class="field"><span class="lbl">Job title</span><input type="text" name="job_title" maxlength="120" value="${u.job_title || ""}"></label>
-        <label class="field"><span class="lbl">Phone</span><input type="text" name="phone" maxlength="30" value="${u.phone || ""}"></label></form>`,
+        <label class="field"><span class="lbl">Phone</span><input type="text" name="phone" maxlength="30" value="${u.phone || ""}"></label>
+        ${u.roles.includes("it_admin") ? html`<label class="field"><span class="lbl">IT department (for IT Administrators)</span><select name="desk">
+          <option value="it" ${u.desk !== "erp" ? "selected" : ""}>IT — hardware, network, email…</option>
+          <option value="erp" ${u.desk === "erp" ? "selected" : ""}>ERP-IT — ERP software</option></select>
+          <div class="help">Decides which tickets and dashboard they see first.</div></label>` : ""}</form>`,
       actions: html`<button class="btn" data-close>Cancel</button><button class="btn primary" id="eu-save">Save changes</button>`,
       onMount: (el, close) => $("#eu-save", el).addEventListener("click", async (e) => {
         const f = $("#eu", el);
         const d = Object.fromEntries(new FormData(f));
         const body = { full_name: d.full_name.trim(), employee_code: d.employee_code.trim(),
           department_id: d.department_id ? Number(d.department_id) : null, job_title: d.job_title, phone: d.phone };
+        if (d.desk) body.desk = d.desk;
         body.email = d.email.trim() || null;
         busy(e.currentTarget);
         try { await api.patch(`/admin/users/${u.id}`, body); close(); toast("User updated."); load(); }
@@ -232,16 +237,26 @@ export async function renderUsers(view) {
             <div class="choice on" data-v="employee" role="radio" tabindex="0"><b>Employee</b><span>Raises and tracks own tickets</span></div>
             <div class="choice" data-v="it_admin" role="radio" tabindex="0"><b>IT Administrator</b><span>Works and assigns all tickets</span></div>
           </div></div>
+        <div class="field full" id="desk-row" hidden><span class="lbl">IT department</span>
+          <div class="choice-grid" style="grid-template-columns:1fr 1fr" id="desk-pick2">
+            <div class="choice on" data-v="it" role="radio" tabindex="0"><b>IT</b><span>Hardware, network, email, accounts</span></div>
+            <div class="choice" data-v="erp" role="radio" tabindex="0"><b>ERP-IT</b><span>ERP software, data, reports</span></div>
+          </div></div>
         <label class="field full"><span class="lbl">Temporary password<span class="req">*</span></span>
           <input type="text" name="password" required autocomplete="off">
           <div class="help">Any password. Share it privately; the user can change it after signing in.</div></label>
         </form>`,
       actions: html`<button class="btn" data-close>Cancel</button><button class="btn primary" id="nu-save">Create user</button>`,
       onMount: (el, close) => {
-        let role = "employee";
+        let role = "employee", desk = "it";
         $("#role-pick", el).addEventListener("click", (e) => {
           const c = e.target.closest(".choice"); if (!c) return;
-          role = c.dataset.v; $$(".choice", el).forEach((x) => x.classList.toggle("on", x === c));
+          role = c.dataset.v; $$("#role-pick .choice", el).forEach((x) => x.classList.toggle("on", x === c));
+          $("#desk-row", el).hidden = role !== "it_admin";
+        });
+        $("#desk-pick2", el).addEventListener("click", (e) => {
+          const c = e.target.closest(".choice"); if (!c) return;
+          desk = c.dataset.v; $$("#desk-pick2 .choice", el).forEach((x) => x.classList.toggle("on", x === c));
         });
         $("#nu-save", el).addEventListener("click", async (e) => {
           const f = $("#nu", el);
@@ -250,7 +265,7 @@ export async function renderUsers(view) {
           try {
             await api.post("/admin/users", { full_name: d.full_name.trim(), email: d.email.trim() || null, employee_code: d.employee_code.trim(),
               department_id: d.department_id ? Number(d.department_id) : null, job_title: d.job_title.trim() || null,
-              phone: d.phone.trim() || null, role, password: d.password });
+              phone: d.phone.trim() || null, role, password: d.password, ...(role === "it_admin" ? { desk } : {}) });
             close(); toast(`${d.full_name} added.`); load();
           } catch (ex) { busy(e.currentTarget, false); showFieldErrors(f, ex.fieldErrors?.() || {}); errorToast(ex); }
         });

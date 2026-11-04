@@ -36,6 +36,7 @@ def admin_home(p: Principal = Depends(require("dashboard.ops")), db: Session = D
 @router.get("/ops")
 def ops(start: date | None = None, end: date | None = None, category_id: int | None = None,
         department_id: int | None = None, group_id: int | None = None, assignee_id: int | None = None,
+        desk: str | None = Query(None, pattern="^(it|erp|all)$"),
         p: Principal = Depends(require("dashboard.ops")), db: Session = Depends(get_db)):
     tz = p.user.timezone
     today = datetime.now(ZoneInfo(tz)).date()
@@ -46,7 +47,7 @@ def ops(start: date | None = None, end: date | None = None, category_id: int | N
     if (end - start).days > 366:
         raise BusinessRuleError("Date range cannot exceed one year.")
     return dash.ops_summary(db, p, start=start, end=end, tz=tz, category_id=category_id,
-                            department_id=department_id, group_id=group_id, assignee_id=assignee_id)
+                            department_id=department_id, group_id=group_id, assignee_id=assignee_id, desk=desk)
 
 
 @router.get("/search")

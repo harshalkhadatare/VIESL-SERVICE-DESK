@@ -54,6 +54,7 @@ class MeOut(BaseModel):
     permissions: list[str]
     support_group_ids: list[int]
     lead_group_ids: list[int]
+    desk: str | None = None
 
 
 def _require_csrf_header(request: Request) -> None:
@@ -174,7 +175,7 @@ def me(p: Principal = Depends(get_principal)):
                  job_title=u.job_title, department=u.department.name if u.department else None,
                  location=u.location.name if u.location else None, timezone=u.timezone,
                  roles=sorted(p.roles), permissions=sorted(p.permissions),
-                 support_group_ids=sorted(p.group_ids), lead_group_ids=sorted(p.lead_group_ids))
+                 support_group_ids=sorted(p.group_ids), lead_group_ids=sorted(p.lead_group_ids), desk=u.desk)
 
 
 @router.post("/change-password", status_code=204)

@@ -69,6 +69,7 @@ function renderShell() {
         ${can("ticket.manage_all") ? navLink("/admin/announcements", "announcements", "megaphone", "Announcements") : ""}
         ${can("settings.manage") ? navLink("/admin/email", "email", "mail", "Email notifications") : ""}
         ${can("audit.view") ? navLink("/admin/audit", "audit", "shield", "Audit log") : ""}
+        <button type="button" class="side-theme" id="side-theme">${icon("palette")}<span>Colours & dark mode</span></button>
       </nav>
       <div class="sidebar-foot">Need urgent help? Call the IT Service Desk<br>for P1 outages after raising a ticket.</div>
     </aside>
@@ -83,6 +84,7 @@ function renderShell() {
           <div class="search-results" id="search-results" hidden></div>
         </div>
         <div class="topbar-right">
+          <button class="icon-btn search-btn" id="search-btn" aria-label="Search" title="Search">${icon("search")}</button>
           <a class="icon-btn" href="#/notifications" aria-label="Notifications" title="Notifications">${icon("bell")}
             <span class="dot-count" id="bell-count" hidden></span></a>
           <button class="icon-btn theme-btn" id="theme-btn" aria-label="Colour theme and dark mode" title="Colour theme & dark mode" aria-haspopup="dialog" aria-expanded="false">${icon("palette")}</button>
@@ -94,10 +96,25 @@ function renderShell() {
       </header>
       <div id="ann-bar" class="ann-bar" aria-live="polite"></div>
       <main class="content" id="view" tabindex="-1"></main>
+      <nav class="bottom-nav" aria-label="Quick navigation">
+        <a href="#/" data-nav="dashboard">${icon("home")}<span>Home</span></a>
+        <a href="#/tickets" data-nav="tickets">${icon("ticket")}<span>Tickets</span></a>
+        <a href="#/tickets/new" data-nav="new" class="bn-raise">${icon("plus")}<span>Raise</span></a>
+        <a href="#/notifications" data-nav="notifications">${icon("bell")}<span>Alerts</span><span class="bn-count" id="bn-unread" hidden></span></a>
+        <button type="button" id="bn-more">${icon("menu")}<span>Menu</span></button>
+      </nav>
+      <div class="nav-scrim" id="nav-scrim"></div>
     </div>
   </div>`);
 
   $("#menu-btn").addEventListener("click", () => $("#shell").classList.toggle("nav-open"));
+  $("#bn-more").addEventListener("click", () => $("#shell").classList.toggle("nav-open"));
+  $("#nav-scrim").addEventListener("click", () => $("#shell").classList.remove("nav-open"));
+  $("#side-theme").addEventListener("click", (e) => { e.stopPropagation(); $("#shell").classList.remove("nav-open"); setTimeout(() => $("#theme-btn").click(), 50); });
+  $("#search-btn").addEventListener("click", () => {
+    const open = $("#shell").classList.toggle("search-open");
+    if (open) setTimeout(() => $("#global-search")?.focus(), 30);
+  });
   $(".sidebar").addEventListener("click", (e) => { if (e.target.closest("a")) $("#shell").classList.remove("nav-open"); });
   setupUserMenu();
   setupThemeMenu($("#theme-btn"));
@@ -192,7 +209,7 @@ function setupSearch() {
 export async function refreshUnread() {
   try {
     const { count } = await api.get("/notifications/unread-count");
-    for (const id of ["bell-count", "nav-unread"]) {
+    for (const id of ["bell-count", "nav-unread", "bn-unread"]) {
       const el = document.getElementById(id);
       if (!el) continue;
       el.hidden = !count; el.textContent = count > 99 ? "99+" : count;
@@ -235,7 +252,8 @@ async function route() {
   for (const [re, fn, key, perm] of ROUTES) {
     const m = path.match(re);
     if (!m) continue;
-    $$(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.nav === key));
+    $$(".nav a, .bottom-nav a").forEach((a) => a.classList.toggle("active", a.dataset.nav === key));
+    $("#shell")?.classList.remove("nav-open", "search-open");
     if (perm && !can(perm)) {
       mount(view, html`<div class="card"><div class="empty">${icon("lock")}<h3>Not available</h3><p>You do not have access to this page.</p></div></div>`);
       return;

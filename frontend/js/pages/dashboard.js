@@ -102,16 +102,20 @@ function rowLinks(root) {
 
 // ===================================================================== operations
 const RANGES = [["7", "Last 7 days"], ["14", "Last 14 days"], ["30", "Last 30 days"], ["90", "Last 90 days"]];
-const filters = { days: "14", group_id: "", category_id: "", department_id: "" };
+const filters = { days: "14", group_id: "", category_id: "", department_id: "", desk: "" };
+const DESKS = [["it", "IT", "inbox", "Hardware, network, email, accounts"], ["erp", "ERP-IT", "layers", "ERP software, data, reports"]];
 
 async function renderOps(view) {
   const [cat, groups, depts] = await Promise.all([catalog(), supportGroups(), api.get("/departments").catch(() => [])]);
+  if (!filters.desk) filters.desk = state.me.desk || "it";
   mount(view, html`
     <div class="page-head">
-      <div><h1>Service operations</h1><div class="sub">Live queue health and performance for the teams you can see.</div></div>
+      <div><h1>Service operations</h1><div class="sub">Live queue health and performance — tickets marked “Both” count in IT and ERP-IT.</div></div>
       <div class="row">${viewSwitch("ops")}
-        ${can("report.export") ? html`<button class="btn" id="exp">${icon("download")} Export CSV</button>` : ""}</div>
+        ${can("report.export") ? html`<button class="btn" id="exp">${icon("download")} Export to Excel</button>` : ""}</div>
     </div>
+    <div class="desk-cards" id="desk-cards">${DESKS.map(([v, name, ic, sub]) => html`<button class="desk-card ${filters.desk === v ? "on" : ""}" data-desk="${v}" role="tab" aria-selected="${filters.desk === v}">
+      <span class="desk-ic">${icon(ic)}</span><span class="dc-txt"><b>${name}</b><span>${sub}</span></span><span class="dc-open" id="dc-${v}"></span></button>`)}</div>
     <div class="card" style="margin-bottom:4px"><div class="toolbar" style="border:0">
       ${icon("filter")}<span class="small muted" style="margin-right:4px">Filters</span>
       <select id="f-days" aria-label="Date range">${RANGES.map(([v, l]) => html`<option value="${v}" ${filters.days === v ? "selected" : ""}>${l}</option>`)}</select>
@@ -146,11 +150,16 @@ async function renderOps(view) {
     filters.category_id = $("#f-cat", view).value; filters.department_id = $("#f-dept", view).value;
   };
   ["#f-days", "#f-group", "#f-cat", "#f-dept"].forEach((s) => $(s, view).addEventListener("change", () => { read(); load(view); }));
+  view.querySelectorAll("[data-desk]").forEach((b) => b.addEventListener("click", () => {
+    filters.desk = b.dataset.desk;
+    view.querySelectorAll("[data-desk]").forEach((x) => { x.classList.toggle("on", x === b); x.setAttribute("aria-selected", x === b); });
+    load(view);
+  }));
   $("#f-refresh", view).addEventListener("click", () => load(view));
   $("#exp", view)?.addEventListener("click", async () => {
     try {
-      await api.download("/tickets/export.csv", { group_id: filters.group_id, category_id: filters.category_id,
-        date_from: isoDaysAgo(Number(filters.days) - 1) }, "tickets.csv");
+      await api.download("/tickets/export.xlsx", { group_id: filters.group_id, category_id: filters.category_id,
+        department_id: filters.department_id, desk: filters.desk, date_from: isoDaysAgo(Number(filters.days) - 1) }, "tickets.xlsx");
       toast("Export downloaded.");
     } catch (e) { errorToast(e); }
   });
@@ -167,12 +176,18 @@ function isoDaysAgo(n) {
 async function load(view, quiet = false) {
   let d;
   try {
-    d = await api.get("/dashboard/ops", { start: isoDaysAgo(Number(filters.days) - 1), group_id: filters.group_id,
-      category_id: filters.category_id, department_id: filters.department_id });
+    const base = { start: isoDaysAgo(Number(filters.days) - 1), group_id: filters.group_id,
+      category_id: filters.category_id, department_id: filters.department_id };
+    const other = DESKS.find(([v]) => v !== filters.desk)[0];
+    let o;
+    [d, o] = await Promise.all([api.get("/dashboard/ops", { ...base, desk: filters.desk }),
+      api.get("/dashboard/ops", { ...base, desk: other }).catch(() => null)]);
+    const set = (v, x) => { const el = $(`#dc-${v}`, view); if (el && x) el.innerHTML = `<b>${x.live.open}</b> open`; };
+    set(filters.desk, d); set(other, o);
   } catch (e) { if (!quiet) errorToast(e); return; }
   if (!$("#live", view)?.isConnected) return; // navigated away while loading
   const L = d.live, H = d.historical;
-  const q = (s) => `#/tickets?${s}${filters.group_id ? `&group_id=${filters.group_id}` : ""}`;
+  const q = (s) => `#/tickets?${s}&desk=${filters.desk}${filters.group_id ? `&group_id=${filters.group_id}` : ""}`;
   $("#live-at", view).textContent = `as of ${new Date(d.generated_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: state.me.timezone })}`;
   $("#period", view).textContent = RANGES.find((r) => r[0] === filters.days)[1].toLowerCase();
   mount($("#live", view), html`
@@ -191,6 +206,8 @@ async function load(view, quiet = false) {
     ${kpi("Tickets created", fmtNum(H.created))}
     ${kpi("Avg first response", fmtMinutes(H.avg_first_response_minutes), null, "", "business time")}
     ${kpi("Avg resolution", fmtMinutes(H.avg_resolution_minutes), null, "", "business time, net of pauses")}
+    ${kpi("SLA compliance", H.sla_compliance_percent === null ? "—" : html`${H.sla_compliance_percent}<small>%</small>`, null,
+      H.sla_compliance_percent !== null && H.sla_compliance_percent < 80 ? "warn" : "", `${H.sla_measured} resolved tickets`)}
     ${kpi("Reopen rate", H.reopen_rate_percent === null ? "—" : html`${H.reopen_rate_percent}<small>%</small>`)}
     ${kpi("Satisfaction", H.csat_average === null ? "—" : html`${H.csat_average}<small>/ 5</small>`, null, "", `${H.csat_responses} ratings`)}`);
 
@@ -204,7 +221,7 @@ async function load(view, quiet = false) {
   const dsvg = $("#donut svg", view); if (dsvg) tipHandlers(dsvg);
   mount($("#bycat", view), hbars(d.by_category));
   mount($("#bydept", view), hbars(d.by_department));
-  mount($("#work", view), d.workload.length ? html`${d.workload.slice(0, 8).map((w) => html`<tr class="clickable" data-href="#/tickets?assignee=${w.user_id}&status=open">
+  mount($("#work", view), d.workload.length ? html`${d.workload.slice(0, 8).map((w) => html`<tr class="clickable" data-href="#/tickets?assignee=${w.user_id}&status=open&desk=${filters.desk}">
     <td>${w.name}</td><td class="num"><b>${w.open}</b></td><td class="num">${w.high ? html`<span style="color:var(--danger);font-weight:600">${w.high}</span>` : "0"}</td></tr>`)}` :
     html`<tr><td colspan="3" class="muted small" style="padding:18px">No open assigned tickets.</td></tr>`);
   rowLinks(view);

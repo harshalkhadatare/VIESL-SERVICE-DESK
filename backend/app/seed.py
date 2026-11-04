@@ -89,6 +89,9 @@ GROUPS = [("SD", "Service Desk", "manual"), ("ERP", "ERP Application Support", "
           ("INFRA", "Infrastructure & Network", "least_loaded"), ("EUC", "End-User Computing", "least_loaded"),
           ("SEC", "Information Security", "manual")]
 # code, name, type, group, erp, approval, protected, subcategories
+# Categories handled by the ERP-IT department; every other category belongs to IT (hardware, network, email…)
+ERP_DESK = {"ERP_APP", "ERP_DATA", "ERP_REPORT", "DB_INTEG", "ENHANCE"}
+
 CATEGORIES = [
     ("ERP_APP", "ERP Application Issue", "incident", "ERP", True, False, False,
      ["Screen error", "Login / session", "Performance", "Workflow stuck"]),
@@ -168,10 +171,15 @@ def seed_reference(db: Session) -> None:
         perms[code], _ = _get_or_create(db, Permission, {"code": code}, description=desc)
     for code, (name, desc, plist) in ROLES.items():
         role, _ = _get_or_create(db, Role, {"code": code}, name=name, description=desc)
-        have = {rp.permission_id for rp in db.scalars(select(RolePermission).where(RolePermission.role_id == role.id))}
+        have = {rp.permission_id: rp for rp in db.scalars(select(RolePermission).where(RolePermission.role_id == role.id))}
         for pc in plist:
             if perms[pc].id not in have:
                 db.add(RolePermission(role_id=role.id, permission_id=perms[pc].id))
+        if code == "employee":  # employees must only ever see their own tickets — drop anything extra
+            wanted = {perms[pc].id for pc in plist}
+            for pid, rp in have.items():
+                if pid not in wanted:
+                    db.delete(rp)
     _fold_legacy_roles(db)
     for i, (code, name, is_open, pauses) in enumerate(STATUSES):
         _get_or_create(db, TicketStatus, {"code": code}, name=name, is_open=is_open, pauses_sla=pauses,
@@ -204,7 +212,7 @@ def seed_reference(db: Session) -> None:
     for i, (code, name, ttype, g, erp, appr, prot, subs) in enumerate(CATEGORIES):
         cat, _ = _get_or_create(db, Category, {"code": code}, name=name, default_ticket_type=ttype,
                                 default_group_id=groups[g].id, uses_erp_fields=erp, requires_approval=appr,
-                                is_protected=prot, sort_order=i * 10)
+                                is_protected=prot, sort_order=i * 10, desk="erp" if code in ERP_DESK else "it")
         for s in subs:
             _get_or_create(db, Subcategory, {"category_id": cat.id, "name": s})
     sec = db.scalar(select(Category).where(Category.code == "SECURITY"))
@@ -342,7 +350,8 @@ def seed_demo(db: Session, n_tickets: int = 70) -> None:
         first, last = name.lower().split()
         u = User(employee_code=code, email=f"{first}.{last}@demo.example.com", full_name=name, job_title=title,
                  department_id=depts[d].id, location_id=locs[l].id, password_hash=pw, password_plain=demo_pw, is_demo=True,
-                 phone=f"+91 20 5555 {random.Random(code).randint(1000, 9999)}")
+                 phone=f"+91 20 5555 {random.Random(code).randint(1000, 9999)}",
+                 desk=("erp" if "ERP" in gl else "it") if "it_admin" in rl else None)
         db.add(u)
         db.flush()
         for r in rl:

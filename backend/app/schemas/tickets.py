@@ -7,6 +7,7 @@ from app.schemas.common import ORM, CodeRef, Ref, StrictIn, UserRef
 
 ContactMethod = Literal["portal", "email", "phone", "teams"]
 TicketType = Literal["incident", "service_request"]
+Desk = Literal["it", "erp", "both"]
 
 
 class ErpDetailIn(StrictIn):
@@ -48,7 +49,8 @@ class TicketCreate(StrictIn):
     subject: str = Field(min_length=5, max_length=200)
     description: str = Field(min_length=10, max_length=8000)
     category_id: int
-    subcategory_id: int | None = None
+    subcategory_id: int | None = None          # optional
+    desk: Desk | None = None                   # IT department chosen first; defaults to the category's
     ticket_type: TicketType | None = None
     impact: int = Field(3, ge=1, le=3)
     urgency: int = Field(3, ge=1, le=3)
@@ -127,6 +129,7 @@ class TicketListItem(BaseModel):
     status: CodeRef
     priority: CodeRef
     category: str
+    desk: str = "it"
     requester: str
     requester_code: str | None = None
     requester_id: int | None = None
@@ -188,6 +191,7 @@ class RatingOut(ORM):
 class TicketDetail(BaseModel):
     number: str
     version: int
+    desk: str = "it"
     subject: str
     description: str
     ticket_type: str

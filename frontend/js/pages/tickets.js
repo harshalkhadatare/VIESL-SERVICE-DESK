@@ -1,13 +1,13 @@
 import { api } from "../api.js";
-import { can, isStaff, catalog, supportGroups } from "../state.js";
+import { state, can, isStaff, catalog, supportGroups } from "../state.js";
 import { $, $$, html, mount, icon, fmtRelative, fmtDate, statusBadge, prioBadge, slaBadge, skeletonRows, emptyState,
-  errorToast, debounce, toast, initials, empId } from "../ui.js";
+  errorToast, debounce, toast, initials, empId, deskBadge } from "../ui.js";
 
 const STAFF_TABS = [
   ["open", "All open", { scope: "all", status: "open" }],
   ["assigned", "Assigned to me", { scope: "all", status: "open", assignee: "me" }],
   ["unassigned", "Unassigned", { scope: "all", status: "open", assignee: "unassigned" }],
-  ["all", "All tickets", { scope: "all" }],
+  ["all", "All statuses", { scope: "all" }],
   ["mine", "Raised by me", { scope: "mine" }],
   ["starred", "★ Starred", { scope: "all", starred: "true" }],
 ];
@@ -20,13 +20,16 @@ const EMP_TABS = [
 ];
 const VIEWER_TABS = [["all", "All tickets", { scope: "all", status: "open" }], ["mine", "Raised by me", { scope: "mine" }]];
 const KEYS = ["q", "scope", "status", "priority", "category_id", "group_id", "assignee", "sla", "sort", "page",
-  "requester", "starred", "department_id"];
+  "requester", "starred", "department_id", "desk"];
+const DESK_TABS = [["it", "IT tickets", "inbox"], ["erp", "ERP-IT tickets", "layers"], ["all", "All tickets", "ticket"]];
 
 export async function render(view, _p, query) {
   const staff = isStaff();
   const tabs = staff ? STAFF_TABS : can("ticket.view_all") ? VIEWER_TABS : EMP_TABS;
   const hasExplicit = KEYS.some((k) => query[k]);
   const f = hasExplicit ? { scope: "all", ...query } : { ...tabs[0][2] };
+  // IT administrators start on their own department (IT or ERP-IT); "All tickets" shows both
+  if (staff && !f.desk) f.desk = state.me.desk || "all";
   if (!staff && !can("ticket.view_all") && !can("ticket.view_department")) f.scope = "mine";
   const activeTab = () => tabs.find(([, , p]) => Object.keys(p).every((k) => String(f[k] ?? "") === String(p[k]))
     && ["priority", "category_id", "sla", "q", "group_id", "requester", "department_id"].every((k) => !f[k])
@@ -43,15 +46,20 @@ export async function render(view, _p, query) {
       <div><h1>${staff || can("ticket.view_all") ? "Tickets" : "My tickets"}</h1>
         <div class="sub">${canAssign ? "Search by employee ID or name, click a requester to see all their tickets, ★ to star, ⋮ to assign. Green rows are new tickets you haven't opened yet." : "Track the status of everything you have raised. Click ★ to star a ticket."}</div></div>
       <div class="row">
-        ${can("report.export") ? html`<button class="btn" id="exp">${icon("download")} Export</button>` : ""}
+        ${can("report.export") ? html`<button class="btn" id="exp" title="Download the tickets shown (all pages) as a formatted Excel file">${icon("download")} Export to Excel</button>` : ""}
         <a class="btn primary" href="#/tickets/new">${icon("plus")} Raise a ticket</a></div>
     </div>
+    ${staff ? html`<div class="desk-switch" role="tablist" aria-label="IT department" id="desk-switch">
+      ${DESK_TABS.map(([v, l, ic]) => html`<button role="tab" data-desk="${v}">${icon(ic)}<span>${l}</span><span class="n" id="dcount-${v}"></span></button>`)}</div>` : ""}
     <div class="card">
       <div class="tabs" role="tablist" id="tabs">${tabs.map(([k, l]) => html`<button role="tab" data-tab="${k}">${l}</button>`)}</div>
       <div class="toolbar">
         <div class="search-inline ${staff ? "wide" : ""}">${icon("search")}<input type="search" id="f-q" placeholder="${staff ? "Search ticket no., subject, employee ID, name, email…" : "Ticket number or subject"}" value="${f.q || ""}" aria-label="Search tickets"></div>
         ${staff ? html`<div class="search-inline emp-filter" title="Show every ticket raised by one employee">${icon("user")}<input type="search" id="f-req" placeholder="Employee ID" value="${f.requester || ""}" aria-label="Raised by employee ID"></div>
-          ${depts.length ? html`<select id="f-dept" aria-label="Department"><option value="">Any department</option>${depts.map((d) => html`<option value="${d.id}">${d.name}</option>`)}</select>` : ""}` : ""}
+          ` : ""}
+        <button type="button" class="btn tb-toggle" id="tb-toggle" aria-expanded="false">${icon("filter")} Filters</button>
+        <div class="tb-more">
+        ${staff && depts.length ? html`<select id="f-dept" aria-label="Department"><option value="">Any department</option>${depts.map((d) => html`<option value="${d.id}">${d.name}</option>`)}</select>` : ""}
         <select id="f-status" aria-label="Status"><option value="">Any status</option><option value="open">All open</option>
           ${cat.statuses.map((s) => html`<option value="${s.code}">${s.name}</option>`)}</select>
         <select id="f-priority" aria-label="Priority"><option value="">Any priority</option>
@@ -64,9 +72,10 @@ export async function render(view, _p, query) {
         <span class="spacer"></span>
         <select id="f-sort" aria-label="Sort"><option value="updated_desc">Recently updated</option><option value="created_desc">Newest</option>
           <option value="created_asc">Oldest</option><option value="priority">Priority</option><option value="due">SLA due soonest</option></select>
+        </div>
       </div>
       <div id="req-chip"></div>
-      <div class="table-wrap"><table class="data ${canAssign ? "compact-admin" : ""}">
+      <div class="table-wrap"><table class="data tlist ${canAssign ? "compact-admin" : ""}">
         <thead><tr><th class="star-col"><span class="sr-only">Starred</span></th><th>Ticket</th><th>Subject</th><th>Status</th><th>Priority</th>
           <th class="hide-sm">${staff ? "Requester" : "Category"}</th><th class="hide-sm">${staff ? "Assignee" : "Assigned to"}</th>
           <th class="hide-sm">SLA</th><th class="hide-sm ${canAssign ? "hide-md" : ""}">Updated</th>${canAssign ? html`<th class="row-menu"><span class="sr-only">Actions</span></th>` : ""}</tr></thead>
@@ -77,7 +86,14 @@ export async function render(view, _p, query) {
   const sel = { status: "#f-status", priority: "#f-priority", category_id: "#f-category", group_id: "#f-group", sla: "#f-sla", sort: "#f-sort", department_id: "#f-dept" };
   for (const [k, s] of Object.entries(sel)) { const el = $(s, view); if (el && f[k]) el.value = f[k]; }
 
-  const syncTabs = () => { const a = activeTab(); $$("#tabs button", view).forEach((b) => b.classList.toggle("on", b.dataset.tab === a)); };
+  const syncTabs = () => {
+    const a = activeTab(); $$("#tabs button", view).forEach((b) => b.classList.toggle("on", b.dataset.tab === a));
+    $("#tb-toggle", view).addEventListener("click", (e) => {
+    const tb = e.currentTarget.closest(".toolbar"); const open = tb.classList.toggle("open");
+    e.currentTarget.setAttribute("aria-expanded", open);
+  });
+  $$("#desk-switch button", view).forEach((b) => b.classList.toggle("on", b.dataset.desk === (f.desk || "all")));
+  };
   const pushUrl = () => {
     const q = new URLSearchParams();
     KEYS.forEach((k) => { if (f[k] && !(k === "page" && f[k] === 1)) q.set(k, f[k]); });
@@ -99,16 +115,16 @@ export async function render(view, _p, query) {
       $("#req-clear", view)?.addEventListener("click", () => { delete f.requester; $("#f-req", view).value = ""; f.page = 1; load(); });
       mount($("#rows", view), r.items.length ? html`${r.items.map((t) => html`
         <tr class="clickable ${t.is_new ? "row-new" : ""}" data-href="#/tickets/${t.number}" tabindex="0">
-          <td class="star-col"><button class="star-btn ${t.starred ? "on" : ""}" data-star="${t.number}" aria-pressed="${t.starred}"
+          <td class="star-col c-star"><button class="star-btn ${t.starred ? "on" : ""}" data-star="${t.number}" aria-pressed="${t.starred}"
             title="${t.starred ? "Starred — click to remove" : "Star this ticket"}" aria-label="Star ${t.number}">${icon("star")}</button></td>
-          <td><span class="t-id">${t.number}</span>${t.is_new ? html`<span class="new-pill">New</span>` : ""}</td>
-          <td><span class="t-subject" title="${t.subject}">${t.subject}</span><span class="t-sub2">${staff ? t.category : t.ticket_type === "incident" ? "Incident" : "Service request"}${canAssign ? html` · ${fmtRelative(t.updated_at)}` : ""}</span></td>
-          <td>${statusBadge(t.status)}</td><td>${prioBadge(t.priority.code)}</td>
-          <td class="hide-sm">${staff ? html`<a class="req-link name-id" data-req="${t.requester_code || ""}" title="Show all tickets raised by ${t.requester}">${t.requester}${empId(t.requester_code)}</a><div class="t-sub2">${t.department || ""}</div>` : t.category}</td>
-          <td class="hide-sm">${t.assignee ? html`<span class="name-id">${t.assignee}${empId(t.assignee_code)}</span>` : html`<span class="muted">Unassigned</span>`}</td>
-          <td class="hide-sm" title="${t.resolution_due_at ? "Due " + fmtDate(t.resolution_due_at) : ""}">${slaBadge(t.sla_state)}</td>
-          <td class="hide-sm muted ${canAssign ? "hide-md" : ""}" title="${fmtDate(t.updated_at)}">${fmtRelative(t.updated_at)}</td>
-          ${canAssign ? html`<td class="row-menu">${["CLOSED", "CANCELLED"].includes(t.status.code) ? "" :
+          <td class="c-id"><span class="t-id">${t.number}</span>${t.is_new ? html`<span class="new-pill">New</span>` : ""}</td>
+          <td class="c-subj"><span class="t-subject" title="${t.subject}">${t.subject}</span><span class="t-sub2">${deskBadge(t.desk)} ${staff ? t.category : t.ticket_type === "incident" ? "Incident" : "Service request"}${canAssign ? html` · ${fmtRelative(t.updated_at)}` : ""}</span></td>
+          <td class="c-status">${statusBadge(t.status)}</td><td class="c-prio">${prioBadge(t.priority.code)}</td>
+          <td class="hide-sm c-req" data-label="${staff ? "Raised by" : "Category"}">${staff ? html`<a class="req-link name-id" data-req="${t.requester_code || ""}" title="Show all tickets raised by ${t.requester}">${t.requester}${empId(t.requester_code)}</a><div class="t-sub2">${t.department || ""}</div>` : t.category}</td>
+          <td class="hide-sm c-asg" data-label="Assigned to">${t.assignee ? html`<span class="name-id">${t.assignee}${empId(t.assignee_code)}</span>` : html`<span class="muted">Unassigned</span>`}</td>
+          <td class="hide-sm c-sla" title="${t.resolution_due_at ? "Due " + fmtDate(t.resolution_due_at) : ""}">${slaBadge(t.sla_state)}</td>
+          <td class="hide-sm muted c-upd ${canAssign ? "hide-md" : ""}" title="${fmtDate(t.updated_at)}">${fmtRelative(t.updated_at)}</td>
+          ${canAssign ? html`<td class="row-menu c-menu">${["CLOSED", "CANCELLED"].includes(t.status.code) ? "" :
             html`<button class="kebab" data-menu="${t.number}" aria-haspopup="menu" aria-expanded="false"
               aria-label="Assign ${t.number}" title="Assign ticket">${icon("more")}</button>`}</td>` : ""}</tr>`)}` :
         html`<tr><td colspan="${cols}">${emptyState("No tickets match", "Try a different tab or clear the filters.", "inbox")}</td></tr>`);
@@ -127,9 +143,10 @@ export async function render(view, _p, query) {
     } catch (e) { errorToast(e); mount($("#rows", view), html`<tr><td colspan="${cols}">${emptyState("Could not load tickets", e.message, "alert")}</td></tr>`); }
   }
 
+  $$("#desk-switch button", view).forEach((b) => b.addEventListener("click", () => { f.desk = b.dataset.desk; f.page = 1; load(); }));
   $$("#tabs button", view).forEach((b) => b.addEventListener("click", () => {
     const preset = tabs.find((t) => t[0] === b.dataset.tab)[2];
-    KEYS.forEach((k) => { if (k !== "sort") delete f[k]; });
+    KEYS.forEach((k) => { if (k !== "sort" && k !== "desk") delete f[k]; });
     Object.assign(f, preset);
     for (const [k, s] of Object.entries(sel)) { const el = $(s, view); if (el && k !== "sort") el.value = f[k] || ""; }
     $("#f-q", view).value = ""; if ($("#f-req", view)) $("#f-req", view).value = "";
@@ -154,7 +171,7 @@ export async function render(view, _p, query) {
     const req = e.target.closest("[data-req]");
     if (req && req.dataset.req) {
       e.stopPropagation();
-      KEYS.forEach((k) => { if (!["sort"].includes(k)) delete f[k]; });
+      KEYS.forEach((k) => { if (!["sort", "desk"].includes(k)) delete f[k]; });
       Object.assign(f, { scope: "all", requester: req.dataset.req });
       for (const [k, s2] of Object.entries(sel)) { const el = $(s2, view); if (el && k !== "sort") el.value = ""; }
       $("#f-q", view).value = ""; if ($("#f-req", view)) $("#f-req", view).value = req.dataset.req;
@@ -163,8 +180,9 @@ export async function render(view, _p, query) {
   };
   view.addEventListener("click", onRowAction, true);
   $("#exp", view)?.addEventListener("click", async () => {
-    try { await api.download("/tickets/export.csv", Object.fromEntries(KEYS.filter((k) => k !== "page" && k !== "sort").map((k) => [k, f[k]])), "tickets.csv"); toast("Export downloaded."); }
-    catch (e) { errorToast(e); }
+    const btn = $("#exp", view); btn.disabled = true;
+    try { await api.download("/tickets/export.xlsx", Object.fromEntries(KEYS.filter((k) => k !== "page").map((k) => [k, f[k]])), "tickets.xlsx"); toast("Excel file downloaded."); }
+    catch (e) { errorToast(e); } finally { btn.disabled = false; }
   });
   // ------------------------------------------------------------- ⋮ assign menu
   let rows = {};

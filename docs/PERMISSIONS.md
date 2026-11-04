@@ -6,7 +6,8 @@ There are exactly **two roles**. All checks run on the server for every request.
 |---|:-:|:-:|
 | Raise tickets, add comments and images/PDFs to own tickets | ✓ | ✓ |
 | See own tickets | ✓ | ✓ |
-| See **all** tickets | | ✓ |
+| See **all** tickets (IT, ERP-IT and All tickets views; IT administrators start on their own department) | | ✓ |
+| Export the ticket list to Excel | | ✓ |
 | Confirm / reopen (within 7 days) / cancel own ticket, rate the service | ✓ | ✓ |
 | Delete own ticket permanently (until it is resolved) | ✓ | ✓ |
 | Delete any ticket | | ✓ |
@@ -23,6 +24,7 @@ There are exactly **two roles**. All checks run on the server for every request.
 
 Rules
 - Tickets can only be assigned to active users with the IT Administrator role.
+- Employees only ever see tickets they raised themselves (enforced on the server; checked on every start-up).
 - Employees never see internal notes, internal attachments or root-cause notes.
 - Tickets an employee cannot see return **404**, so ticket numbers cannot be guessed.
 - An administrator cannot remove their own administrator role, deactivate or delete themselves, or delete the last active IT Administrator.

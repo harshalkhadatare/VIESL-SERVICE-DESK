@@ -151,6 +151,7 @@ class UserAdminOut(BaseModel):
     department_id: int | None = None
     job_title: str | None = None
     phone: str | None = None
+    desk: str | None = None
     department: str | None
     location: str | None
     is_active: bool
@@ -172,7 +173,7 @@ def _user_out(u: User) -> UserAdminOut:
     from app.services.user_import import is_placeholder
     return UserAdminOut(id=u.id, employee_code=u.employee_code, full_name=u.full_name, email=u.email,
                         has_email=not is_placeholder(u.email), department_id=u.department_id,
-                        job_title=u.job_title, phone=u.phone,
+                        job_title=u.job_title, phone=u.phone, desk=u.desk,
                         department=u.department.name if u.department else None,
                         location=u.location.name if u.location else None, is_active=u.is_active,
                         is_demo=u.is_demo, roles=sorted(u.role_codes), last_login_at=u.last_login_at,
@@ -208,6 +209,7 @@ class UserCreateIn(StrictIn):
     phone: str | None = Field(None, max_length=30)
     role: str = Field(pattern="^(employee|it_admin)$")
     password: str = Field(min_length=1, max_length=200)
+    desk: str | None = Field(None, pattern="^(it|erp)$")   # IT administrators: IT or ERP-IT department
 
 
 @router.post("/admin/users", response_model=UserAdminOut, status_code=201, tags=["Administration"])
@@ -231,7 +233,8 @@ def create_user(data: UserCreateIn, p: Principal = Depends(require("user.manage"
     role = db.scalar(select(Role).where(Role.code == data.role))
     u = User(full_name=data.full_name.strip(), email=email, employee_code=data.employee_code.strip(),
              department_id=data.department_id, job_title=data.job_title, phone=data.phone,
-             timezone=get_settings().app_timezone)
+             timezone=get_settings().app_timezone,
+             desk=(data.desk or "it") if data.role == "it_admin" else None)
     set_user_password(u, data.password)
     db.add(u)
     db.flush()
@@ -309,6 +312,7 @@ class UserUpdateIn(StrictIn):
     department_id: int | None = None
     job_title: str | None = Field(None, max_length=120)
     phone: str | None = Field(None, max_length=30)
+    desk: str | None = Field(None, pattern="^(it|erp)$")
 
 
 @router.patch("/admin/users/{uid}", response_model=UserAdminOut, tags=["Administration"])
@@ -339,6 +343,8 @@ def update_user(uid: int, data: UserUpdateIn, p: Principal = Depends(require("us
         if fields["department_id"] and not db.get(Department, fields["department_id"]):
             raise BusinessRuleError("Select a valid department.", details=[{"field": "department_id"}])
         u.department_id = fields["department_id"]
+    if "desk" in fields:
+        u.desk = fields["desk"]
     for k in ("job_title", "phone"):
         if k in fields:
             setattr(u, k, (fields[k] or "").strip() or None)

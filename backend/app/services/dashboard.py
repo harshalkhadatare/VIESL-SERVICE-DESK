@@ -34,7 +34,7 @@ def employee_summary(db: Session, p: Principal) -> dict:
 
 def ops_summary(db: Session, p: Principal, *, start: date, end: date, tz: str,
                 category_id: int | None = None, department_id: int | None = None,
-                group_id: int | None = None, assignee_id: int | None = None) -> dict:
+                group_id: int | None = None, assignee_id: int | None = None, desk: str | None = None) -> dict:
     now = utcnow()
     vis = ticket_visibility_clause(p)
     filters = [vis]
@@ -46,6 +46,8 @@ def ops_summary(db: Session, p: Principal, *, start: date, end: date, tz: str,
         filters.append(Ticket.support_group_id == group_id)
     if assignee_id:
         filters.append(Ticket.assignee_id == assignee_id)
+    if desk in ("it", "erp"):   # IT or ERP-IT dashboard; "Both" tickets count in both
+        filters.append(Ticket.desk.in_([desk, "both"]))
     scope = and_(*filters)
 
     range_start, _ = _local_day_bounds(tz, start)

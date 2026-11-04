@@ -18,7 +18,8 @@ function sections(staff) {
     { id: "raise", icon: "plus", title: "Raise a ticket", body: html`
       ${steps([
         html`Click <b>Raise a ticket</b> in the left menu — or use a <b>Quick help</b> tile on the Home page (Forgot password, Printer, ERP…) to get a form that's already filled in.`,
-        html`Choose what the problem is about — e.g. <i>ERP</i>, <i>Email</i>, <i>Hardware</i>, <i>Network</i>.`,
+        html`Choose the <b>IT department</b>: <b>IT</b> (computers, printers, network, email, accounts), <b>ERP-IT</b> (ERP software, data, reports) or <b>Both / not sure</b>.`,
+        html`Then choose the <b>category</b> — the list only shows what that department handles. Subcategory is optional.`,
         html`Write a short <b>Subject</b> and a clear <b>Description</b>: what happened, since when, and any error text.`,
         html`Add <b>screenshots or a PDF</b> right below the description (images and PDF only).`,
         html`Pick how many people are affected and how urgent it is — the priority is set automatically.`,
@@ -87,6 +88,8 @@ function sections(staff) {
       ${steps([
         html`Open <b>Tickets</b>. Use the tabs: <i>All open</i>, <i>Assigned to me</i>, <i>Unassigned</i>.`,
         html`The <b>Dashboard</b> shows live numbers (open, unassigned, overdue…) — click any number to see those tickets.`,
+        html`Use the <b>IT tickets · ERP-IT tickets · All tickets</b> buttons above the list. You start on your own department; tickets marked “Both” appear in both. The <b>Dashboard</b> has the same IT / ERP-IT split.`,
+        html`<b>Export to Excel</b> downloads exactly what the list shows (all pages) as a formatted spreadsheet with filters.`,
         html`<b>Light-green rows marked NEW</b> are tickets raised in the last 3 days that you haven't opened yet.`,
         html`<b>Find an employee's tickets:</b> type their Employee ID, name or email in the search box (or the <i>Employee ID</i> box), or click the requester's name in the list. In <i>Users & roles</i>, the <b>Tickets</b> button does the same.`,
         html`Click <b>⋮</b> on any row to assign it to an IT administrator (or unassign it).`,

@@ -21,6 +21,12 @@ const QUICK_TEMPLATES = {
     description: "Device / asset tag: \nWhat is wrong (slow / not starting / broken part / need new device): \n" },
 };
 
+const DESKS = [
+  ["it", "IT", "Computers, laptops, printers, network, email, accounts", "inbox"],
+  ["erp", "ERP-IT", "ERP software: errors, data, reports, access", "layers"],
+  ["both", "Both / not sure", "Involves both, or you're not sure", "users"],
+];
+
 export async function render(view, _params = [], query = {}) {
   const cat = await catalog();
   const MAX_MB = cat.max_upload_mb || 10;
@@ -38,18 +44,18 @@ export async function render(view, _params = [], query = {}) {
         <div class="card-body" style="padding:22px 24px">
           <div id="quick-note"></div>
           <section class="form-section">
-            <div class="fieldset-title">What do you need help with?</div>
-            <div class="fieldset-sub">Pick the closest category — it decides which team receives your ticket.</div>
-            <div class="form-grid">
+            <div class="fieldset-title">Which IT department do you need?<span class="req">*</span></div>
+            <div class="fieldset-sub">Choose first — the category list then shows only what that department handles.</div>
+            <div class="desk-pick" id="desk-pick" role="radiogroup" aria-label="IT department">
+              ${DESKS.map(([v, name, sub, ic]) => html`<div class="desk-opt" role="radio" tabindex="0" aria-checked="false" data-v="${v}">
+                <span class="desk-ic">${icon(ic)}</span><span><b>${name}</b><span>${sub}</span></span></div>`)}
+            </div>
+            <div class="form-grid" style="margin-top:16px">
               <label class="field"><span class="lbl">Category<span class="req">*</span></span>
-                <select name="category_id" required><option value="">Select a category…</option>
-                  ${cat.categories.map((c) => html`<option value="${c.id}">${c.name}</option>`)}</select>
+                <select name="category_id" required disabled><option value="">Choose the IT department first</option></select>
                 <div class="help" id="cat-help"></div></label>
-              <label class="field"><span class="lbl">Subcategory</span>
+              <label class="field"><span class="lbl">Subcategory <span class="muted" style="font-weight:400">(optional)</span></span>
                 <select name="subcategory_id" disabled><option value="">—</option></select></label>
-              <div class="field full"><span class="lbl">Type</span>
-                <div class="seg" id="type-seg"><button type="button" data-v="incident" class="on">Something is broken</button>
-                <button type="button" data-v="service_request">I need something</button></div></div>
             </div>
           </section>
 
@@ -129,10 +135,24 @@ export async function render(view, _params = [], query = {}) {
     </div>`);
 
   const form = $("#tf", view);
-  let ticketType = "incident", workaround = "";
+  let workaround = "", desk = "";
 
   const setSeg = (seg, v) => $$("button", seg).forEach((b) => b.classList.toggle("on", b.dataset.v === v));
-  $("#type-seg", view).addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { ticketType = b.dataset.v; setSeg(e.currentTarget, ticketType); } });
+  // ---- 1. IT department first, then categories of that department
+  function pickDesk(v) {
+    desk = v;
+    $$("#desk-pick .desk-opt", view).forEach((o) => { const on = o.dataset.v === v; o.classList.toggle("on", on); o.setAttribute("aria-checked", on); });
+    const list = cat.categories.filter((c) => v === "both" || c.desk === v);
+    const keep = form.category_id.value;
+    mount(form.category_id, html`<option value="">Select a category…</option>${list.map((c) => html`<option value="${c.id}">${c.name}</option>`)}`);
+    form.category_id.disabled = false;
+    if (list.some((c) => String(c.id) === keep)) form.category_id.value = keep;
+    form.category_id.dispatchEvent(new Event("change"));
+    showFieldErrors(form, {});
+  }
+  $("#desk-pick", view).addEventListener("click", (e) => { const o = e.target.closest(".desk-opt"); if (o) pickDesk(o.dataset.v); });
+  $("#desk-pick", view).addEventListener("keydown", (e) => {
+    const o = e.target.closest(".desk-opt"); if (o && (e.key === " " || e.key === "Enter")) { e.preventDefault(); pickDesk(o.dataset.v); } });
   $("#wa-seg", view).addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { workaround = b.dataset.v; setSeg(e.currentTarget, workaround); } });
   setSeg($("#wa-seg", view), "");
 
@@ -142,7 +162,6 @@ export async function render(view, _params = [], query = {}) {
     mount(sub, html`<option value="">${c?.subcategories.length ? "Select…" : "—"}</option>${(c?.subcategories || []).map((s) => html`<option value="${s.id}">${s.name}</option>`)}`);
     sub.disabled = !c?.subcategories.length;
     $("#erp-section", view).hidden = !c?.uses_erp_fields;
-    if (c) { ticketType = c.default_ticket_type; setSeg($("#type-seg", view), ticketType); }
     $("#cat-help", view).textContent = c?.requires_approval ? "This request type needs approval before work starts." : (c?.description || "");
     checkDupes(); suggest();
   });
@@ -197,8 +216,7 @@ export async function render(view, _params = [], query = {}) {
   const tpl = QUICK_TEMPLATES[query.quick];
   if (tpl) {
     const c = cat.categories.find((x) => x.code === tpl.cat);
-    if (c) { form.category_id.value = String(c.id); form.category_id.dispatchEvent(new Event("change")); }
-    if (tpl.type) { ticketType = tpl.type; setSeg($("#type-seg", view), ticketType); }
+    if (c) { pickDesk(c.desk); form.category_id.value = String(c.id); form.category_id.dispatchEvent(new Event("change")); }
     form.subject.value = tpl.subject; form.description.value = tpl.description;
     $("#desc-count", view).textContent = form.description.value.length;
     if (tpl.urgency) $(`#urgency .choice[data-v="${tpl.urgency}"]`, view)?.click();
@@ -235,6 +253,7 @@ export async function render(view, _params = [], query = {}) {
     e.preventDefault();
     const v = Object.fromEntries(new FormData(form));
     const errs = {};
+    if (!desk) { toast("First choose the IT department: IT, ERP-IT or Both.", "err"); $("#desk-pick", view).scrollIntoView({ behavior: "smooth", block: "center" }); return; }
     if (!v.category_id) errs.category_id = "Choose a category.";
     if ((v.subject || "").trim().length < 5) errs.subject = "Subject must be at least 5 characters.";
     if ((v.description || "").trim().length < 10) errs.description = "Please describe the issue (at least 10 characters).";
@@ -245,7 +264,7 @@ export async function render(view, _params = [], query = {}) {
     const c = cat.categories.find((x) => String(x.id) === v.category_id);
     const body = {
       subject: v.subject.trim(), description: v.description.trim(), category_id: Number(v.category_id),
-      subcategory_id: v.subcategory_id ? Number(v.subcategory_id) : null, ticket_type: ticketType,
+      subcategory_id: v.subcategory_id ? Number(v.subcategory_id) : null, desk,
       impact, urgency, contact_method: "portal",
       related_ticket_number: v.related_ticket_number?.trim() || null,
     };

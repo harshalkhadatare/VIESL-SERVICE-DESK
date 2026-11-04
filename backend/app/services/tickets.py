@@ -22,6 +22,8 @@ from app.services.routing import priority_for, route_ticket
 from app.services.settings_service import get_int
 from app.services.staff import group_staff_ids, is_it_staff
 
+DESK_NAME = {"it": "IT", "erp": "ERP-IT", "both": "IT + ERP-IT"}
+
 INITIAL_STATUS = "SUBMITTED"
 FINAL_STATUSES = {"CLOSED", "CANCELLED"}
 # Staff moving a ticket into these counts as the first response
@@ -111,6 +113,10 @@ def create_ticket(db: Session, p: Principal, data: TicketCreate, idempotency_key
         if not sub or sub.category_id != cat.id or not sub.is_active:
             raise BusinessRuleError("Subcategory does not belong to the selected category.",
                                     details=[{"field": "subcategory_id"}])
+    desk = data.desk or cat.desk
+    if desk in ("it", "erp") and cat.desk != desk:
+        raise BusinessRuleError(f"“{cat.name}” is handled by {DESK_NAME[cat.desk]}. Choose {DESK_NAME[cat.desk]} "
+                                "or “Both”, or pick another category.", details=[{"field": "category_id"}])
     if data.erp and not cat.uses_erp_fields:
         raise BusinessRuleError("ERP details are only accepted for ERP categories.", details=[{"field": "erp"}])
 
@@ -123,7 +129,7 @@ def create_ticket(db: Session, p: Principal, data: TicketCreate, idempotency_key
         requester_id=user.id, department_id=user.department_id, location_id=user.location_id,  # never from client
         category_id=cat.id, subcategory_id=data.subcategory_id, impact=data.impact, urgency=data.urgency,
         priority_id=prio.id, status_code=INITIAL_STATUS, contact_method=data.contact_method,
-        created_by=user.id, created_at=now, updated_at=now,
+        created_by=user.id, created_at=now, updated_at=now, desk=desk,
     )
     db.add(t)
     db.flush()

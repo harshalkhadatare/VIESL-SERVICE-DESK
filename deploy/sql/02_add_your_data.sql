@@ -47,3 +47,11 @@ VALUES ('Connect to office Wi-Fi',
         E'1. Select the network VIESL-Staff.\n2. Sign in with your Windows username and password.\n3. If it fails, raise a Network ticket.',
         'published', (SELECT id FROM users WHERE email = 'YOUR-ADMIN-EMAIL'),
         1, 0, now() AT TIME ZONE 'utc', now() AT TIME ZONE 'utc', now() AT TIME ZONE 'utc');
+
+-- ---------------------------------------------------------------------------
+-- IT departments (added 04 Nov 2026)
+-- Put each IT administrator in IT or ERP-IT (also possible in Users & roles → Edit).
+-- UPDATE users SET desk = 'erp' WHERE employee_code IN ('21731', '21226');   -- ERP-IT admins
+-- UPDATE users SET desk = 'it'  WHERE employee_code IN ('21686', '21342');   -- IT admins
+-- Move a category to the other department:
+-- UPDATE categories SET desk = 'erp' WHERE code = 'ACCESS';

@@ -54,7 +54,7 @@ def _list_item(t: Ticket, now: datetime, flag=None, p: Principal | None = None) 
         else:
             sla_state = "on_track"
     return TicketListItem(
-        number=t.number, version=t.version, assignee_id=t.assignee_id, subject=t.subject, ticket_type=t.ticket_type,
+        number=t.number, version=t.version, assignee_id=t.assignee_id, desk=t.desk, subject=t.subject, ticket_type=t.ticket_type,
         status=CodeRef(code=t.status.code, name=t.status.name),
         priority=CodeRef(code=t.priority.code, name=t.priority.name), category=t.category.name,
         requester=t.requester.full_name, requester_code=t.requester.employee_code, requester_id=t.requester_id,
@@ -72,7 +72,7 @@ def _detail(db: Session, p: Principal, t: Ticket) -> TicketDetail:
     staff = can_work_ticket(p, t)
     snap = sla_snapshot(db, t)
     return TicketDetail(
-        number=t.number, version=t.version, subject=t.subject, description=t.description,
+        number=t.number, version=t.version, desk=t.desk, subject=t.subject, description=t.description,
         ticket_type=t.ticket_type, status=CodeRef(code=t.status.code, name=t.status.name),
         priority=CodeRef(code=t.priority.code, name=t.priority.name), impact=t.impact, urgency=t.urgency,
         category=Ref(id=t.category.id, name=t.category.name),
@@ -101,7 +101,7 @@ def _detail(db: Session, p: Principal, t: Ticket) -> TicketDetail:
 
 # ------------------------------------------------------------------ list / search
 def _filtered(db: Session, p: Principal, *, q, status, priority, category_id, group_id, assignee, scope,
-              sla, date_from, date_to, tz, requester=None, starred=False, department_id=None):
+              sla, date_from, date_to, tz, requester=None, starred=False, department_id=None, desk=None):
     stmt = (select(Ticket).join(Priority, Priority.id == Ticket.priority_id)
             .outerjoin(SLATracking, SLATracking.ticket_id == Ticket.id)
             .where(ticket_visibility_clause(p)))
@@ -132,6 +132,8 @@ def _filtered(db: Session, p: Principal, *, q, status, priority, category_id, gr
         stmt = stmt.where(Ticket.requester_id == rid)
     if department_id:
         stmt = stmt.where(Ticket.department_id == department_id)
+    if desk in ("it", "erp"):   # "Both" tickets belong to both departments
+        stmt = stmt.where(Ticket.desk.in_([desk, "both"]))
     if starred:
         stmt = stmt.where(Ticket.id.in_(select(TicketUserFlag.ticket_id).where(
             TicketUserFlag.user_id == p.id, TicketUserFlag.starred.is_(True))))
@@ -182,10 +184,11 @@ def list_filters(
     date_from: date | None = None, date_to: date | None = None,
     requester: str | None = Query(None, max_length=40, description="Employee ID (code) or user id of the requester"),
     starred: bool = False, department_id: int | None = None,
+    desk: Literal["it", "erp", "all"] | None = None,
 ) -> ListFilters:
     return dict(q=q, status=status, priority=priority, category_id=category_id, group_id=group_id,
                 assignee=assignee, scope=scope, sla=sla, date_from=date_from, date_to=date_to,
-                requester=requester, starred=starred, department_id=department_id)
+                requester=requester, starred=starred, department_id=department_id, desk=desk)
 
 
 @router.get("", response_model=Page[TicketListItem])
@@ -217,13 +220,13 @@ def export_csv(f: ListFilters = Depends(list_filters), p: Principal = Depends(re
     z = ZoneInfo(p.user.timezone)
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["Ticket", "Subject", "Type", "Status", "Priority", "Category", "Requester", "Employee ID", "Department",
+    w.writerow(["Ticket", "IT team", "Subject", "Type", "Status", "Priority", "Category", "Requester", "Employee ID", "Department",
                 "Support group", "Assignee", f"Created ({p.user.timezone})", "Resolved", "SLA breached"])
     count = 0
     for t in db.scalars(stmt).all():
         count += 1
         w.writerow([_csv_safe(x) for x in [
-            t.number, t.subject, t.ticket_type, t.status.name, t.priority.code, t.category.name,
+            t.number, {"it": "IT", "erp": "ERP-IT", "both": "IT + ERP-IT"}.get(t.desk, t.desk), t.subject, t.ticket_type, t.status.name, t.priority.code, t.category.name,
             t.requester.full_name, t.requester.employee_code or "", t.department.name if t.department else "",
             t.support_group.name if t.support_group else "", t.assignee.full_name if t.assignee else "",
             t.created_at.astimezone(z).strftime("%Y-%m-%d %H:%M"),
@@ -236,6 +239,36 @@ def export_csv(f: ListFilters = Depends(list_filters), p: Principal = Depends(re
     fname = f"tickets_{datetime.now(z):%Y%m%d_%H%M}.csv"
     return StreamingResponse(iter([data]), media_type="text/csv; charset=utf-8",
                              headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+_FILTER_LABELS = {"desk": "IT team", "q": "Search", "status": "Status", "priority": "Priority", "assignee": "Assignee",
+                  "requester": "Employee ID", "sla": "SLA", "date_from": "From", "date_to": "To"}
+
+
+@router.get("/export.xlsx")
+def export_xlsx(f: ListFilters = Depends(list_filters), sort: str = "created_desc",
+                p: Principal = Depends(require("report.export")), db: Session = Depends(get_db)):
+    """Formatted Excel workbook of the tickets matching the current list filters (max 10 000 rows)."""
+    from app.core.config import get_settings
+    from app.services.excel_export import DESK_NAME, build_ticket_workbook
+    order = SORTS.get(sort, SORTS["created_desc"])
+    rows = db.scalars(_filtered(db, p, tz=p.user.timezone, **f).order_by(order, Ticket.id.desc()).limit(10000)).all()
+    desk = f.get("desk")
+    title = {"it": "IT tickets", "erp": "ERP-IT tickets"}.get(desk, "All tickets")
+    shown = []
+    for k, label in _FILTER_LABELS.items():
+        v = f.get(k)
+        if v and not (k == "desk" and v == "all"):
+            shown.append(f"{label}: {DESK_NAME.get(v, v) if k == 'desk' else ('open' if v == 'open' else v)}")
+    data = build_ticket_workbook(rows, tz=p.user.timezone, company=get_settings().company_name, title=title,
+                                 filters_text=", ".join(shown))
+    audit_p(db, p, "report.export", entity_type="ticket", detail={"rows": len(rows), "format": "xlsx", "filters": {
+        k: v for k, v in f.items() if v}})
+    db.commit()
+    z = ZoneInfo(p.user.timezone)
+    fname = f"{title.replace(' ', '_')}_{datetime.now(z):%Y%m%d_%H%M}.xlsx"
+    return Response(content=data, headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 # ------------------------------------------------------------------ create

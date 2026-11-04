@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { state, catalog, supportGroups, can } from "../state.js";
 import { $, $$, html, mount, icon, fmtDate, fmtRelative, statusBadge, prioBadge, initials, toast, errorToast,
-  openModal, busy, emptyState, fileSize, showFieldErrors, realEmail, confirmDialog, nameId, nameIdText, empId } from "../ui.js";
+  openModal, busy, emptyState, fileSize, showFieldErrors, realEmail, confirmDialog, deskBadge, nameId, nameIdText, empId } from "../ui.js";
 import { refreshUnread } from "../app.js";
 
 const FIELD_LABEL = { status: "Status", assignee: "Assignee", support_group: "Support group", priority: "Priority",
@@ -51,7 +51,7 @@ export async function render(view, [number]) {
       <div class="crumbs"><a href="#/tickets">Tickets</a> / <span class="mono">${t.number}</span></div>
       <div class="page-head" style="align-items:flex-start">
         <div style="min-width:0;flex:1">
-          <div class="ticket-title"><span class="t-id" style="font-size:13.5px">${t.number}</span>${statusBadge(t.status)}${prioBadge(t.priority)}
+          <div class="ticket-title"><span class="t-id" style="font-size:13.5px">${t.number}</span>${deskBadge(t.desk)}${statusBadge(t.status)}${prioBadge(t.priority)}
             ${t.is_demo ? html`<span class="pill demo">Demo data</span>` : ""}
             <button class="ticket-star ${t.starred ? "on" : ""}" id="star-btn" aria-pressed="${t.starred}" title="Star tickets to find them quickly in the ★ Starred tab">${icon("star")} ${t.starred ? "Starred" : "Star"}</button></div>
           <h1 style="margin-top:8px">${t.subject}</h1>
@@ -110,6 +110,7 @@ export async function render(view, [number]) {
               <dt>Requester</dt><dd>${nameId(t.requester)}<div class="t-sub2">${realEmail(t.requester.email) || "No email on file"}${t.requester_phone ? html`<br>${t.requester_phone}` : ""}</div></dd>
               <dt>Department</dt><dd>${t.department?.name || "—"}</dd>
               <dt>Location</dt><dd>${t.location?.name || "—"}</dd>
+              <dt>IT department</dt><dd>${deskBadge(t.desk)}</dd>
               <dt>Support group</dt><dd>${t.support_group?.name || html`<span class="muted">Awaiting triage</span>`}</dd>
               <dt>Assigned to</dt><dd>${t.assignee ? html`<span class="row" style="gap:8px"><span class="avatar sm">${initials(t.assignee.full_name)}</span>${nameId(t.assignee)}</span>` : html`<span class="muted">Unassigned</span>`}</dd>
               <dt>Impact / urgency</dt><dd>${IMPACT[t.impact]} / ${IMPACT[t.urgency]}</dd>

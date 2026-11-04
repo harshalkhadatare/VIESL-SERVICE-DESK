@@ -123,6 +123,8 @@ const STATUS_TONE = {
   PENDING_EMPLOYEE: "warn", PENDING_APPROVAL: "warn", PENDING_VENDOR: "warn", PENDING_CHANGE: "warn",
   RESOLVED: "ok", CLOSED: "", CANCELLED: "",
 };
+export const DESK_NAME = { it: "IT", erp: "ERP-IT", both: "IT + ERP-IT" };
+export const deskBadge = (d) => d ? html`<span class="desk-badge ${d}" title="IT department">${DESK_NAME[d] || d}</span>` : "";
 export const statusBadge = (s) => html`<span class="badge ${STATUS_TONE[s.code] ?? ""}">${s.name}</span>`;
 export const prioBadge = (p) => {
   const code = typeof p === "string" ? p : p.code;

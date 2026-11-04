@@ -58,6 +58,8 @@ class User(Base, TimestampMixin):
     # Readable password, kept at the owner's request so it can be seen/edited in the database console.
     # When set, logins are checked against this value (editing it in Neon changes the password).
     password_plain: Mapped[str | None] = mapped_column(Unicode(200))
+    # IT administrators only: which IT department they belong to ('it' or 'erp'); decides their default view
+    desk: Mapped[str | None] = mapped_column(Unicode(10))
     auth_provider: Mapped[str] = mapped_column(Unicode(20), default="local", nullable=False)
     timezone: Mapped[str] = mapped_column(Unicode(60), default="Asia/Kolkata", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true(), nullable=False)

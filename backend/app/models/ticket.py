@@ -24,6 +24,7 @@ class Ticket(Base, TimestampMixin, CreatedByMixin):
         CheckConstraint("ticket_type IN ('incident','service_request')", name="ticket_type"),
         CheckConstraint("impact BETWEEN 1 AND 3", name="impact_range"),
         CheckConstraint("urgency BETWEEN 1 AND 3", name="urgency_range"),
+        CheckConstraint("desk IN ('it','erp','both')", name="desk"),
         Index("ix_tickets_status_group", "status_code", "support_group_id"),
         Index("ix_tickets_requester", "requester_id", "created_at"),
         Index("ix_tickets_assignee", "assignee_id", "status_code"),
@@ -33,6 +34,8 @@ class Ticket(Base, TimestampMixin, CreatedByMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     number: Mapped[str] = mapped_column(Unicode(20), unique=True, nullable=False)
     ticket_type: Mapped[str] = mapped_column(Unicode(20), nullable=False, default="incident")
+    # IT department chosen by the employee: 'it', 'erp' (ERP-IT) or 'both'
+    desk: Mapped[str] = mapped_column(Unicode(10), default="it", server_default="it", nullable=False, index=True)
     subject: Mapped[str] = mapped_column(Unicode(200), nullable=False)
     description: Mapped[str] = mapped_column(LongText, nullable=False)
 
