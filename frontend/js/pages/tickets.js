@@ -16,6 +16,7 @@ const EMP_TABS = [
   ["waiting", "Awaiting my reply", { scope: "mine", status: "PENDING_EMPLOYEE" }],
   ["resolved", "Resolved", { scope: "mine", status: "RESOLVED" }],
   ["all", "All my tickets", { scope: "mine" }],
+  ["cancelled", "Cancelled", { scope: "mine", status: "CANCELLED" }],
   ["starred", "★ Starred", { scope: "mine", starred: "true" }],
 ];
 const VIEWER_TABS = [["all", "All tickets", { scope: "all", status: "open" }], ["mine", "Raised by me", { scope: "mine" }]];

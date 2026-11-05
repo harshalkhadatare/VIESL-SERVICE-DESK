@@ -260,8 +260,15 @@ def export_xlsx(f: ListFilters = Depends(list_filters), sort: str = "created_des
         v = f.get(k)
         if v and not (k == "desk" and v == "all"):
             shown.append(f"{label}: {DESK_NAME.get(v, v) if k == 'desk' else ('open' if v == 'open' else v)}")
+    files: dict[int, list[str]] = {}
+    ids = [t.id for t in rows]
+    for i in range(0, len(ids), 900):    # one query per 900 tickets, not one per ticket
+        for tid, name in db.execute(select(TicketAttachment.ticket_id, TicketAttachment.original_name)
+                                    .where(TicketAttachment.ticket_id.in_(ids[i:i + 900]))
+                                    .order_by(TicketAttachment.created_at)):
+            files.setdefault(tid, []).append(name)
     data = build_ticket_workbook(rows, tz=p.user.timezone, company=get_settings().company_name, title=title,
-                                 filters_text=", ".join(shown))
+                                 filters_text=", ".join(shown), files=files, base_url=get_settings().app_base_url)
     audit_p(db, p, "report.export", entity_type="ticket", detail={"rows": len(rows), "format": "xlsx", "filters": {
         k: v for k, v in f.items() if v}})
     db.commit()

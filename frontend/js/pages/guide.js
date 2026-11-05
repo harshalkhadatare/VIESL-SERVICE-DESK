@@ -23,7 +23,7 @@ function sections(staff) {
         html`Write a short <b>Subject</b> and a clear <b>Description</b>: what happened, since when, and any error text.`,
         html`Add <b>screenshots or a PDF</b> right below the description (images and PDF only).`,
         html`Pick how many people are affected and how urgent it is — the priority is set automatically.`,
-        html`Click <b>Submit ticket</b>. You get a ticket number like <span class="mono">IT-2026-000123</span>.`])}
+        html`Click <b>Submit ticket</b>. You get a ticket number: <span class="mono">IT-26-000123</span> for IT, <span class="mono">ERP-26-000123</span> for ERP-IT, <span class="mono">ITERP-26-000123</span> for both.`])}
       <p class="g-tip">${icon("zap")} Before submitting, look at the suggested articles on the right — many common problems have a ready fix.</p>` },
 
     { id: "track", icon: "ticket", title: "Track your ticket", body: html`
@@ -54,10 +54,10 @@ function sections(staff) {
         html`Click <b>Confirm it's fixed</b> to close it — or <b>Still not working</b> to send it back (within 7 days).`,
         html`Give a quick star rating — it helps the team improve.`])}` },
 
-    { id: "delete", icon: "trash", title: "Cancel or delete a ticket", body: html`
-      <p><b>Cancel ticket</b> keeps the record but stops all work — use it when the problem went away.</p>
-      <p><b>Delete</b> removes the ticket and its messages permanently. You can delete your own ticket until it is resolved.
-        If you raised it by mistake, deleting is the cleanest option.</p>` },
+    { id: "delete", icon: "x", title: "Cancel a ticket", body: html`
+      <p>No longer need help? Open the ticket and click <b>Cancel ticket</b>, with a short reason. You can cancel at any stage
+        until it is resolved. A cancelled ticket stays in <b>My tickets → All my tickets</b> (and the <b>Cancelled</b> tab) for your records.
+        Tickets can only be deleted by the IT team.</p>` },
 
     { id: "notify", icon: "bell", title: "Notifications", body: html`
       <p>The bell at the top shows updates on your tickets: who it is assigned to, new replies, and status changes.

@@ -20,7 +20,7 @@ def current(client, role, number):
 def test_create_sets_identity_number_priority_and_routing(client):
     t = make_ticket(client, code="ERP_APP", impact=1, urgency=2,
                     erp={"erp_module": "Procurement", "reference_no": "PO/77"})
-    assert t["number"].startswith("IT-") and len(t["number"]) == 14
+    assert t["number"].startswith("ERP-26-") and len(t["number"]) == 13   # ERP category → ERP-IT series
     assert t["requester"]["id"] == user_id(EMAILS["employee"])
     assert t["department"]["name"] == "Finance & Accounts"   # from profile, not client
     assert t["priority"]["code"] == "P2"                       # impact 1 + urgency 2

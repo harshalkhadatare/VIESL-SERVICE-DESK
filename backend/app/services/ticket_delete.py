@@ -1,9 +1,8 @@
 """Permanent ticket deletion.
 
 Rules
-- The requester may delete their own ticket until it is resolved or closed (after that the record belongs to IT's
-  history; they can still cancel or reopen as before).
-- IT administrators (``ticket.manage_all``) may delete any ticket.
+- Only IT administrators (``ticket.manage_all``) may delete a ticket.
+- Employees cannot delete; they cancel instead, so the ticket stays in their history and in Excel exports.
 - The ticket and everything attached to it is removed; one audit-log entry keeps the number, subject and who
   deleted it. The ticket number is never reused.
 """
@@ -25,16 +24,13 @@ LOCKED_FOR_REQUESTER = ("RESOLVED", "CLOSED")
 
 
 def can_delete_ticket(p: Principal, t: Ticket) -> bool:
-    if p.can("ticket.manage_all"):
-        return True
-    return t.requester_id == p.id and t.status_code not in LOCKED_FOR_REQUESTER
+    """Only IT administrators delete. Employees cancel instead, so the ticket stays in their history and in exports."""
+    return p.can("ticket.manage_all")
 
 
 def delete_ticket(db: Session, p: Principal, t: Ticket) -> None:
     if not can_delete_ticket(p, t):
-        if t.requester_id == p.id:
-            raise Forbidden("Resolved or closed tickets can't be deleted. Reopen it, or ask IT if it must be removed.")
-        raise Forbidden("You can only delete tickets you raised.")
+        raise Forbidden("Tickets can't be deleted from here — use “Cancel ticket” instead. It stays in your history.")
 
     tid, number, subject = t.id, t.number, t.subject
     assignee_id, requester_id = t.assignee_id, t.requester_id

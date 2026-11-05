@@ -14,12 +14,14 @@ import * as adminPage from "./pages/admin.js";
 import * as annPage from "./pages/announcements.js";
 import { setupThemeMenu } from "./theme.js";
 
-export const COMPANY = "Vision Infra Equipment Solutions Ltd.";
+import { brand, loadBrand } from "./brand.js";
 
 const ROUTES = [
   [/^\/?$/, dashboardPage.render, "dashboard"],
   [/^\/tickets\/new$/, newTicketPage.render, "new"],
-  [/^\/tickets\/(IT-\d{4}-\d{6})$/, detailPage.render, "tickets"],
+  // IT-26-000001 · ERP-26-000001 · ITERP-26-000001 (and the older IT-2026-000001)
+  [/^\/tickets\/([A-Z]{2,5}-\d{2,4}-\d{6})$/, detailPage.render, "tickets"],
+  [/^\/tickets\/([A-Z]{2,5}-\d{2,4}-\d{6})\/files$/, (v, p, q) => detailPage.render(v, p, { ...q, files: "1" }), "tickets"],
   [/^\/tickets$/, ticketsPage.render, "tickets"],
   [/^\/kb\/guide$/, guidePage.render, "guide"],
   [/^\/kb\/(\d+)$/, kbPage.renderArticle, "kb"],
@@ -54,7 +56,7 @@ function renderShell() {
   <div class="shell" id="shell">
     <aside class="sidebar" aria-label="Main navigation">
       <div class="brand"><div class="brand-mark">${brandMark()}</div>
-        <div><div class="brand-name">IT Service Desk</div><div class="brand-sub">Vision Infra · VIESL</div></div></div>
+        <div><div class="brand-name">IT Service Desk</div><div class="brand-sub">${brand.short}</div></div></div>
       <nav class="nav">
         <div class="nav-section">Workspace</div>
         ${navLink("/", "dashboard", "home", isStaff() || can("dashboard.ops") ? "Dashboard" : "Home")}
@@ -76,7 +78,7 @@ function renderShell() {
     <div class="main">
       <header class="topbar">
         <button class="icon-btn menu-btn" id="menu-btn" aria-label="Open navigation">${icon("menu")}</button>
-        <div class="company-title" title="${COMPANY}">${COMPANY}</div>
+        <div class="company-title" title="${brand.name}">${brand.name}</div>
         <div class="search" role="search">
           ${icon("search")}
           <input type="search" id="global-search" placeholder="${isStaff() ? "Search tickets, employee ID or name…  ( / )" : "Search tickets and articles…  ( / )"}" autocomplete="off"
@@ -290,7 +292,7 @@ setSessionLostHandler(() => {
 
 window.addEventListener("hashchange", route);
 (async function start() {
-  const ok = await refreshSession().catch(() => false);
+  const [ok] = await Promise.all([refreshSession().catch(() => false), loadBrand()]);
   if (ok) await boot();
   else if (parseHash().path !== "/login") navigate("/login"); // hashchange triggers route()
   else route();

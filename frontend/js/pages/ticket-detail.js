@@ -25,7 +25,7 @@ const STEPS = ["Submitted", "Assigned", "In progress", "Resolved", "Closed"];
 const STEP_OF = { NEW: 0, SUBMITTED: 0, TRIAGED: 0, ASSIGNED: 1, IN_PROGRESS: 2, PENDING_EMPLOYEE: 2, PENDING_APPROVAL: 2,
   PENDING_VENDOR: 2, PENDING_CHANGE: 2, REOPENED: 2, RESOLVED: 3, CLOSED: 4 };
 
-export async function render(view, [number]) {
+export async function render(view, [number], query = {}) {
   let t, comments, history, attachments, tab = "conversation", composeInternal = false;
   const statusNames = Object.fromEntries((await catalog()).statuses.map((s) => [s.code, s.name]));
 
@@ -254,7 +254,7 @@ export async function render(view, [number]) {
   }
 
   function attachmentsCard(closed) {
-    return html`<div class="card"><div class="card-head"><h2>Attachments</h2><span class="hint">${attachments.length}</span></div>
+    return html`<div class="card" id="att-card"><div class="card-head"><h2>Attachments</h2><span class="hint">${attachments.length}</span></div>
       <div class="card-body">${attachments.length ? attachments.map((a) => html`<div class="attach"><span class="ic">${icon("file")}</span>
         <div style="flex:1;min-width:0"><a href="#" data-dl="${a.id}" data-name="${a.original_name}" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.original_name}</a>
         <span class="t-sub2">${fileSize(a.size_bytes)} · ${nameIdText(a.uploader)}${a.is_internal ? html` · <span class="tag-internal">internal</span>` : ""}</span></div></div>`) :
@@ -487,7 +487,7 @@ export async function render(view, [number]) {
 
   function linkModal() {
     openModal({ title: "Link a ticket", body: html`<form id="lf" class="form-grid">
-        <label class="field"><span class="lbl">Ticket number</span><input type="text" name="target_number" placeholder="IT-2026-000123" required></label>
+        <label class="field"><span class="lbl">Ticket number</span><input type="text" name="target_number" placeholder="IT-26-000123" required></label>
         <label class="field"><span class="lbl">Relationship</span><select name="relation_type"><option value="related">Related</option><option value="duplicate_of">This is a duplicate of</option></select></label></form>`,
       actions: html`<button class="btn" data-close>Cancel</button><button class="btn primary" id="lok">Link</button>`,
       onMount: (el, close) => $("#lok", el).addEventListener("click", async () => {
@@ -498,4 +498,8 @@ export async function render(view, [number]) {
   }
 
   draw();
+  if (query.files) {   // opened from an "Attachment link" in the Excel export
+    const card = $("#att-card", view);
+    if (card) { card.scrollIntoView({ behavior: "smooth", block: "center" }); card.classList.add("flash"); }
+  }
 }

@@ -79,6 +79,11 @@ TRANSITIONS = [  # from, to, actor, requires_reason
     ("PENDING_CHANGE", "IN_PROGRESS", S, False), ("PENDING_CHANGE", "RESOLVED", S, False),
     ("RESOLVED", "CLOSED", A, False), ("RESOLVED", "REOPENED", A, True),
     ("REOPENED", "IN_PROGRESS", S, False), ("REOPENED", "RESOLVED", S, False),
+    # employees can cancel their own ticket at any stage until it is resolved (they cannot delete it)
+    ("ASSIGNED", "CANCELLED", R, True), ("IN_PROGRESS", "CANCELLED", R, True),
+    ("PENDING_EMPLOYEE", "CANCELLED", R, True), ("PENDING_APPROVAL", "CANCELLED", R, True),
+    ("PENDING_VENDOR", "CANCELLED", R, True), ("PENDING_CHANGE", "CANCELLED", R, True),
+    ("REOPENED", "CANCELLED", R, True),
 ]
 PRIORITIES = [("P1", "Critical", 1, "Major outage or critical service down for many users"),
               ("P2", "High", 2, "Significant impact on a department or key business process"),

@@ -180,3 +180,14 @@ shows the mail server's exact error. Common causes: Microsoft 365 needs "Authent
 (Microsoft 365 admin → Users → the mailbox → Mail → Manage email apps), and accounts with two-step sign-in need an
 **app password** instead of the normal password. Sending limits (Microsoft 365 ≈ 30 emails/minute, 10,000/day) are
 shared with the other project; a service desk of this size stays far below them.
+
+## I. Setting up a copy for another client company (one repository per client)
+1. Copy this repository to a new GitHub repository (e.g. `abc-service-desk`) and import it as a new Vercel project.
+2. Create a new Neon database for it (Vercel → Storage → Neon → Connect to the new project). Never share a database
+   between clients.
+3. Environment variables (Vercel → Settings → Environment Variables): `SECRET_KEY` (new random value),
+   `COMPANY_NAME` (e.g. `ABC Engineering Pvt. Ltd.`), `COMPANY_SHORT` (e.g. `ABC · Pune`),
+   `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` / `BOOTSTRAP_ADMIN_NAME`, `APP_BASE_URL`, and the client's own
+   `SMTP_*` mailbox (section H). Leave `DEMO_SEED` unset.
+4. Deploy, sign in with the bootstrap admin, add users (Excel import), set each admin's IT department, send a test email.
+Code fixes are made once in your main repository and copied (merged) into each client repository.

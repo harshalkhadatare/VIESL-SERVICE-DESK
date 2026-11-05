@@ -12,8 +12,10 @@ from app.models.identity import Department, Location, SupportGroup, User
 
 
 class TicketSequence(Base):
-    """Per-year counter used to generate IT-YYYY-NNNNNN under a row lock."""
+    """Counter per numbering series and year, taken under a row lock:
+    IT-26-000001 (IT), ERP-26-000001 (ERP-IT), ITERP-26-000001 (both). 'LEGACY' = the older IT-2026-… numbers."""
     __tablename__ = "ticket_sequences"
+    series: Mapped[str] = mapped_column(Unicode(10), primary_key=True, default="LEGACY")
     year: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
     last_value: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 

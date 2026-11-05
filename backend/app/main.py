@@ -172,6 +172,12 @@ def cron_jobs(request: Request):
         return {"ran": maybe_run_jobs(db, force=True)}
 
 
+@api.get("/brand", tags=["Health"])
+def brand():
+    """Public: company name shown on the sign-in page, header, emails and Excel (COMPANY_NAME / COMPANY_SHORT)."""
+    return {"name": settings.company_name, "short": settings.company_short}
+
+
 @api.get("/health", tags=["Health"])
 def health():
     """Also a speed check: open /api/v1/health in a browser. db_round_trip_ms should be under ~20 ms;

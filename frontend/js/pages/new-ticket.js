@@ -110,7 +110,7 @@ export async function render(view, _params = [], query = {}) {
           <section class="form-section">
             <div class="fieldset-title">Related ticket <span class="muted" style="font-weight:400">(optional)</span></div>
             <div class="form-grid" style="margin-top:12px">
-              <label class="field"><span class="lbl">Earlier ticket number about the same problem</span><input type="text" name="related_ticket_number" placeholder="IT-2026-000123" pattern="IT-\\d{4}-\\d{6}"></label>
+              <label class="field"><span class="lbl">Earlier ticket number about the same problem</span><input type="text" name="related_ticket_number" placeholder="IT-26-000123"></label>
             </div>
           </section>
         </div>
@@ -257,7 +257,7 @@ export async function render(view, _params = [], query = {}) {
     if (!v.category_id) errs.category_id = "Choose a category.";
     if ((v.subject || "").trim().length < 5) errs.subject = "Subject must be at least 5 characters.";
     if ((v.description || "").trim().length < 10) errs.description = "Please describe the issue (at least 10 characters).";
-    if (v.related_ticket_number && !/^IT-\d{4}-\d{6}$/.test(v.related_ticket_number.trim())) errs.related_ticket_number = "Use the format IT-2026-000123.";
+    if (v.related_ticket_number && !/^[A-Za-z]{2,5}-\d{2,4}-\d{6}$/.test(v.related_ticket_number.trim())) errs.related_ticket_number = "Use a ticket number like IT-26-000123 or ERP-26-000045.";
     if (Object.keys(errs).length) return showFieldErrors(form, errs);
     showFieldErrors(form, {});
 

@@ -44,20 +44,26 @@ def add_history(db: Session, t: Ticket, field: str, old, new, actor_id: int | No
                          actor_id=actor_id, is_internal=internal))
 
 
-def next_ticket_number(db: Session, year: int) -> str:
+TICKET_PREFIX = {"it": "IT", "erp": "ERP", "both": "ITERP"}
+
+
+def next_ticket_number(db: Session, year: int, desk: str = "it") -> str:
+    """IT-26-000001 / ERP-26-000001 / ITERP-26-000001 — each department counts on its own, restarting each year."""
+    series = TICKET_PREFIX.get(desk, "IT")
     for _ in range(3):
-        seq = db.scalar(select(TicketSequence).where(TicketSequence.year == year).with_for_update())
+        seq = db.scalar(select(TicketSequence).where(TicketSequence.series == series, TicketSequence.year == year)
+                        .with_for_update())
         if seq is None:
             try:
                 with db.begin_nested():
-                    seq = TicketSequence(year=year, last_value=0)
+                    seq = TicketSequence(series=series, year=year, last_value=0)
                     db.add(seq)
                     db.flush()
             except IntegrityError:
                 continue
         seq.last_value += 1
         db.flush()
-        return f"IT-{year}-{seq.last_value:06d}"
+        return f"{series}-{year % 100:02d}-{seq.last_value:06d}"
     raise Conflict("Could not allocate a ticket number, please retry.")
 
 
@@ -124,7 +130,7 @@ def create_ticket(db: Session, p: Principal, data: TicketCreate, idempotency_key
     prio = priority_for(db, data.impact, data.urgency)
     user = p.user
     t = Ticket(
-        number=next_ticket_number(db, now.year), ticket_type=data.ticket_type or cat.default_ticket_type,
+        number=next_ticket_number(db, now.year, desk), ticket_type=data.ticket_type or cat.default_ticket_type,
         subject=data.subject, description=data.description,
         requester_id=user.id, department_id=user.department_id, location_id=user.location_id,  # never from client
         category_id=cat.id, subcategory_id=data.subcategory_id, impact=data.impact, urgency=data.urgency,

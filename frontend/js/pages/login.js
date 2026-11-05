@@ -1,14 +1,14 @@
 import { api } from "../api.js";
 import { $, html, mount, icon, brandMark, busy } from "../ui.js";
 
-const COMPANY = "Vision Infra Equipment Solutions Ltd.";
+import { brand } from "../brand.js";
 
 export async function render(root, { onLogin }) {
   mount(root, html`<div class="login">
     <section class="login-art">
       <div class="brand" style="padding:0"><div class="brand-mark">${brandMark()}</div>
         <div><div class="brand-name">IT Service Desk</div><div class="brand-sub">Internal support portal</div></div></div>
-      <div class="company-big">${COMPANY}</div>
+      <div class="company-big">${brand.name}</div>
       <p class="lead">One place for every IT request, issue and idea — raise tickets, follow progress and find answers
         without chasing emails or calls.</p>
       <div class="login-points">
@@ -22,7 +22,7 @@ export async function render(root, { onLogin }) {
       <form id="login-form" novalidate>
         <div class="login-company">
           <div class="logo">${brandMark()}</div>
-          <h1>${COMPANY}</h1>
+          <h1>${brand.name}</h1>
           <span class="tag">IT Service Desk</span>
         </div>
         <h2>Sign in</h2>
@@ -35,7 +35,7 @@ export async function render(root, { onLogin }) {
             <input type="password" name="password" autocomplete="current-password" required></label>
           <button class="btn primary block" type="submit" style="height:42px">Sign in</button>
         </div>
-        <p class="muted small" style="margin-top:16px">Forgot your password? Contact the IT department to reset it. <br> Mr. Sandeep Patil - pnm_audit@visioninfraindia.com <br> Mr. Harshal Khadatare - itsupport@visioninfraindia.com <br> Mr. Aniket & Vishal - it@visioninfraindia.com</p>
+        <p class="muted small" style="margin-top:16px">Forgot your password? Contact the IT department to reset it.</p>
       </form>
     </section></div>`);
 

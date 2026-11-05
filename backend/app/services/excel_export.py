@@ -26,6 +26,7 @@ COLUMNS = [
     ("Ticket No.", 17), ("Raised on", 17), ("IT team", 12), ("Category", 28), ("Subcategory", 22),
     ("Subject", 46), ("Status", 17), ("Priority", 12), ("Raised by", 22), ("Employee ID", 13),
     ("Department", 20), ("Assigned to", 22), ("Assignee ID", 13), ("Resolved on", 17), ("Deadline", 12),
+    ("Attachments", 13), ("File names", 34), ("Attachment link", 18),
 ]
 
 
@@ -39,7 +40,10 @@ def _sla(t) -> str:
     return "Overdue" if t.sla.resolution_breached else "On track"
 
 
-def build_ticket_workbook(tickets, *, tz: str, company: str, title: str, filters_text: str) -> bytes:
+def build_ticket_workbook(tickets, *, tz: str, company: str, title: str, filters_text: str,
+                          files: dict | None = None, base_url: str = "") -> bytes:
+    """files = {ticket_id: [file names]}; the link opens the ticket's files in the portal (sign-in required)."""
+    files = files or {}
     z = ZoneInfo(tz)
     wb = Workbook()
     ws = wb.active
@@ -93,6 +97,9 @@ def build_ticket_workbook(tickets, *, tz: str, company: str, title: str, filters
             t.assignee.employee_code if t.assignee else "",
             t.resolved_at.astimezone(z).replace(tzinfo=None) if t.resolved_at else None,
             _sla(t),
+            f"Yes ({len(files.get(t.id, []))})" if files.get(t.id) else "No",
+            ", ".join(files.get(t.id, [])),
+            "Open files" if files.get(t.id) else "",
         ]
         zebra = PatternFill("solid", fgColor=ZEBRA) if (r - hdr) % 2 == 0 else None
         for i, v in enumerate(values, start=1):
@@ -122,6 +129,15 @@ def build_ticket_workbook(tickets, *, tz: str, company: str, title: str, filters
                         color={"Late": "B42318", "Overdue": "B42318", "On time": "157A52", "On track": "157A52"}.get(sla.value, "55657A"))
         if not t.assignee:
             ws.cell(row=r, column=12).font = Font(name="Calibri", size=10.5, italic=True, color="74859B")
+        att = ws.cell(row=r, column=16)
+        att.alignment = Alignment(horizontal="center", vertical="center")
+        att.font = Font(name="Calibri", size=10.5, bold=True, color="157A52" if files.get(t.id) else "74859B")
+        ws.cell(row=r, column=17).alignment = Alignment(vertical="center", wrap_text=True)
+        if files.get(t.id) and base_url:
+            link = ws.cell(row=r, column=18)
+            link.hyperlink = f"{base_url.rstrip('/')}/#/tickets/{t.number}/files"
+            link.font = Font(name="Calibri", size=10.5, color=BLUE, underline="single")
+            link.alignment = Alignment(horizontal="center", vertical="center")
 
     end_row = max(hdr + 1, hdr + len(tickets))
     # Excel table = filter buttons on every header + keeps working when rows are sorted/filtered
