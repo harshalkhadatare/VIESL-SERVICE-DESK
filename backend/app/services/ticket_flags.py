@@ -43,7 +43,11 @@ def _get_or_create(db: Session, user_id: int, ticket_id: int) -> TicketUserFlag:
 
 
 def mark_viewed(db: Session, user_id: int, ticket_id: int) -> TicketUserFlag:
-    f = _get_or_create(db, user_id, ticket_id)
+    """First opening clears the green 'New' mark; later openings don't write anything (faster)."""
+    f = db.get(TicketUserFlag, (ticket_id, user_id))
+    if f is not None and f.viewed_at is not None:
+        return f
+    f = f or _get_or_create(db, user_id, ticket_id)
     f.viewed_at = utcnow()
     db.commit()
     return f

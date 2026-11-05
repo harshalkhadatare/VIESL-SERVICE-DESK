@@ -30,9 +30,8 @@ export async function render(view, [number]) {
   const statusNames = Object.fromEntries((await catalog()).statuses.map((s) => [s.code, s.name]));
 
   async function loadAll() {
-    [t, comments, history, attachments] = await Promise.all([
-      api.get(`/tickets/${number}`), api.get(`/tickets/${number}/comments`),
-      api.get(`/tickets/${number}/history`), api.get(`/tickets/${number}/attachments`)]);
+    const r = await api.get(`/tickets/${number}/full`);   // one request for the whole page
+    [t, comments, history, attachments] = [r.ticket, r.comments, r.history, r.attachments];
   }
   try { await loadAll(); } catch (e) {
     mount(view, html`<div class="card">${emptyState(e.status === 404 ? "Ticket not found" : "Could not load ticket",
@@ -399,7 +398,7 @@ export async function render(view, [number]) {
           <div class="help" id="pe-help" hidden>The requester sees this question and is notified. The SLA clock pauses until they reply.</div></label>
         <div id="res-fields" class="stack" style="gap:14px" hidden>
           <label class="field"><span class="lbl">Resolution notes<span class="req">*</span></span>
-            <textarea name="resolution_notes" rows="4" maxlength="8000" placeholder="What was done to fix it? The requester will see this.">${t.resolution_notes || ""}</textarea></label>
+            <textarea name="resolution_notes" rows="4" maxlength="8000" placeholder="What was done to fix it? (at least 5 characters) The requester will see this.">${t.resolution_notes || ""}</textarea></label>
           <label class="field"><span class="lbl">Root cause <span class="tag-internal">${icon("lock")} internal</span></span>
             <textarea name="root_cause" rows="2" maxlength="4000">${t.root_cause || ""}</textarea></label>
         </div></form>`,
@@ -414,15 +413,20 @@ export async function render(view, [number]) {
         };
         f.to_status.addEventListener("change", sync); sync();
         $("#sok", el).addEventListener("click", async (e) => {
+          const btn = e.currentTarget;
           const d = Object.fromEntries(new FormData(f));
           const body = { reason: d.reason.trim() || null };
-          if (d.to_status === "RESOLVED") { body.resolution_notes = d.resolution_notes.trim(); body.root_cause = d.root_cause.trim() || null; }
-          busy(e.currentTarget);
+          if (d.to_status === "RESOLVED") {
+            body.resolution_notes = d.resolution_notes.trim(); body.root_cause = d.root_cause.trim() || null;
+            if (body.resolution_notes.length < 5) return showFieldErrors(f, { resolution_notes: "Write at least 5 characters, e.g. “Fixed”." });
+          }
+          showFieldErrors(f, {});
+          busy(btn);
           try {
             await doStatus(d.to_status, body);
             close(); await reload("Status updated.");
           } catch (ex) {
-            busy(e.currentTarget, false);
+            busy(btn, false);
             if (ex.status === 409) { close(); return handle409(ex); }
             showFieldErrors(f, ex.fieldErrors?.() || {}); errorToast(ex);
           }

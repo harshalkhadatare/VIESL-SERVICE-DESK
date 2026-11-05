@@ -51,6 +51,35 @@ def client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
+PRINCIPAL_TTL = 60   # seconds; role changes made in the app clear it at once
+
+
+def access_for(db: Session, user_id: int):
+    """(role codes, permission codes, group ids, lead group ids) — 2 small queries, cached briefly per instance."""
+    from app.core.cache import cached
+    from app.models import Permission, Role, RolePermission, UserRole
+
+    def load():
+        rows = db.execute(select(Role.code, Permission.code).select_from(UserRole)
+                          .join(Role, Role.id == UserRole.role_id)
+                          .outerjoin(RolePermission, RolePermission.role_id == Role.id)
+                          .outerjoin(Permission, Permission.id == RolePermission.permission_id)
+                          .where(UserRole.user_id == user_id)).all()
+        mem = db.execute(select(SupportGroupMember.group_id, SupportGroupMember.is_lead)
+                         .where(SupportGroupMember.user_id == user_id)).all()
+        return (frozenset(r for r, _ in rows), frozenset(p for _, p in rows if p),
+                frozenset(m.group_id for m in mem), frozenset(m.group_id for m in mem if m.is_lead))
+    return cached(("principal", user_id), PRINCIPAL_TTL, load)
+
+
+def forget_access(user_id: int | None = None) -> None:
+    from app.core.cache import forget, forget_key
+    if user_id is None:
+        forget("principal")
+    else:
+        forget_key(("principal", user_id))
+
+
 def get_principal(request: Request, db: Session = Depends(get_db)) -> Principal:
     auth = request.headers.get("Authorization", "")
     if not auth.lower().startswith("bearer "):
@@ -66,15 +95,13 @@ def get_principal(request: Request, db: Session = Depends(get_db)) -> Principal:
     if not user or not user.is_active:
         raise Unauthorized("Account is not active.")
 
-    memberships = db.execute(
-        select(SupportGroupMember.group_id, SupportGroupMember.is_lead).where(SupportGroupMember.user_id == user.id)
-    ).all()
+    roles, perms, groups, leads = access_for(db, user.id)
     return Principal(
         user=user,
-        permissions=user.permission_codes,
-        roles=user.role_codes,
-        group_ids={m.group_id for m in memberships},
-        lead_group_ids={m.group_id for m in memberships if m.is_lead},
+        permissions=perms,
+        roles=roles,
+        group_ids=groups,
+        lead_group_ids=leads,
         ip=client_ip(request),
         request_id=getattr(request.state, "request_id", None),
     )

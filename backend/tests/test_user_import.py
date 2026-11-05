@@ -99,6 +99,6 @@ def test_edit_user_adds_real_email(client):
     r = client.patch(f"/api/v1/admin/users/{uid}", headers=auth("admin"),
                      json={"email": "edit.me@visioninfra.co.in", "job_title": "Operator"})
     assert r.status_code == 200 and r.json()["has_email"] and r.json()["job_title"] == "Operator"
-    dup = client.patch(f"/api/v1/admin/users/{uid}", headers=auth("admin"), json={"email": "anjali.sharma@demo.example.com"})
-    assert dup.status_code == 422
+    shared = client.patch(f"/api/v1/admin/users/{uid}", headers=auth("admin"), json={"email": "anjali.sharma@demo.example.com"})
+    assert shared.status_code == 200          # several users may share one email
     assert client.patch(f"/api/v1/admin/users/{uid}", headers=auth("employee"), json={"job_title": "x"}).status_code == 403

@@ -38,7 +38,9 @@ def resolve_policy(db: Session, priority_id: int, category_id: int) -> SLAPolicy
 
 
 def spec_for(db: Session, calendar_id: int) -> CalendarSpec:
-    return CalendarSpec.from_model(_calendar(db, calendar_id))
+    """Working hours + holidays; cached 5 minutes per instance (the calendar rarely changes)."""
+    from app.core.cache import cached
+    return cached(("calendar", calendar_id), 300, lambda: CalendarSpec.from_model(_calendar(db, calendar_id)))
 
 
 def _apply_targets(db: Session, sla: SLATracking, ticket: Ticket) -> None:

@@ -78,7 +78,7 @@ class Ticket(Base, TimestampMixin, CreatedByMixin):
     priority: Mapped[Priority] = relationship(lazy="joined")
     status: Mapped[TicketStatus] = relationship(lazy="joined")
     support_group: Mapped[SupportGroup | None] = relationship(lazy="joined")
-    erp: Mapped["TicketErpDetail | None"] = relationship(back_populates="ticket", uselist=False, lazy="selectin")
+    erp: Mapped["TicketErpDetail | None"] = relationship(back_populates="ticket", uselist=False, lazy="select")
     sla: Mapped["SLATracking | None"] = relationship(back_populates="ticket", uselist=False, lazy="selectin")
 
 

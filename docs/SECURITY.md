@@ -55,4 +55,6 @@ Legend: ✅ implemented & tested · ☑ implemented (configuration/operational) 
   devices apart over time, but it is per browser: a second browser, a private window or clearing site data gives a new ID.
   Websites cannot read a PC's name, MAC address or serial number.
 - **Device** is the browser and operating system, e.g. "Chrome 130 · Windows 10/11".
-
+- **Shared email addresses** are allowed (several accounts may use one mailbox). Signing in with a shared email picks the
+  account whose password matches; if two such accounts also share the password, the person must sign in with their
+  Employee ID. Notifications go to every account's address, so a shared mailbox receives each person's updates.

@@ -298,6 +298,24 @@ def get_ticket(number: str, p: Principal = Depends(get_principal), db: Session =
     return d
 
 
+class TicketFull(BaseModel):
+    ticket: TicketDetail
+    comments: list[CommentOut]
+    history: list[HistoryOut]
+    attachments: list[AttachmentOut]
+
+
+@router.get("/{number}/full", response_model=TicketFull)
+def get_ticket_full(number: str, p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Everything the ticket page needs in ONE request (instead of four)."""
+    t = get_visible_ticket(db, p, number)
+    flag = mark_viewed(db, p.id, t.id)
+    d = _detail(db, p, t)
+    d.starred = flag.starred
+    return TicketFull(ticket=d, comments=_comments(db, p, t), history=_history(db, p, t),
+                      attachments=_attachments(db, p, t))
+
+
 class StarIn(BaseModel):
     starred: bool
 
@@ -322,7 +340,10 @@ def _sees_internal(p: Principal, t: Ticket) -> bool:
 
 @router.get("/{number}/comments", response_model=list[CommentOut])
 def list_comments(number: str, p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
-    t = get_visible_ticket(db, p, number)
+    return _comments(db, p, get_visible_ticket(db, p, number))
+
+
+def _comments(db: Session, p: Principal, t: Ticket):
     stmt = select(TicketComment).where(TicketComment.ticket_id == t.id)
     if not _sees_internal(p, t):
         stmt = stmt.where(TicketComment.is_internal.is_(False))
@@ -331,7 +352,10 @@ def list_comments(number: str, p: Principal = Depends(get_principal), db: Sessio
 
 @router.get("/{number}/history", response_model=list[HistoryOut])
 def list_history(number: str, p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
-    t = get_visible_ticket(db, p, number)
+    return _history(db, p, get_visible_ticket(db, p, number))
+
+
+def _history(db: Session, p: Principal, t: Ticket):
     stmt = select(TicketHistory).where(TicketHistory.ticket_id == t.id)
     if not _sees_internal(p, t):
         stmt = stmt.where(TicketHistory.is_internal.is_(False))
@@ -396,7 +420,10 @@ def link(number: str, data: LinkIn, p: Principal = Depends(require("ticket.link"
 # ------------------------------------------------------------------ attachments
 @router.get("/{number}/attachments", response_model=list[AttachmentOut])
 def list_attachments(number: str, p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
-    t = get_visible_ticket(db, p, number)
+    return _attachments(db, p, get_visible_ticket(db, p, number))
+
+
+def _attachments(db: Session, p: Principal, t: Ticket):
     stmt = select(TicketAttachment).where(TicketAttachment.ticket_id == t.id)
     if not _sees_internal(p, t):
         stmt = stmt.where(TicketAttachment.is_internal.is_(False))

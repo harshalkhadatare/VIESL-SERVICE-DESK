@@ -131,7 +131,9 @@ async def request_context(request: Request, call_next):
     response = await call_next(request)
     if (request.method in ("POST", "PUT", "PATCH", "DELETE") and request.url.path.startswith("/api/")
             and response.status_code < 400):
-        await _send_queued_emails()
+        # emails + due background jobs run AFTER the response has been sent, so saving feels instant
+        from starlette.background import BackgroundTask
+        response.background = BackgroundTask(_send_queued_emails)
     response.headers["X-Request-ID"] = request.state.request_id
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -172,9 +174,21 @@ def cron_jobs(request: Request):
 
 @api.get("/health", tags=["Health"])
 def health():
+    """Also a speed check: open /api/v1/health in a browser. db_round_trip_ms should be under ~20 ms;
+    a much higher number means the Vercel function and the Neon database are in different regions."""
+    import os
+    import time as _t
+    timings = []
     with engine.connect() as c:
-        c.execute(text("SELECT 1"))
-    return {"status": "ok", "env": settings.app_env}
+        for _ in range(3):
+            t0 = _t.perf_counter()
+            c.execute(text("SELECT 1"))
+            timings.append((_t.perf_counter() - t0) * 1000)
+    ms = round(sorted(timings)[1], 1)
+    advice = ("fast" if ms < 20 else "ok" if ms < 60 else
+              "slow — set Vercel → Settings → Functions → Function Region to the same region as your Neon database")
+    return {"status": "ok", "env": settings.app_env, "server_region": os.environ.get("VERCEL_REGION", "local"),
+            "db_round_trip_ms": ms, "speed": advice}
 
 
 app.include_router(api)

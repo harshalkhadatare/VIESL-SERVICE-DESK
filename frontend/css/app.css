@@ -1059,7 +1059,7 @@ html[data-mode="dark"] .desk-badge.both { background: rgba(24,162,156,.2); color
   table.data.tlist, table.data.tlist tbody { display: block; width: 100%; }
   table.data.tlist thead { display: none; }
   table.data.tlist tr { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto auto;
-    grid-template-areas: "star id status menu" "star subj subj subj" "star req req prio" "star asg asg sla";
+    grid-template-areas: "star id status menu" "star subj subj subj" "star req req prio" "star asg asg asg";
     gap: 4px 8px; padding: 12px 12px 12px 8px; border-bottom: 1px solid var(--border); align-items: center; }
   table.data.tlist td, table.data.tlist td.hide-sm { display: block; padding: 0; border: 0; white-space: normal; background: none !important; box-shadow: none !important; min-width: 0; }
   table.data.tlist td.c-upd { display: none; }

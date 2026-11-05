@@ -129,6 +129,9 @@ How it works on Vercel
   (at most every 10 minutes) plus once a day via Vercel Cron (`vercel.json` → `/api/v1/internal/jobs`).
 - Neon's free compute pauses after 5 minutes without use; the first request afterwards takes about a second longer.
 
+**Speed check:** open `https://viesl-service-desk.vercel.app/api/v1/health`. `db_round_trip_ms` under ~20 is fast;
+above ~60 means Vercel and Neon are in different regions (fix below).
+
 **Speed tip — put the app next to the database.** Every request talks to Neon, so the Vercel function should run in
 the same region as your Neon database. Check Neon's region (Neon console → project → Settings), then in Vercel open
 Project → Settings → Functions → **Function Region** and pick the matching one (e.g. Neon *Singapore* → Vercel

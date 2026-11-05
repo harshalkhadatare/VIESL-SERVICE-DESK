@@ -25,7 +25,7 @@ STATUS_FONT = {"RESOLVED": "157A52", "CLOSED": "55657A", "CANCELLED": "55657A", 
 COLUMNS = [
     ("Ticket No.", 17), ("Raised on", 17), ("IT team", 12), ("Category", 28), ("Subcategory", 22),
     ("Subject", 46), ("Status", 17), ("Priority", 12), ("Raised by", 22), ("Employee ID", 13),
-    ("Department", 20), ("Assigned to", 22), ("Assignee ID", 13), ("Resolved on", 17), ("SLA", 11),
+    ("Department", 20), ("Assigned to", 22), ("Assignee ID", 13), ("Resolved on", 17), ("Deadline", 12),
 ]
 
 
@@ -33,10 +33,10 @@ def _sla(t) -> str:
     if not t.sla:
         return ""
     if t.status_code in ("RESOLVED", "CLOSED", "CANCELLED"):
-        return "Breached" if t.sla.resolution_breached else "Met"
+        return "Late" if t.sla.resolution_breached else "On time"
     if t.sla.paused_at:
         return "Paused"
-    return "Breached" if t.sla.resolution_breached else "On track"
+    return "Overdue" if t.sla.resolution_breached else "On track"
 
 
 def build_ticket_workbook(tickets, *, tz: str, company: str, title: str, filters_text: str) -> bytes:
@@ -119,7 +119,7 @@ def build_ticket_workbook(tickets, *, tz: str, company: str, title: str, filters
         pc.alignment = Alignment(horizontal="center", vertical="center")
         sla = ws.cell(row=r, column=15)
         sla.font = Font(name="Calibri", size=10.5, bold=True,
-                        color={"Breached": "B42318", "Met": "157A52", "On track": "157A52"}.get(sla.value, "55657A"))
+                        color={"Late": "B42318", "Overdue": "B42318", "On time": "157A52", "On track": "157A52"}.get(sla.value, "55657A"))
         if not t.assignee:
             ws.cell(row=r, column=12).font = Font(name="Calibri", size=10.5, italic=True, color="74859B")
 

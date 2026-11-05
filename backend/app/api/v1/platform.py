@@ -196,7 +196,9 @@ def list_users(q: str | None = Query(None, max_length=100), page: int = Query(1,
         like = f"%{q}%"
         stmt = stmt.where(or_(User.full_name.ilike(like), User.email.ilike(like), User.employee_code.ilike(like)))
     total = db.scalar(select(func.count()).select_from(stmt.subquery()))
-    rows = db.scalars(stmt.order_by(User.full_name).offset((page - 1) * page_size).limit(page_size)).all()
+    from sqlalchemy.orm import selectinload
+    rows = db.scalars(stmt.options(selectinload(User.roles)).order_by(User.full_name)
+                      .offset((page - 1) * page_size).limit(page_size)).all()
     return Page(items=[_user_out(u) for u in rows], total=total, page=page, page_size=page_size)
 
 
@@ -218,9 +220,7 @@ def create_user(data: UserCreateIn, p: Principal = Depends(require("user.manage"
     from app.models import Department
     code = data.employee_code.strip()
     if data.email:
-        email = data.email.lower()
-        if db.scalar(select(User.id).where(User.email == email)):
-            raise BusinessRuleError("A user with this email already exists.", details=[{"field": "email"}])
+        email = data.email.lower()          # the same email may be used by several users
     else:
         email = _unique_placeholder(db, code)
     if db.scalar(select(User.id).where(func.upper(User.employee_code) == code.upper())):
@@ -269,8 +269,11 @@ def user_delete_preview(uid: int, p: Principal = Depends(require("user.manage"))
 @router.delete("/admin/users/{uid}", tags=["Administration"])
 def user_delete(uid: int, p: Principal = Depends(require("user.manage")), db: Session = Depends(get_db)):
     """Permanently delete a user, the tickets they raised and their comments/files. Cannot be undone."""
+    from app.api.deps import forget_access
     from app.services.user_delete import delete_user
-    return {"deleted": True, **delete_user(db, p, uid)}
+    out = delete_user(db, p, uid)
+    forget_access(uid)
+    return {"deleted": True, **out}
 
 
 class ResetPasswordIn(StrictIn):
@@ -328,10 +331,7 @@ def update_user(uid: int, data: UserUpdateIn, p: Principal = Depends(require("us
         if not is_placeholder(u.email):
             u.email = _unique_placeholder(db, fields.get("employee_code") or u.employee_code)
     elif "email" in fields:
-        email = fields["email"].lower()
-        if db.scalar(select(User.id).where(User.email == email, User.id != uid)):
-            raise BusinessRuleError("Another user already has this email.", details=[{"field": "email"}])
-        u.email = email
+        u.email = fields["email"].lower()   # shared emails are allowed
     if "employee_code" in fields and fields["employee_code"]:
         code = fields["employee_code"].strip()
         if db.scalar(select(User.id).where(func.upper(User.employee_code) == code.upper(), User.id != uid)):
@@ -390,6 +390,8 @@ def set_roles(uid: int, data: RolesIn, p: Principal = Depends(require("user.mana
     # Force re-login so new permissions apply everywhere promptly
     db.execute(update(RefreshToken).where(RefreshToken.user_id == u.id, RefreshToken.revoked_at.is_(None))
                .values(revoked_at=utcnow()))
+    from app.api.deps import forget_access
+    forget_access(u.id)
     audit_p(db, p, "admin.roles_change", entity_type="user", entity_id=u.id,
             detail={"before": before, "after": sorted(r.code for r in roles)})
     db.commit()
@@ -412,6 +414,8 @@ def set_active(uid: int, data: ActiveIn, p: Principal = Depends(require("user.ma
                    .values(revoked_at=utcnow()))
     else:
         u.locked_until, u.failed_logins = None, 0
+    from app.api.deps import forget_access
+    forget_access(u.id)
     audit_p(db, p, "admin.user_active", entity_type="user", entity_id=u.id, detail={"is_active": data.is_active})
     db.commit()
     return _user_out(u)

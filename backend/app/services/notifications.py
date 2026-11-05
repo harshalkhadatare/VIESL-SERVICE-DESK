@@ -117,6 +117,13 @@ def render_email(n: Notification, user: User, ticket: Ticket | None) -> tuple[st
 
 # ---------------------------------------------------------------- providers
 class EmailProvider(ABC):
+    from contextlib import contextmanager as _cm
+
+    @_cm
+    def batch(self):
+        """Send several emails over one connection (providers that support it override this)."""
+        yield self
+
     @abstractmethod
     def send(self, to: str, subject: str, text: str, html_body: str | None = None,
              images: dict[str, bytes] | None = None) -> None: ...
@@ -135,24 +142,55 @@ class SmtpEmailProvider(EmailProvider):
 
     def __init__(self) -> None:
         self.s = get_settings()
+        self._conn = None
+
+    def _connect(self):
+        s = self.s
+        ctx = ssl.create_default_context()
+        if s.smtp_ssl:
+            conn = smtplib.SMTP_SSL(s.smtp_host, s.smtp_port, timeout=s.smtp_timeout_seconds, context=ctx)
+        else:
+            conn = smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=s.smtp_timeout_seconds)
+            if s.smtp_starttls:
+                conn.starttls(context=ctx)
+        if s.smtp_username:
+            conn.login(s.smtp_username, s.smtp_password)
+        return conn
+
+    from contextlib import contextmanager as _cm2
+
+    @_cm2
+    def batch(self):
+        """One sign-in to the mail server for the whole batch (Gmail sign-in takes ~1 s each time)."""
+        self._conn = None
+        try:
+            yield self
+        finally:
+            if self._conn is not None:
+                try:
+                    self._conn.quit()
+                except Exception:  # noqa: BLE001
+                    pass
+            self._conn = None
 
     def send(self, to: str, subject: str, text: str, html_body: str | None = None,
              images: dict[str, bytes] | None = None) -> None:
         msg = build_message(to, subject, text, html_body, images)
-        s = self.s
-        ctx = ssl.create_default_context()
-        if s.smtp_ssl:
-            with smtplib.SMTP_SSL(s.smtp_host, s.smtp_port, timeout=s.smtp_timeout_seconds, context=ctx) as smtp:
-                if s.smtp_username:
-                    smtp.login(s.smtp_username, s.smtp_password)
-                smtp.send_message(msg)
-        else:
-            with smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=s.smtp_timeout_seconds) as smtp:
-                if s.smtp_starttls:
-                    smtp.starttls(context=ctx)
-                if s.smtp_username:
-                    smtp.login(s.smtp_username, s.smtp_password)
-                smtp.send_message(msg)
+        if self._conn is None:        # inside batch(): reuse; otherwise one connection for this email
+            conn = self._connect()
+            try:
+                conn.send_message(msg)
+            finally:
+                try:
+                    conn.quit()
+                except Exception:  # noqa: BLE001
+                    pass
+            return
+        try:
+            self._conn.send_message(msg)
+        except (smtplib.SMTPServerDisconnected, OSError):
+            self._conn = self._connect()          # server dropped the idle connection: reconnect once
+            self._conn.send_message(msg)
 
 
 def build_message(to: str, subject: str, text: str, html_body: str | None = None,
@@ -205,21 +243,24 @@ def deliver_pending_emails(db: Session, provider: EmailProvider | None = None, b
         stmt = stmt.where(Notification.email_attempts == 0)
     rows = db.scalars(stmt.order_by(Notification.id).limit(batch)).all()
     sent = 0
-    for n in rows:
-        user = db.get(User, n.user_id)
-        ticket = db.get(Ticket, n.ticket_id) if n.ticket_id else None
-        try:
-            subject, text, page, images = render_email(n, user, ticket)
-            provider.send(user.email, subject, text, page, images=images)
-            n.email_status, sent = "sent", sent + 1
-        except Exception as exc:  # noqa: BLE001 - provider errors are recorded, retried later
-            n.email_attempts += 1
-            n.email_last_error = str(exc)[:500]
-            if n.email_attempts >= MAX_EMAIL_ATTEMPTS:
-                n.email_status = "failed"
-            log.warning("email delivery failed id=%s attempt=%s error=%s", n.id, n.email_attempts, exc)
-            if first_attempt_only:  # don't make the user wait on a broken relay
-                break
+    if not rows:
+        return 0
+    with provider.batch():
+        for n in rows:
+            user = db.get(User, n.user_id)
+            ticket = db.get(Ticket, n.ticket_id) if n.ticket_id else None
+            try:
+                subject, text, page, images = render_email(n, user, ticket)
+                provider.send(user.email, subject, text, page, images=images)
+                n.email_status, sent = "sent", sent + 1
+            except Exception as exc:  # noqa: BLE001 - provider errors are recorded, retried later
+                n.email_attempts += 1
+                n.email_last_error = str(exc)[:500]
+                if n.email_attempts >= MAX_EMAIL_ATTEMPTS:
+                    n.email_status = "failed"
+                log.warning("email delivery failed id=%s attempt=%s error=%s", n.id, n.email_attempts, exc)
+                if first_attempt_only:  # don't keep trying a broken relay; the scheduler retries later
+                    break
     db.commit()
     return sent
 

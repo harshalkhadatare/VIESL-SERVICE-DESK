@@ -58,29 +58,25 @@ def ops_summary(db: Session, p: Principal, *, start: date, end: date, tz: str,
     def count(*w):
         return db.scalar(select(func.count()).select_from(Ticket).where(scope, *w)) or 0
 
-    # ---- live operational metrics (current state, not range-bound)
+    # ---- live operational metrics (current state, not range-bound) — all in ONE query
     open_q = Ticket.status_code.in_(open_codes)
-    sla_join = select(func.count()).select_from(Ticket).join(SLATracking, SLATracking.ticket_id == Ticket.id)
-    overdue = db.scalar(sla_join.where(scope, open_q, SLATracking.paused_at.is_(None),
-                                       Ticket.status_code != "RESOLVED",
-                                       (SLATracking.resolution_breached.is_(True)) |
-                                       (SLATracking.resolution_due_at < now))) or 0
-    # Approaching: open, not breached, due within the next 4 wall-clock hours
-    approaching = db.scalar(sla_join.where(scope, open_q, SLATracking.paused_at.is_(None),
-                                           SLATracking.resolution_breached.is_(False),
-                                           SLATracking.resolution_due_at >= now,
-                                           SLATracking.resolution_due_at < now + timedelta(hours=4))) or 0
-    live = {
-        "open": count(open_q),
-        "new_today": count(Ticket.created_at >= today_start, Ticket.created_at < today_end),
-        "unassigned": count(open_q, Ticket.assignee_id.is_(None)),
-        "critical_high": count(open_q, Ticket.priority.has(Priority.code.in_(["P1", "P2"]))),
-        "approaching_sla": approaching,
-        "overdue": overdue,
-        "pending_employee": count(Ticket.status_code == "PENDING_EMPLOYEE"),
-        "pending_approval": count(Ticket.status_code == "PENDING_APPROVAL"),
-        "resolved_today": count(Ticket.resolved_at >= today_start, Ticket.resolved_at < today_end),
-    }
+    live_sla = and_(open_q, SLATracking.paused_at.is_(None))
+
+    def n(cond):
+        return func.coalesce(func.sum(case((cond, 1), else_=0)), 0)
+    row = db.execute(
+        select(n(open_q), n(and_(Ticket.created_at >= today_start, Ticket.created_at < today_end)),
+               n(and_(open_q, Ticket.assignee_id.is_(None))), n(and_(open_q, Priority.code.in_(["P1", "P2"]))),
+               n(and_(live_sla, SLATracking.resolution_breached.is_(False), SLATracking.resolution_due_at >= now,
+                      SLATracking.resolution_due_at < now + timedelta(hours=4))),
+               n(and_(live_sla, Ticket.status_code != "RESOLVED",
+                      (SLATracking.resolution_breached.is_(True)) | (SLATracking.resolution_due_at < now))),
+               n(Ticket.status_code == "PENDING_EMPLOYEE"), n(Ticket.status_code == "PENDING_APPROVAL"),
+               n(and_(Ticket.resolved_at >= today_start, Ticket.resolved_at < today_end)))
+        .select_from(Ticket).join(Priority, Priority.id == Ticket.priority_id)
+        .outerjoin(SLATracking, SLATracking.ticket_id == Ticket.id).where(scope)).one()
+    live = dict(zip(["open", "new_today", "unassigned", "critical_high", "approaching_sla", "overdue",
+                     "pending_employee", "pending_approval", "resolved_today"], (int(x or 0) for x in row)))
 
     # ---- historical metrics for the selected range (by creation date)
     in_range = and_(scope, Ticket.created_at >= range_start, Ticket.created_at < range_end)

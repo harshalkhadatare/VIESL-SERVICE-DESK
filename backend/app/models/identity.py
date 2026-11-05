@@ -28,7 +28,7 @@ class Role(Base):
     code: Mapped[str] = mapped_column(Unicode(40), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(Unicode(80), nullable=False)
     description: Mapped[str | None] = mapped_column(Unicode(255))
-    permissions: Mapped[list["Permission"]] = relationship(secondary="role_permissions", lazy="selectin")
+    permissions: Mapped[list["Permission"]] = relationship(secondary="role_permissions", lazy="select")
 
 
 class Permission(Base):
@@ -48,7 +48,8 @@ class User(Base, TimestampMixin):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     employee_code: Mapped[str] = mapped_column(Unicode(30), unique=True, nullable=False)
-    email: Mapped[str] = mapped_column(Unicode(254), unique=True, nullable=False)
+    # not unique: several people (or an admin and an employee account) may share one mailbox
+    email: Mapped[str] = mapped_column(Unicode(254), nullable=False, index=True)
     full_name: Mapped[str] = mapped_column(Unicode(150), nullable=False)
     phone: Mapped[str | None] = mapped_column(Unicode(30))
     job_title: Mapped[str | None] = mapped_column(Unicode(120))
@@ -71,7 +72,7 @@ class User(Base, TimestampMixin):
     department: Mapped[Department | None] = relationship(lazy="joined")
     location: Mapped[Location | None] = relationship(lazy="joined")
     roles: Mapped[list[Role]] = relationship(
-        secondary="user_roles", lazy="selectin",
+        secondary="user_roles", lazy="select",   # loaded only when needed (not for every requester/assignee)
         primaryjoin="User.id==UserRole.user_id", secondaryjoin="Role.id==UserRole.role_id",
     )
 

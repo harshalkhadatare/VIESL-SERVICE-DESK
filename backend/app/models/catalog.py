@@ -26,7 +26,7 @@ class Category(Base, TimestampMixin):
     # Which IT department handles this category: 'it' (hardware, network, email…) or 'erp' (ERP-IT)
     desk: Mapped[str] = mapped_column(Unicode(10), default="it", server_default="it", nullable=False)
 
-    subcategories: Mapped[list["Subcategory"]] = relationship(back_populates="category", lazy="selectin",
+    subcategories: Mapped[list["Subcategory"]] = relationship(back_populates="category", lazy="select",
                                                               order_by="Subcategory.name")
 
     __table_args__ = (CheckConstraint("default_ticket_type IN ('incident','service_request')", name="ticket_type"),

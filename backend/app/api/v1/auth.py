@@ -90,7 +90,19 @@ def login(data: LoginIn, request: Request, response: Response, db: Session = Dep
     login_id = data.email.strip()
     email = login_id.lower()
     if "@" in login_id:
-        user = db.scalar(select(User).where(User.email == email))
+        # several accounts may share one email: pick the one whose password matches
+        same = db.scalars(select(User).where(User.email == email).order_by(User.id)).all()
+        if len(same) > 1:
+            matches = [u for u in same if check_user_password(u, data.password)]
+            if len(matches) > 1:
+                audit(db, "auth.login", actor_label=login_id[:100], ip=ip, outcome="failure",
+                      detail={"reason": "shared email, ambiguous"})
+                db.commit()
+                raise Unauthorized("Several accounts use this email and password — please sign in with your Employee ID.",
+                                   code="ambiguous_email")
+            user = matches[0] if matches else same[0]
+        else:
+            user = same[0] if same else None
     else:  # employee ID, e.g. 12520
         user = db.scalar(select(User).where(func.upper(User.employee_code) == login_id.upper()))
     now = utcnow()

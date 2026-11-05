@@ -202,9 +202,18 @@ export function confirmDialog({ title, message, confirmText = "Confirm", danger 
 }
 
 export function busy(btn, on = true) {
-  if (!btn) return;
-  if (on) { btn.dataset.label = btn.innerHTML; btn.disabled = true; btn.innerHTML = `<span class="spin"></span>${btn.textContent.trim()}`; }
-  else { btn.disabled = false; if (btn.dataset.label) btn.innerHTML = btn.dataset.label; }
+  const restore = (b) => { b.disabled = false; if (b.dataset.label) b.innerHTML = b.dataset.label; delete b.dataset.busy; };
+  if (!btn) {
+    // After an "await", event.currentTarget is null — so re-enable whatever is still spinning instead of
+    // leaving the button stuck on "processing".
+    if (!on) document.querySelectorAll("[data-busy]").forEach(restore);
+    return;
+  }
+  if (on) {
+    if (btn.dataset.busy) return;
+    btn.dataset.label = btn.innerHTML; btn.dataset.busy = "1"; btn.disabled = true;
+    btn.innerHTML = `<span class="spin"></span>${btn.textContent.trim()}`;
+  } else restore(btn);
 }
 
 export function skeletonRows(n = 6, cols = 5) {

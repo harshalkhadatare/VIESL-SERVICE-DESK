@@ -206,8 +206,23 @@ def _check_recurring(db: Session, t: Ticket) -> None:
 
 
 # ------------------------------------------------------------------ lifecycle
-def allowed_transitions(db: Session, p: Principal, t: Ticket) -> list[TicketStatus]:
-    rows = db.scalars(select(StatusTransition).where(StatusTransition.from_code == t.status_code)).all()
+def _transition_table(db: Session) -> dict:
+    """{from_code: [(to_code, actor)]} and {code: status}, cached 5 minutes (configuration data)."""
+    from app.core.cache import cached
+
+    def load():
+        table: dict = {}
+        for r in db.scalars(select(StatusTransition)):
+            table.setdefault(r.from_code, []).append((r.to_code, r.actor))
+        statuses = {s.code: (s.code, s.name, s.sort_order) for s in db.scalars(select(TicketStatus))}
+        return table, statuses
+    return cached("transitions", 300, load)
+
+
+def allowed_transitions(db: Session, p: Principal, t: Ticket) -> list:
+    from types import SimpleNamespace
+    table, statuses = _transition_table(db)
+    rows = [SimpleNamespace(to_code=to, actor=actor) for to, actor in table.get(t.status_code, [])]
     staff = can_work_ticket(p, t)
     req = is_requester(p, t)
     codes = []
@@ -218,9 +233,9 @@ def allowed_transitions(db: Session, p: Principal, t: Ticket) -> list[TicketStat
             codes.append(r.to_code)
     if not codes:
         return []
-    statuses = db.scalars(select(TicketStatus).where(TicketStatus.code.in_(set(codes)))
-                          .order_by(TicketStatus.sort_order)).all()
-    return list(statuses)
+    out = [SimpleNamespace(code=c, name=n, sort_order=o) for c, n, o in
+           sorted((statuses[c] for c in set(codes) if c in statuses), key=lambda x: x[2])]
+    return out
 
 
 def _within_reopen_window(db: Session, t: Ticket) -> bool:
@@ -247,8 +262,8 @@ def change_status(db: Session, p: Principal, number: str, data: StatusChangeIn) 
 
     if target == "RESOLVED":
         notes = (data.resolution_notes or "").strip()
-        if len(notes) < 10:
-            raise BusinessRuleError("Resolution notes (min 10 characters) are required to resolve.",
+        if len(notes) < 5:
+            raise BusinessRuleError("Resolution notes (at least 5 characters) are required to resolve.",
                                     details=[{"field": "resolution_notes"}])
         if t.resolution_notes != notes:
             add_history(db, t, "resolution_notes", None, "updated", p.id)

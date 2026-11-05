@@ -165,10 +165,6 @@ def import_users(db: Session, filename: str, content: bytes, default_password: s
                 res.preview.append({"row": n, "employee_id": code, "name": name, "action": "skip (already exists)"})
             continue
         email = email_raw or (db.get(User, uid).email if uid else placeholder_email(code))
-        other = existing_emails.get(email)
-        if other is not None and other != uid:
-            res.errors.append({"row": n, "employee_id": code, "message": f"Email {email} belongs to another user."})
-            continue
 
         action = "update" if uid else "create"
         if len(res.preview) < 15:

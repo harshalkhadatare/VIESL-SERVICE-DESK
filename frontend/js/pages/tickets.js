@@ -36,7 +36,7 @@ export async function render(view, _p, query) {
     && (p.assignee || !f.assignee) && (p.starred || !f.starred))?.[0];
 
   const canAssign = can("ticket.assign");
-  const cols = canAssign ? 10 : 9;
+  const cols = canAssign ? 9 : 8;
   let admins = [];
   const [cat, groups, depts] = await Promise.all([catalog(), staff || can("dashboard.ops") ? supportGroups() : [],
     staff ? api.get("/departments").catch(() => []) : [],
@@ -68,17 +68,17 @@ export async function render(view, _p, query) {
           ${cat.categories.map((c) => html`<option value="${c.id}">${c.name}</option>`)}</select>
         ${groups.length ? html`<select id="f-group" aria-label="Support group"><option value="">Any group</option>
           ${groups.map((g) => html`<option value="${g.id}">${g.name}</option>`)}</select>` : ""}
-        <select id="f-sla" aria-label="SLA"><option value="">Any SLA state</option><option value="at_risk">Due within 4h</option><option value="breached">Breached</option></select>
+        <select id="f-sla" aria-label="Due time"><option value="">Any due time</option><option value="at_risk">Due within 4 hours</option><option value="breached">Overdue</option></select>
         <span class="spacer"></span>
         <select id="f-sort" aria-label="Sort"><option value="updated_desc">Recently updated</option><option value="created_desc">Newest</option>
-          <option value="created_asc">Oldest</option><option value="priority">Priority</option><option value="due">SLA due soonest</option></select>
+          <option value="created_asc">Oldest</option><option value="priority">Priority</option><option value="due">Due soonest</option></select>
         </div>
       </div>
       <div id="req-chip"></div>
       <div class="table-wrap"><table class="data tlist ${canAssign ? "compact-admin" : ""}">
         <thead><tr><th class="star-col"><span class="sr-only">Starred</span></th><th>Ticket</th><th>Subject</th><th>Status</th><th>Priority</th>
           <th class="hide-sm">${staff ? "Requester" : "Category"}</th><th class="hide-sm">${staff ? "Assignee" : "Assigned to"}</th>
-          <th class="hide-sm">SLA</th><th class="hide-sm ${canAssign ? "hide-md" : ""}">Updated</th>${canAssign ? html`<th class="row-menu"><span class="sr-only">Actions</span></th>` : ""}</tr></thead>
+<th class="hide-sm ${canAssign ? "hide-md" : ""}">Updated</th>${canAssign ? html`<th class="row-menu"><span class="sr-only">Actions</span></th>` : ""}</tr></thead>
         <tbody id="rows">${skeletonRows(8, cols)}</tbody></table></div>
       <div class="pager" id="pager"></div>
     </div>`);
@@ -122,7 +122,7 @@ export async function render(view, _p, query) {
           <td class="c-status">${statusBadge(t.status)}</td><td class="c-prio">${prioBadge(t.priority.code)}</td>
           <td class="hide-sm c-req" data-label="${staff ? "Raised by" : "Category"}">${staff ? html`<a class="req-link name-id" data-req="${t.requester_code || ""}" title="Show all tickets raised by ${t.requester}">${t.requester}${empId(t.requester_code)}</a><div class="t-sub2">${t.department || ""}</div>` : t.category}</td>
           <td class="hide-sm c-asg" data-label="Assigned to">${t.assignee ? html`<span class="name-id">${t.assignee}${empId(t.assignee_code)}</span>` : html`<span class="muted">Unassigned</span>`}</td>
-          <td class="hide-sm c-sla" title="${t.resolution_due_at ? "Due " + fmtDate(t.resolution_due_at) : ""}">${slaBadge(t.sla_state)}</td>
+
           <td class="hide-sm muted c-upd ${canAssign ? "hide-md" : ""}" title="${fmtDate(t.updated_at)}">${fmtRelative(t.updated_at)}</td>
           ${canAssign ? html`<td class="row-menu c-menu">${["CLOSED", "CANCELLED"].includes(t.status.code) ? "" :
             html`<button class="kebab" data-menu="${t.number}" aria-haspopup="menu" aria-expanded="false"

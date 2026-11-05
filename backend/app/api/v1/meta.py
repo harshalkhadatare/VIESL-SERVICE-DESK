@@ -68,8 +68,14 @@ class CatalogOut(BaseModel):
 
 @router.get("/meta/catalog", response_model=CatalogOut)
 def catalog(p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
-    cats = db.scalars(select(Category).where(Category.is_active.is_(True))
-                      .order_by(Category.sort_order, Category.name)).all()
+    from app.core.cache import cached
+    return cached("catalog", 300, lambda: _build_catalog(db))
+
+
+def _build_catalog(db: Session) -> CatalogOut:
+    from sqlalchemy.orm import selectinload
+    cats = db.scalars(select(Category).options(selectinload(Category.subcategories))
+                      .where(Category.is_active.is_(True)).order_by(Category.sort_order, Category.name)).all()
     prios = db.scalars(select(Priority).order_by(Priority.rank)).all()
     stats = db.scalars(select(TicketStatus).order_by(TicketStatus.sort_order)).all()
     matrix = db.scalars(select(PriorityMatrix)).all()

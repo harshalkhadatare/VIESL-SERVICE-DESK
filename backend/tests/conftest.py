@@ -51,6 +51,14 @@ def _reset_limits():
     api_limiter.reset()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_caches():
+    """Tests change roles/settings directly in the database, so start each test with empty in-process caches."""
+    from app.core.cache import clear
+    clear()
+    yield
+
+
 @pytest.fixture
 def client():
     return TestClient(app)
