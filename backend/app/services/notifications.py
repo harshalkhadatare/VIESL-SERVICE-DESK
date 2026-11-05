@@ -51,7 +51,8 @@ def _deliverable(user: User) -> bool:
 
 
 def notify(db: Session, user_id: int | None, event: str, title: str, body: str | None = None,
-           ticket: Ticket | None = None, dedupe_key: str | None = None) -> Notification | None:
+           ticket: Ticket | None = None, dedupe_key: str | None = None, email: bool = True) -> Notification | None:
+    """In-app notification, also emailed unless email=False (e.g. ticket deleted) or the user opted out."""
     if not user_id:
         return None
     pref = db.get(NotificationPreference, (user_id, event))
@@ -60,7 +61,7 @@ def notify(db: Session, user_id: int | None, event: str, title: str, body: str |
     key = dedupe_key or f"{event}:{ticket.id if ticket else 0}:{user_id}:{uuid.uuid4().hex}"
     if db.scalar(select(Notification.id).where(Notification.dedupe_key == key)):
         return None
-    wants_email = pref.email if pref is not None else event in DEFAULT_EMAIL_EVENTS
+    wants_email = email and (pref.email if pref is not None else event in DEFAULT_EMAIL_EVENTS)
     status = "none"
     if wants_email and email_configured():
         user = db.get(User, user_id)
@@ -85,8 +86,9 @@ def _row(label: str, value: str) -> str:
             f'<td style="padding:6px 0;color:#13233a;font-weight:600">{value}</td></tr>')
 
 
-def render_email(n: Notification, user: User, ticket: Ticket | None) -> tuple[str, str, str]:
-    """Returns (subject, plain_text, html)."""
+def render_email(n: Notification, user: User, ticket: Ticket | None) -> tuple[str, str, str, dict[str, bytes]]:
+    """Returns (subject, plain_text, html, inline_images)."""
+    from app.services.email_template import DESK_NAME, build
     s = get_settings()
     base = s.app_base_url.rstrip("/")
     url = f"{base}/{n.link}" if n.link else base
@@ -100,55 +102,31 @@ def render_email(n: Notification, user: User, ticket: Ticket | None) -> tuple[st
     if body:
         lines += ["", body]
     if ticket:
-        lines += ["", f"Ticket:       {ticket.number}", f"Subject:      {ticket.subject}",
-                  f"Status:       {ticket.status.name}", f"Priority:     {ticket.priority.code} {ticket.priority.name}",
-                  f"Assigned to:  {assigned}", f"Raised by:    {ticket.requester.label}"]
+        lines += ["", f"Ticket:         {ticket.number}", f"Subject:        {ticket.subject}",
+                  f"IT department:  {DESK_NAME.get(ticket.desk, ticket.desk)}",
+                  f"Status:         {ticket.status.name}", f"Priority:       {ticket.priority.code} {ticket.priority.name}",
+                  f"Assigned to:    {assigned}", f"Raised by:      {ticket.requester.label}"]
     lines += ["", f"Open the ticket: {url}", "", f"— {s.smtp_from_name}",
               "This is an automated message. Reply in the portal, not to this email."]
     text = "\n".join(lines)
-
-    details = ""
-    if ticket:
-        details = ('<table role="presentation" style="width:100%;border-collapse:collapse;font-size:14px;'
-                   'margin:18px 0 6px">'
-                   + _row("Ticket", html.escape(ticket.number))
-                   + _row("Subject", html.escape(ticket.subject))
-                   + _row("Status", html.escape(ticket.status.name))
-                   + _row("Priority", html.escape(f"{ticket.priority.code} · {ticket.priority.name}"))
-                   + _row("Assigned to", html.escape(assigned))
-                   + _row("Raised by", html.escape(ticket.requester.label))
-                   + "</table>")
-    body_html = (f'<p style="margin:12px 0 0;color:#4a5c74;white-space:pre-wrap">{html.escape(body)}</p>'
-                 if body else "")
-    page = f"""<!doctype html><html><body style="margin:0;background:#f4f7fb;font-family:Segoe UI,Arial,sans-serif">
-<table role="presentation" width="100%" style="background:#f4f7fb;padding:24px 12px"><tr><td align="center">
-<table role="presentation" width="600" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #dfe7f1;border-radius:10px;overflow:hidden">
-<tr><td style="background:#0b2545;padding:18px 24px;color:#ffffff">
-  <div style="font-size:17px;font-weight:700">{html.escape(s.company_name)}</div>
-  <div style="font-size:12px;color:#8ec5ff;margin-top:2px">IT Service Desk</div></td></tr>
-<tr><td style="padding:24px">
-  <p style="margin:0;color:#4a5c74;font-size:14px">Hello {html.escape(user.full_name)},</p>
-  <h1 style="margin:10px 0 0;font-size:19px;color:#13233a">{html.escape(n.title)}</h1>
-  {body_html}{details}
-  <p style="margin:22px 0 4px"><a href="{html.escape(url)}" style="display:inline-block;background:#1d5fc4;color:#ffffff;
-     text-decoration:none;padding:10px 18px;border-radius:7px;font-weight:600;font-size:14px">Open ticket</a></p>
-</td></tr>
-<tr><td style="padding:14px 24px;border-top:1px solid #dfe7f1;font-size:12px;color:#74859b">
-  Automated message from the IT Service Desk. Please reply in the portal, not to this email.</td></tr>
-</table></td></tr></table></body></html>"""
-    return subject[:200], text, page
+    is_staff_recipient = bool(ticket) and user.id != ticket.requester_id
+    page, images = build(company=s.company_name, base_url=base, url=url, recipient_name=user.full_name,
+                         event=n.event, title=n.title, body=body, ticket=ticket, is_staff_recipient=is_staff_recipient)
+    return subject[:200], text, page, images
 
 
 # ---------------------------------------------------------------- providers
 class EmailProvider(ABC):
     @abstractmethod
-    def send(self, to: str, subject: str, text: str, html_body: str | None = None) -> None: ...
+    def send(self, to: str, subject: str, text: str, html_body: str | None = None,
+             images: dict[str, bytes] | None = None) -> None: ...
 
 
 class LogEmailProvider(EmailProvider):
     """Used when email is not configured: logs instead of sending."""
 
-    def send(self, to: str, subject: str, text: str, html_body: str | None = None) -> None:
+    def send(self, to: str, subject: str, text: str, html_body: str | None = None,
+             images: dict[str, bytes] | None = None) -> None:
         log.info("[email:not-configured] to=%s subject=%s", to, subject)
 
 
@@ -158,15 +136,10 @@ class SmtpEmailProvider(EmailProvider):
     def __init__(self) -> None:
         self.s = get_settings()
 
-    def send(self, to: str, subject: str, text: str, html_body: str | None = None) -> None:
+    def send(self, to: str, subject: str, text: str, html_body: str | None = None,
+             images: dict[str, bytes] | None = None) -> None:
+        msg = build_message(to, subject, text, html_body, images)
         s = self.s
-        msg = EmailMessage()
-        msg["From"] = formataddr((s.smtp_from_name, s.smtp_from))
-        msg["To"] = to
-        msg["Subject"] = subject
-        msg.set_content(text)
-        if html_body:
-            msg.add_alternative(html_body, subtype="html")
         ctx = ssl.create_default_context()
         if s.smtp_ssl:
             with smtplib.SMTP_SSL(s.smtp_host, s.smtp_port, timeout=s.smtp_timeout_seconds, context=ctx) as smtp:
@@ -180,6 +153,29 @@ class SmtpEmailProvider(EmailProvider):
                 if s.smtp_username:
                     smtp.login(s.smtp_username, s.smtp_password)
                 smtp.send_message(msg)
+
+
+def build_message(to: str, subject: str, text: str, html_body: str | None = None,
+                  images: dict[str, bytes] | None = None) -> EmailMessage:
+    """multipart/alternative (plain text + HTML); the animated GIFs ride along as inline parts (cid:)."""
+    from email.utils import make_msgid
+    s = get_settings()
+    msg = EmailMessage()
+    msg["From"] = formataddr((s.smtp_from_name, s.smtp_from))
+    msg["To"] = to
+    msg["Subject"] = subject
+    msg["Message-ID"] = make_msgid(domain=(s.smtp_from.split("@")[-1] or None) if s.smtp_from else None)
+    msg["Auto-Submitted"] = "auto-generated"          # tells mail servers not to send out-of-office replies
+    msg["X-Auto-Response-Suppress"] = "All"
+    msg.set_content(text)
+    if html_body:
+        msg.add_alternative(html_body, subtype="html")
+        if images:
+            html_part = msg.get_payload()[1]
+            for cid, data in images.items():
+                html_part.add_related(data, maintype="image", subtype="gif", cid=f"<{cid}>",
+                                      filename=f"{cid}.gif", disposition="inline")
+    return msg
 
 
 _provider_override: EmailProvider | None = None
@@ -213,8 +209,8 @@ def deliver_pending_emails(db: Session, provider: EmailProvider | None = None, b
         user = db.get(User, n.user_id)
         ticket = db.get(Ticket, n.ticket_id) if n.ticket_id else None
         try:
-            subject, text, page = render_email(n, user, ticket)
-            provider.send(user.email, subject, text, page)
+            subject, text, page, images = render_email(n, user, ticket)
+            provider.send(user.email, subject, text, page, images=images)
             n.email_status, sent = "sent", sent + 1
         except Exception as exc:  # noqa: BLE001 - provider errors are recorded, retried later
             n.email_attempts += 1
@@ -229,13 +225,12 @@ def deliver_pending_emails(db: Session, provider: EmailProvider | None = None, b
 
 
 def send_test_email(to: str, name: str) -> None:
+    from app.services.email_template import build
     s = get_settings()
+    base = s.app_base_url.rstrip("/")
     text = (f"Hello {name},\n\nThis is a test email from the {s.company_name} IT Service Desk.\n"
-            f"If you received it, email notifications are working.\n\nPortal: {s.app_base_url}")
-    page = (f'<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#13233a">'
-            f'<div style="background:#0b2545;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0;font-weight:700">'
-            f'{html.escape(s.company_name)} · IT Service Desk</div>'
-            f'<div style="border:1px solid #dfe7f1;border-top:0;padding:20px;border-radius:0 0 8px 8px">'
-            f'<p>Hello {html.escape(name)},</p><p>This is a test email. If you received it, '
-            f'<b>email notifications are working</b>.</p></div></div>')
-    get_email_provider().send(to, "IT Service Desk — test email", text, page)
+            f"If you received it, email notifications are working.\n\nPortal: {base}")
+    page, images = build(company=s.company_name, base_url=base, url=base, recipient_name=name, event="ticket_resolved",
+                         title="Email is working", body="This is a test email. If you can read it, ticket updates will "
+                         "arrive in this mailbox.", ticket=None, is_staff_recipient=False)
+    get_email_provider().send(to, "IT Service Desk — test email", text, page, images=images)

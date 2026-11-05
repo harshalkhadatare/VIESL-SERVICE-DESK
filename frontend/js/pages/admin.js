@@ -328,8 +328,9 @@ export async function renderAudit(view, _p, query = {}) {
 // =================================================================== email notifications
 export async function renderEmail(view) {
   mount(view, html`<div class="page-head"><div><h1>Email notifications</h1>
-      <div class="sub">Employees and IT administrators receive an email for every in-app notification:
-      new tickets, assignments (with the assigned person's name), replies, status changes and resolution.</div></div></div>
+      <div class="sub">New tickets are emailed to the administrators of the chosen department (IT, ERP-IT or both).
+      Employees get an email at every step — assignment, start, status and priority changes, replies, resolution and closing.
+      Deleted tickets are not emailed. Users without an email address are skipped.</div></div></div>
     <div class="grid grid-main-side">
       <div class="card"><div class="card-head"><h2>Mail server</h2><span id="em-badge"></span></div>
         <div class="card-body" id="em-body"><div class="skeleton"></div></div></div>

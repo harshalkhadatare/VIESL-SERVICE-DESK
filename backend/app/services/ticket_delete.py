@@ -48,9 +48,9 @@ def delete_ticket(db: Session, p: Principal, t: Ticket) -> None:
     # let the assigned engineer (or the requester, if IT deleted it) know
     who = p.user.label
     if assignee_id and assignee_id != p.id:
-        notify(db, assignee_id, "status_changed", f"{number} was deleted by {who}", subject)
+        notify(db, assignee_id, "status_changed", f"{number} was deleted by {who}", subject, email=False)
     if not by_owner:
-        notify(db, requester_id, "status_changed", f"Your ticket {number} was deleted by IT", subject)
+        notify(db, requester_id, "status_changed", f"Your ticket {number} was deleted by IT", subject, email=False)
     db.commit()
 
     remove_files(stored)

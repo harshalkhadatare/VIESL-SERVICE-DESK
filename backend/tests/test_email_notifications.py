@@ -15,10 +15,10 @@ class FakeProvider(EmailProvider):
     def __init__(self, fail=False):
         self.sent, self.fail = [], fail
 
-    def send(self, to, subject, text, html_body=None):
+    def send(self, to, subject, text, html_body=None, images=None):
         if self.fail:
             raise ConnectionRefusedError("relay down")
-        self.sent.append({"to": to, "subject": subject, "text": text, "html": html_body})
+        self.sent.append({"to": to, "subject": subject, "text": text, "html": html_body, "images": images or {}})
 
 
 @pytest.fixture
@@ -65,7 +65,7 @@ def test_emails_sent_with_assignee_name(client, mail):
     to_emp = [m for m in mail.sent if m["to"] == "ravi.employee@visioninfra.co.in"]
     assert to_admin and "assigned to you" in to_admin[0]["subject"]
     assert to_emp and "Kiran Admin" in to_emp[0]["subject"]
-    assert "Assigned to:  Kiran Admin (" in to_emp[0]["text"] and "Kiran Admin" in to_emp[0]["html"]
+    assert "Assigned to:    Kiran Admin (" in to_emp[0]["text"] and "Kiran Admin" in to_emp[0]["html"]
     assert f"https://servicedesk.vision.test/#/tickets/{t['number']}" in to_emp[0]["text"]
     with SessionLocal() as db:
         tid = db.scalar(select(Ticket.id).where(Ticket.number == t["number"]))
@@ -80,7 +80,9 @@ def test_demo_addresses_never_emailed(client, mail):
     assert not [m for m in mail.sent if m["to"].endswith("example.com")]
     with SessionLocal() as db:
         tid = db.scalar(select(Ticket.id).where(Ticket.number == r.json()["number"]))
-        assert {n.email_status for n in db.scalars(select(Notification).where(Notification.ticket_id == tid))} == {"skipped"}
+        demo = {n.email_status for n in db.scalars(select(Notification).join(User, User.id == Notification.user_id)
+                                                  .where(Notification.ticket_id == tid, User.is_demo.is_(True)))}
+        assert demo == {"skipped"}
 
 
 def test_failed_email_is_retried_later(client, mail):
@@ -123,3 +125,79 @@ def test_test_email_reports_smtp_error(client, mail):
 def test_test_email_when_not_configured(client):
     r = client.post("/api/v1/admin/email/test", headers=auth("admin"), json={})
     assert r.status_code == 422 and "not configured" in r.json()["error"]["message"]
+
+
+# ---------------------------------------------------------------- department routing, requester updates, design
+def _set_desk(uid, desk):
+    with SessionLocal() as db:
+        db.get(User, uid).desk = desk
+        db.commit()
+
+
+def test_new_ticket_emails_only_that_departments_admins(client, mail):
+    emp = _real_user("desk.employee@visioninfra.co.in", "Desk Employee", "employee")
+    it_adm = _real_user("it.only@visioninfra.co.in", "It Only", "it_admin")
+    erp_adm = _real_user("erp.only@visioninfra.co.in", "Erp Only", "it_admin")
+    _set_desk(it_adm, "it")
+    _set_desk(erp_adm, "erp")
+
+    def new(code, desk):
+        mail.sent.clear()
+        client.post("/api/v1/tickets", headers=_hdr(emp), json={"subject": f"Routing {desk}", "description": "routing test text",
+                                                                "category_id": category_id(code), "desk": desk})
+        return {m["to"] for m in mail.sent}
+    got = new("PRINTER", "it")
+    assert "it.only@visioninfra.co.in" in got and "erp.only@visioninfra.co.in" not in got
+    got = new("ERP_APP", "erp")
+    assert "erp.only@visioninfra.co.in" in got and "it.only@visioninfra.co.in" not in got
+    got = new("ERP_APP", "both")
+    assert {"erp.only@visioninfra.co.in", "it.only@visioninfra.co.in"} <= got
+    assert "desk.employee@visioninfra.co.in" in got        # the employee's own "we received it" email
+
+
+def test_every_it_action_emails_the_employee_but_not_delete(client, mail):
+    emp = _real_user("steps.employee@visioninfra.co.in", "Steps Employee", "employee")
+    r = client.post("/api/v1/tickets", headers=_hdr(emp), json={"subject": "Lifecycle mails", "description": "lifecycle test",
+                                                                 "category_id": category_id("HARDWARE"), "desk": "it"})
+    n = r.json()["number"]
+
+    def to_emp():
+        return [m for m in mail.sent if m["to"] == "steps.employee@visioninfra.co.in"]
+    mail.sent.clear()
+    v = client.get(f"/api/v1/tickets/{n}", headers=auth("admin")).json()["version"]
+    v = client.post(f"/api/v1/tickets/{n}/priority", headers=auth("admin"),
+                    json={"impact": 1, "urgency": 1, "reason": "CEO laptop", "expected_version": v}).json()["version"]
+    assert to_emp() and "priority" in to_emp()[-1]["subject"].lower()
+    mail.sent.clear()
+    v = client.post(f"/api/v1/tickets/{n}/status", headers=auth("admin"),
+                    json={"to_status": "IN_PROGRESS", "expected_version": v}).json()["version"]
+    assert to_emp()
+    mail.sent.clear()
+    v = client.post(f"/api/v1/tickets/{n}/status", headers=auth("admin"),
+                    json={"to_status": "PENDING_VENDOR", "reason": "Part ordered", "expected_version": v}).json()["version"]
+    assert to_emp() and "Part ordered" in to_emp()[-1]["text"]
+    mail.sent.clear()
+    client.post(f"/api/v1/tickets/{n}/comments", headers=auth("admin"), json={"body": "Part arrives Monday"})
+    client.post(f"/api/v1/tickets/{n}/comments", headers=auth("admin"), json={"body": "secret", "is_internal": True})
+    assert len(to_emp()) == 1 and "Part arrives Monday" in to_emp()[0]["text"]
+    mail.sent.clear()
+    v = client.get(f"/api/v1/tickets/{n}", headers=auth("admin")).json()["version"]
+    v = client.post(f"/api/v1/tickets/{n}/status", headers=auth("admin"),
+                    json={"to_status": "IN_PROGRESS", "expected_version": v}).json()["version"]
+    client.post(f"/api/v1/tickets/{n}/status", headers=auth("admin"),
+                json={"to_status": "RESOLVED", "resolution_notes": "Replaced the keyboard", "expected_version": v})
+    resolved = [m for m in to_emp() if "resolved" in m["subject"].lower()]
+    assert resolved and "fixed" in resolved[0]["html"] and "sd-resolved" in resolved[0]["images"]
+    assert resolved[0]["images"]["sd-resolved"][:6] == b"GIF89a"
+    mail.sent.clear()
+    assert client.delete(f"/api/v1/tickets/{n}", headers=auth("admin")).status_code == 204
+    assert not to_emp()                                            # deleted tickets are never emailed
+
+
+def test_email_message_has_inline_animation():
+    from app.services.notifications import build_message
+    from app.services.email_template import art
+    msg = build_message("a@b.c", "Subj", "plain", "<img src='cid:sd-received'>", {"sd-received": art("received")})
+    raw = msg.as_string()
+    assert "multipart/alternative" in raw and "multipart/related" in raw and "Content-ID: <sd-received>" in raw
+    assert msg["Auto-Submitted"] == "auto-generated"

@@ -54,7 +54,7 @@ function renderShell() {
   <div class="shell" id="shell">
     <aside class="sidebar" aria-label="Main navigation">
       <div class="brand"><div class="brand-mark">${brandMark()}</div>
-        <div><div class="brand-name">IT Help Desk</div><div class="brand-sub">VIESL</div></div></div>
+        <div><div class="brand-name">IT Service Desk</div><div class="brand-sub">Vision Infra · VIESL</div></div></div>
       <nav class="nav">
         <div class="nav-section">Workspace</div>
         ${navLink("/", "dashboard", "home", isStaff() || can("dashboard.ops") ? "Dashboard" : "Home")}
@@ -71,7 +71,7 @@ function renderShell() {
         ${can("audit.view") ? navLink("/admin/audit", "audit", "shield", "Audit log") : ""}
         <button type="button" class="side-theme" id="side-theme">${icon("palette")}<span>Colours & dark mode</span></button>
       </nav>
-      <div class="sidebar-foot">Need urgent help? Call the IT Service Desk<br></div>
+      <div class="sidebar-foot">Need urgent help? Call the IT Service Desk<br>for P1 outages after raising a ticket.</div>
     </aside>
     <div class="main">
       <header class="topbar">

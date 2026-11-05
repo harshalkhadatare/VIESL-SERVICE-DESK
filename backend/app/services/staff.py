@@ -29,3 +29,12 @@ def group_staff_ids(db: Session, group_id: int | None) -> list[int]:
         ids = [uid for uid in db.scalars(select(SupportGroupMember.user_id).where(
             SupportGroupMember.group_id == group_id, SupportGroupMember.is_available.is_(True))) if uid in staff]
     return ids or [u.id for u in it_staff(db)]
+
+
+def desk_staff_ids(db: Session, desk: str | None) -> list[int]:
+    """IT administrators of a ticket's department: IT → IT admins, ERP-IT → ERP-IT admins, Both → all of them.
+    Admins without a department are included everywhere; if nobody matches, every IT administrator."""
+    staff = it_staff(db)
+    wanted = {"it": {"it"}, "erp": {"erp"}}.get(desk or "both", {"it", "erp"})
+    ids = [u.id for u in staff if u.desk in wanted or u.desk is None]
+    return ids or [u.id for u in staff]

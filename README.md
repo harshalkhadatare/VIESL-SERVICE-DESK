@@ -34,7 +34,7 @@ Only two roles exist: **Employee** (raise and track own tickets) and **IT Admini
 manage everything). Add people under *Users & roles → Add user*, or upload an Excel sheet (USER_ID, USER_NAME, optional
 EMAIL/DEPARTMENT/…) with *Import from Excel*. Employees sign in with their **Employee ID** or email.
 
-Tests: `cd backend && python -m pytest` → **155 passed** (auth, two-role matrix, lifecycle, assignment, SLA, email, attachments, exports, audit).
+Tests: `cd backend && python -m pytest` → **158 passed** (auth, two-role matrix, lifecycle, assignment, SLA, email, attachments, exports, audit).
 **Free hosting with permanent data:** Vercel + Neon PostgreSQL — step by step in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#g-vercel--free-neon-postgresql-permanent-data-no-cost).
 Databases supported: SQLite (local), PostgreSQL (Neon / any), Microsoft SQL Server. Tests pass on SQLite and PostgreSQL.
 
@@ -46,7 +46,8 @@ Databases supported: SQLite (local), PostgreSQL (Neon / any), Microsoft SQL Serv
 - Conversation with public replies and private internal notes, complete change history, related/duplicate links, satisfaction rating
 - SLA engine on a business calendar (hours, working days, holidays), pauses, no clock resets, warnings, breach escalation, auto-close (never for protected categories)
 - Employee home, operations dashboard (live vs period metrics, trend, mix, workload), global search, CSV export
-- In-app **and email** notifications that always show the assigned IT administrator; ⋮ menu on every ticket row to assign it
+- In-app **and email** notifications (animated, with progress tracker): new tickets go to the right department's admins,
+  employees hear about every step; always show the assigned IT administrator; ⋮ menu on every ticket row to assign it
 - Employee ID shown next to every name; employees can delete their own tickets (until resolved)
 - Two IT departments: **IT** (hardware, network, email…) and **ERP-IT**. Employees pick IT / ERP-IT / Both first, then
   a category; dashboard and ticket list switch between IT, ERP-IT and All tickets; formatted Excel export; phone-friendly

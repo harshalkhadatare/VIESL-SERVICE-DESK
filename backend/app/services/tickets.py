@@ -20,7 +20,7 @@ from app.services.audit import audit_p
 from app.services.notifications import notify
 from app.services.routing import priority_for, route_ticket
 from app.services.settings_service import get_int
-from app.services.staff import group_staff_ids, is_it_staff
+from app.services.staff import desk_staff_ids, group_staff_ids, is_it_staff
 
 DESK_NAME = {"it": "IT", "erp": "ERP-IT", "both": "IT + ERP-IT"}
 
@@ -173,10 +173,14 @@ def create_ticket(db: Session, p: Principal, data: TicketCreate, idempotency_key
         notify(db, assignee_id, "ticket_assigned", f"{t.number} assigned to you",
                f"{t.subject}\nRaised by {user.label} · {prio.code}", t,
                dedupe_key=f"assigned:{t.id}:{assignee_id}:{now.timestamp()}")
-    else:  # nobody picked automatically: alert the team (or all IT administrators)
-        for uid in _group_leads(db, group_id):
-            notify(db, uid, "ticket_created", f"New {prio.code} ticket {t.number} — not assigned",
-                   f"{t.subject}\nRaised by {user.label}", t, dedupe_key=f"created-staff:{t.id}:{uid}")
+    # every new ticket is emailed to the administrators of the chosen department (IT / ERP-IT / both)
+    for uid in desk_staff_ids(db, t.desk):
+        if uid in (assignee_id, user.id):
+            continue
+        notify(db, uid, "ticket_created", f"New {DESK_NAME[t.desk]} ticket {t.number} from {user.full_name}",
+               f"{t.subject}\nRaised by {user.label} · {prio.code} {prio.name}"
+               + ("" if assignee_id else "\nNot assigned yet — open it to assign or accept."), t,
+               dedupe_key=f"created-staff:{t.id}:{uid}")
     _check_recurring(db, t)
     audit_p(db, p, "ticket.create", entity_type="ticket", entity_id=t.number,
             detail={"category": cat.code, "priority": prio.code})
@@ -286,11 +290,15 @@ def change_status(db: Session, p: Principal, number: str, data: StatusChangeIn) 
                f"Resolution: {t.resolution_notes}\nResolved by {p.user.full_name}. "
                "Please confirm the fix, or reopen if the issue persists.", t)
     elif target == "REOPENED":
-        for uid in ([t.assignee_id] if t.assignee_id else _group_leads(db, t.support_group_id)):
+        for uid in ([t.assignee_id] if t.assignee_id else desk_staff_ids(db, t.desk)):
             notify(db, uid, "ticket_reopened", f"{t.number} reopened by {p.user.full_name}", data.reason, t)
-    elif target in ("IN_PROGRESS", "CLOSED", "CANCELLED") and not is_requester(p, t):
-        notify(db, t.requester_id, "status_changed", f"{t.number} is now {t.status.name}",
-               _assigned_line(t), t)
+    elif not is_requester(p, t):   # every other change made by IT reaches the employee
+        notify(db, t.requester_id, "ticket_closed" if target == "CLOSED" else "status_changed",
+               f"{t.number} is now {t.status.name}",
+               (f"Note from IT: {data.reason}\n" if data.reason else "") + _assigned_line(t), t)
+    elif target in ("CLOSED", "CANCELLED") and t.assignee_id and t.assignee_id != p.id:
+        notify(db, t.assignee_id, "status_changed", f"{t.number} {t.status.name.lower()} by {p.user.full_name}",
+               data.reason, t)
 
     audit_p(db, p, "ticket.status", entity_type="ticket", entity_id=t.number, detail={"from": old, "to": target})
     return t
@@ -347,6 +355,9 @@ def assign(db: Session, p: Principal, number: str, data: AssignIn) -> Ticket:
             notify(db, t.requester_id, "ticket_assigned",
                    f"{t.number} assigned to {new_assignee}" if new_assignee else f"{t.number} returned to the IT queue",
                    _assigned_line(t), t, dedupe_key=f"assigned-req:{t.id}:{stamp}")
+    if moving_group and t.requester_id != p.id and new_assignee == old_assignee:
+        notify(db, t.requester_id, "ticket_assigned", f"{t.number} moved to the {group.name} team",
+               _assigned_line(t), t, dedupe_key=f"moved-req:{t.id}:{stamp}")
     if moving_group and not data.assignee_id:
         for uid in _group_leads(db, group.id):
             if uid != p.id:
@@ -402,6 +413,9 @@ def change_priority(db: Session, p: Principal, number: str, data: PriorityChange
     t.updated_at = utcnow()
     db.flush()
     db.refresh(t)
+    if old_code != new_p.code and t.requester_id != p.id:
+        notify(db, t.requester_id, "status_changed", f"{t.number} priority changed to {new_p.code} {new_p.name}",
+               (f"Reason: {data.reason}\n" if data.reason else "") + _assigned_line(t), t)
     audit_p(db, p, "ticket.priority", entity_type="ticket", entity_id=t.number,
             detail={"from": old_code, "to": new_p.code})
     return t
@@ -429,7 +443,7 @@ def add_comment(db: Session, p: Principal, number: str, data: CommentIn) -> Tick
             t.status_code = "IN_PROGRESS"
             sla_svc.on_status_change(db, t, old, "IN_PROGRESS", now)
             add_history(db, t, "status", old, "IN_PROGRESS", None, "Requester responded")
-        for uid in ([t.assignee_id] if t.assignee_id else _group_leads(db, t.support_group_id)):
+        for uid in ([t.assignee_id] if t.assignee_id else desk_staff_ids(db, t.desk)):
             notify(db, uid, "comment_added", f"{p.user.full_name} replied on {t.number}", data.body[:300], t)
     db.flush()
     # Touch updated_at without bumping the optimistic-lock version: a comment must not

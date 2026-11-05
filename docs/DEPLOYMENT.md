@@ -14,7 +14,7 @@ uvicorn app.main:app --reload --port 8000
 Open http://localhost:8000 — demo accounts are listed on the sign-in page (development only).
 API docs: http://localhost:8000/api/docs
 
-Run tests: `cd backend && python -m pytest` (uses a throwaway SQLite DB; 155 tests).
+Run tests: `cd backend && python -m pytest` (uses a throwaway SQLite DB; 158 tests).
 
 ## B. Development with SQL Server (Docker Compose)
 ```bash
@@ -140,25 +140,40 @@ Free-plan limits to keep in mind: Neon 1 GB storage (roughly tens of thousands o
 screenshots) and 100 compute hours per month; Vercel Hobby is for non-commercial use — check Vercel's terms for
 company use, or move to a company server (section C) later. The same code also runs on SQL Server.
 
-## H. Email notifications
-Every in-app notification is also emailed (new ticket, assignment — including who it is assigned to — replies, status
-changes, information requests, resolution, reopen, SLA breach). Emails are sent immediately after the action and failed
-ones are retried by the scheduler (up to 5 attempts). Demo addresses (`*.example.com`) are never emailed.
+## H. Email notifications (erp_helpdesk@visioninfraindia.com)
 
-1. Pick a sending mailbox, e.g. `it-servicedesk@yourcompany.com`.
-2. Set the environment variables (server `.env`, or Vercel → Project → Settings → Environment Variables):
+**Who gets which email**
+| Event | Email goes to |
+|---|---|
+| New ticket — IT department | the employee ("we've received it") + every **IT** administrator |
+| New ticket — ERP-IT department | the employee + every **ERP-IT** administrator |
+| New ticket — Both | the employee + all IT and ERP-IT administrators |
+| Assigned / re-assigned / moved to another team | the employee + the newly assigned administrator |
+| Accept & start, every status change, priority change, IT reply, file added by IT, resolved, closed | the employee |
+| Employee replies / reopens | the assigned administrator (or the department's administrators if unassigned) |
+| Ticket **deleted** | nobody by email (in-app notice only) |
 
-| Variable | Office 365 | Gmail / Google Workspace |
-|---|---|---|
-| `EMAIL_ENABLED` | `true` | `true` |
-| `SMTP_HOST` | `smtp.office365.com` | `smtp.gmail.com` |
-| `SMTP_PORT` | `587` | `587` |
-| `SMTP_STARTTLS` | `true` | `true` |
-| `SMTP_USERNAME` | the mailbox address | the mailbox address |
-| `SMTP_PASSWORD` | mailbox password (SMTP AUTH must be enabled for it in Microsoft 365 admin) | a 16-character **App Password** |
-| `SMTP_FROM` | the mailbox address | the mailbox address |
-| `APP_BASE_URL` | your portal address, e.g. `https://viesl-service-desk.vercel.app` | same |
+Internal notes are never emailed to employees. Each email has an animated picture for the kind of update, a progress
+tracker (Submitted → Assigned → In progress → Resolved → Closed) and the ticket details. People without a real
+email (imported with only USER_ID/USER_NAME) are skipped — add their email in Users & roles → Edit or the Excel import.
+Administrators need a department (Users & roles → Edit → IT department) so new tickets reach the right people.
 
-3. Restart (or redeploy on Vercel), sign in as an IT Administrator, open **Email notifications** and click
-   **Send test email**. The page shows the exact SMTP error if sending fails.
-4. Create real users with real company emails (**Users & roles → Add user**) — demo users never receive email.
+**Using the mailbox that another project already uses** — that is fine: one mailbox can send for several
+applications. Copy the same SMTP settings the other project uses into Vercel → Project → Settings → Environment Variables:
+
+| Variable | Value |
+|---|---|
+| `EMAIL_ENABLED` | `true` |
+| `SMTP_FROM` | `erp_helpdesk@visioninfraindia.com` |
+| `SMTP_FROM_NAME` | `VIESL IT Service Desk` |
+| `SMTP_USERNAME` | `erp_helpdesk@visioninfraindia.com` |
+| `SMTP_PASSWORD` | the mailbox password / app password the other project uses |
+| `SMTP_HOST`, `SMTP_PORT` | same as the other project — Microsoft 365: `smtp.office365.com` / `587`; Google Workspace: `smtp.gmail.com` / `587`; Zoho: `smtp.zoho.in` / `587`; cPanel/hosting mail: `mail.visioninfraindia.com` / `587` (or `465` with `SMTP_SSL=true`) |
+| `SMTP_STARTTLS` | `true` for port 587 (`SMTP_SSL=true` and `SMTP_STARTTLS=false` for port 465) |
+| `APP_BASE_URL` | `https://viesl-service-desk.vercel.app` (links in emails) |
+
+Then redeploy, sign in as an IT Administrator → **Email notifications** → **Send test email**. If it fails, the page
+shows the mail server's exact error. Common causes: Microsoft 365 needs "Authenticated SMTP" enabled for the mailbox
+(Microsoft 365 admin → Users → the mailbox → Mail → Manage email apps), and accounts with two-step sign-in need an
+**app password** instead of the normal password. Sending limits (Microsoft 365 ≈ 30 emails/minute, 10,000/day) are
+shared with the other project; a service desk of this size stays far below them.

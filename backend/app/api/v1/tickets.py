@@ -427,6 +427,10 @@ async def upload_attachment(number: str, file: UploadFile = File(...), is_intern
     svc.add_history(db, t, "attachment", None, meta["original_name"], p.id, internal=is_internal)
     audit_p(db, p, "ticket.attachment_upload", entity_type="ticket", entity_id=t.number,
             detail={"name": meta["original_name"], "size": meta["size_bytes"], "sha256": meta["sha256"]})
+    if staff and not is_internal and t.requester_id != p.id:   # IT shared a file with the employee
+        from app.services.notifications import notify
+        notify(db, t.requester_id, "comment_added", f"{p.user.full_name} added a file to {t.number}",
+               f"File: {meta['original_name']}", t)
     db.commit()
     db.refresh(a)
     return a
