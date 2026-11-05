@@ -35,7 +35,7 @@ export async function render(root, { onLogin }) {
             <input type="password" name="password" autocomplete="current-password" required></label>
           <button class="btn primary block" type="submit" style="height:42px">Sign in</button>
         </div>
-        <p class="muted small" style="margin-top:16px">Forgot your password? Contact the IT department to reset it.</p>
+        <p class="muted small" style="margin-top:16px">Forgot your password? Contact the IT department to reset it. <br> Harshal</p>
       </form>
     </section></div>`);
 
