@@ -33,13 +33,16 @@ export async function render(view, _params = [], query = {}) {
   const me = state.me;
   const files = [];
   const idemKey = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random();
-  let impact = 3, urgency = 3;
+  // Employees only choose urgency; impact is fixed at "Medium" so urgency High → P2, Medium → P3, Low → P4.
+  // IT administrators can still raise a ticket to P1 with the Priority button.
+  const impact = 2;
+  let urgency = 3;
 
   mount(view, html`
     <div class="crumbs"><a href="#/tickets">Tickets</a> / <span>New</span></div>
     <div class="page-head"><div><h1>Raise a ticket</h1>
       <div class="sub">Raising as <b>${me.full_name}</b>${empId(me.employee_code)}${me.department ? html` · ${me.department}` : ""}${me.location ? html` · ${me.location}` : ""}</div></div></div>
-    <div class="grid grid-main-side">
+    <div class="new-ticket-wrap">
       <form class="card" id="tf" novalidate>
         <div class="card-body" style="padding:22px 24px">
           <div id="quick-note"></div>
@@ -97,12 +100,8 @@ export async function render(view, _params = [], query = {}) {
           </section>
 
           <section class="form-section">
-            <div class="fieldset-title">How much is this affecting work?</div>
-            <div class="fieldset-sub">Priority is calculated from impact and urgency using the company's policy.</div>
-            <div class="field"><span class="lbl">Impact — who is affected?</span><div class="choice-grid" id="impact">
-              ${[1, 2, 3].map((i) => html`<div class="choice ${i === 3 ? "on" : ""}" role="radio" tabindex="0" aria-checked="${i === 3}" data-v="${i}">
-                <b>${["High", "Medium", "Low"][i - 1]}</b><span>${cat.impact[i].split("— ")[1]}</span></div>`)}</div></div>
-            <div class="field" style="margin-top:14px"><span class="lbl">Urgency — how soon is it needed?</span><div class="choice-grid" id="urgency">
+            <div class="fieldset-title">How urgent is it?</div>
+            <div class="field" style="margin-top:10px"><span class="lbl">Urgency — how soon is it needed?</span><div class="choice-grid" id="urgency">
               ${[1, 2, 3].map((i) => html`<div class="choice ${i === 3 ? "on" : ""}" role="radio" tabindex="0" aria-checked="${i === 3}" data-v="${i}">
                 <b>${["High", "Medium", "Low"][i - 1]}</b><span>${cat.urgency[i].split("— ")[1]}</span></div>`)}</div></div>
           </section>
@@ -120,18 +119,6 @@ export async function render(view, _params = [], query = {}) {
         </div>
       </form>
 
-      <aside class="stack">
-        <div class="card"><div class="card-head"><h2>Calculated priority</h2></div>
-          <div class="card-body"><div id="prio-preview" style="font-size:15px"></div>
-          <p class="small muted" id="prio-desc" style="margin-top:8px"></p></div></div>
-        <div class="card"><div class="card-head"><h2>Might already be answered</h2></div>
-          <div class="card-body" id="kb-suggest"><p class="small muted">Start typing a subject to see related help articles.</p></div></div>
-        <div class="card"><div class="card-body small">
-          <div class="row" style="gap:8px;margin-bottom:8px">${icon("info")}<b>Tips for a fast fix</b></div>
-          <ul class="muted" style="margin:0;padding-left:18px;line-height:1.7">
-            <li>One issue per ticket.</li><li>Include the exact error text or a screenshot.</li>
-            <li>For security incidents, do not forward the suspicious email to colleagues.</li></ul></div></div>
-      </aside>
     </div>`);
 
   const form = $("#tf", view);
@@ -163,25 +150,17 @@ export async function render(view, _params = [], query = {}) {
     sub.disabled = !c?.subcategories.length;
     $("#erp-section", view).hidden = !c?.uses_erp_fields;
     $("#cat-help", view).textContent = c?.requires_approval ? "This request type needs approval before work starts." : (c?.description || "");
-    checkDupes(); suggest();
+    checkDupes();
   });
 
   function wireChoices(id, set) {
     const box = $(id, view);
-    const pick = (el) => { $$(".choice", box).forEach((c) => { c.classList.toggle("on", c === el); c.setAttribute("aria-checked", c === el); }); set(Number(el.dataset.v)); preview(); };
+    const pick = (el) => { $$(".choice", box).forEach((c) => { c.classList.toggle("on", c === el); c.setAttribute("aria-checked", c === el); }); set(Number(el.dataset.v)); };
     box.addEventListener("click", (e) => { const c = e.target.closest(".choice"); if (c) pick(c); });
     box.addEventListener("keydown", (e) => { const c = e.target.closest(".choice"); if (c && (e.key === " " || e.key === "Enter")) { e.preventDefault(); pick(c); } });
   }
-  wireChoices("#impact", (v) => { impact = v; });
   wireChoices("#urgency", (v) => { urgency = v; });
 
-  function preview() {
-    const row = cat.matrix.find((m) => m.impact === impact && m.urgency === urgency);
-    const p = cat.priorities.find((x) => x.code === row?.priority) || cat.priorities[cat.priorities.length - 1];
-    mount($("#prio-preview", view), prioBadge(p));
-    $("#prio-desc", view).textContent = p.description || "";
-  }
-  preview();
 
   form.description.addEventListener("input", () => { $("#desc-count", view).textContent = form.description.value.length; });
 
@@ -197,20 +176,7 @@ export async function render(view, _params = [], query = {}) {
     } catch { box.innerHTML = ""; }
   }, 500);
 
-  const suggest = debounce(async () => {
-    const q = form.subject.value.trim();
-    const box = $("#kb-suggest", view);
-    if (q.length < 4) return;
-    try {
-      const a = await api.get("/kb/articles", { q, limit: 4, category_id: form.category_id.value || undefined });
-      const list = a.length ? a : await api.get("/kb/articles", { q, limit: 4 });
-      mount(box, list.length ? html`<div class="suggest">${list.map((x) => html`<a href="#/kb/${x.id}" target="_blank" rel="noopener">
-        <b style="font-weight:600">${x.title}</b><div class="t-sub2">${x.category || "General"}</div></a>`)}</div>
-        <p class="small muted" style="margin-top:8px">Opens in a new tab — your draft stays here.</p>` :
-        html`<p class="small muted">No matching articles. Go ahead and submit.</p>`);
-    } catch { /* non-critical */ }
-  }, 450);
-  form.subject.addEventListener("input", () => { checkDupes(); suggest(); });
+  form.subject.addEventListener("input", () => { checkDupes(); });
 
   // ---- quick-help template from the home page
   const tpl = QUICK_TEMPLATES[query.quick];

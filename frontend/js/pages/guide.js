@@ -22,7 +22,7 @@ function sections(staff) {
         html`Then choose the <b>category</b> — the list only shows what that department handles. Subcategory is optional.`,
         html`Write a short <b>Subject</b> and a clear <b>Description</b>: what happened, since when, and any error text.`,
         html`Add <b>screenshots or a PDF</b> right below the description (images and PDF only).`,
-        html`Pick how many people are affected and how urgent it is — the priority is set automatically.`,
+        html`Choose how <b>urgent</b> it is — the priority is set automatically (IT can raise it if needed).`,
         html`Click <b>Submit ticket</b>. You get a ticket number: <span class="mono">IT-26-000123</span> for IT, <span class="mono">ERP-26-000123</span> for ERP-IT, <span class="mono">ITERP-26-000123</span> for both.`])}
       <p class="g-tip">${icon("zap")} Before submitting, look at the suggested articles on the right — many common problems have a ready fix.</p>` },
 

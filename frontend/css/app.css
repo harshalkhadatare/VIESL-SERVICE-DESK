@@ -1147,3 +1147,4 @@ html[data-mode="dark"] .desk-badge.both { background: rgba(24,162,156,.2); color
   background: var(--primary-soft); color: var(--primary-text); text-decoration: none; white-space: nowrap; }
 .dev-chip:hover { text-decoration: none; background: var(--primary); color: #fff; }
 .card.flash { animation: cardFlash 1.6s ease-out 2; } @keyframes cardFlash { 0%,100% { box-shadow: var(--shadow-sm); } 40% { box-shadow: 0 0 0 4px var(--focus); } }
+.new-ticket-wrap { max-width: 900px; }
