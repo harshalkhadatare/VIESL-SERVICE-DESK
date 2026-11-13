@@ -1,19 +1,4 @@
-"""Vercel entry point (Python serverless function).
 
-Two modes, chosen automatically:
-
-1. Free persistent database (recommended) — set DATABASE_URL (Neon / Vercel Postgres gives this
-   automatically when you connect the database to the project). Data is kept permanently.
-   On start-up the database schema is migrated and reference data (categories, statuses, SLA…)
-   is created. Demo users are NOT created unless DEMO_SEED=true. Create the first administrator
-   with BOOTSTRAP_ADMIN_EMAIL + BOOTSTRAP_ADMIN_PASSWORD.
-
-2. No DATABASE_URL — a temporary SQLite database in /tmp, filled with demo data, wiped whenever
-   Vercel restarts the function. Only useful as a quick demo.
-
-Attachments are stored inside the database (Vercel's disk is temporary) and limited to 4 MB
-(Vercel's request-size limit is 4.5 MB). Email: see docs/DEPLOYMENT.md section H.
-"""
 import logging
 import os
 import sys
