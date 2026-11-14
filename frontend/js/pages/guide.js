@@ -46,7 +46,8 @@ function sections(staff) {
         html`Your messages appear on the right, IT's replies on the left.`,
         html`Type in the box at the bottom and click <b>Send</b> (or press <span class="kbd">Ctrl</span> + <span class="kbd">Enter</span>).`,
         html`Need to send another screenshot? Use <b>Add an image or PDF</b> in the Attachments box.`])}
-      <p class="g-tip">${icon("clock")} When a ticket is <i>Pending Employee</i>, replying automatically puts it back to work.</p>` },
+      <p class="g-tip">${icon("clock")} When a ticket is <i>Pending Employee</i>, replying automatically puts it back to work.</p>
+      <p class="g-tip">${icon("clock")} <b>Please reply within 3 days.</b> If IT writes to you and we don't hear back within 3 days, the ticket closes automatically and you get an email. You can always raise a new ticket.</p>` },
 
     { id: "finish", icon: "checkCircle", title: "When it's fixed", body: html`
       ${steps([
@@ -95,7 +96,7 @@ function sections(staff) {
         html`Click <b>⋮</b> on any row to assign it to an IT administrator (or unassign it).`,
         html`Open a ticket and click <b>Accept & start</b> to take it, then <b>Update status</b> as you work.`,
         html`Use <b>Internal note</b> for notes the employee must not see. Use <b>Reply to requester</b> to talk to them — the <b>Quick reply</b> buttons fill in common answers for you.`,
-        html`Set <b>Resolved</b> with a short resolution note when done — the employee confirms, or it closes automatically after 5 days.`])}` },
+        html`Set <b>Resolved</b> with a short resolution note when done — the employee confirms, or it closes automatically if they don't reply within 3 days.`])}` },
     { id: "it-users", icon: "users", title: "IT: manage users", body: html`
       ${steps([
         html`<b>Users & roles</b> → <b>Add user</b> for one person, or <b>Import from Excel</b> for many (download the template there).`,

@@ -134,7 +134,10 @@ vision-servicedesk/
 3. New tickets start in **Submitted**; **New** is reserved for future email-to-ticket intake.
 4. Pauses: Pending Employee, Pending Approval, Resolved, Closed, Cancelled pause the SLA. Pending Vendor / Pending Change do **not** pause by default (configurable in `ticket_statuses.pauses_sla`).
 5. Two IT departments: **IT** and **ERP-IT** (`categories.desk`, `tickets.desk` = it/erp/both, `users.desk` for administrators). Categories ERP_APP, ERP_DATA, ERP_REPORT, DB_INTEG and ENHANCE belong to ERP-IT. Two roles only: Employee and IT Administrator. IT administrators belong to support teams (ERP, Infrastructure, End-User Computing, Service Desk, Security) used for automatic routing; any administrator can assign any ticket.
-6. Reopen window 7 days; auto-close 5 days after resolution with a reminder at day 3.
+6. Reopen window 7 days. No-reply auto-close: when IT's last public message (a reply, an information request or
+   Resolved) gets no response from the employee within 3 days (`no_reply_close_days`, 0 disables), the ticket is
+   closed and the employee is emailed: "We have not received a response from you, so we are closing this ticket."
+   Any action by the employee stops the clock; IT's next reply restarts it. Internal notes never count.
 7. Local accounts are used now; SSO (Azure AD / Entra ID via OIDC) is a planned enhancement — `users.auth_provider` already exists.
 
 ## 7. Phased plan

@@ -94,12 +94,14 @@ def test_auto_close_skips_protected_categories(client):
             t.status_code = "RESOLVED"
             t.resolved_at = utcnow() - timedelta(days=10)
             t.resolution_notes = "done"
+            for h in db.scalars(select(TicketHistory).where(TicketHistory.ticket_id == t.id)):
+                h.created_at = utcnow() - timedelta(days=11)   # the employee raised it before it was resolved
         db.commit()
         assert db.scalar(select(Category.is_protected).where(Category.code == "SECURITY"))
         run_auto_close(db)
         a = db.scalar(select(Ticket).where(Ticket.number == normal["number"]))
         b = db.scalar(select(Ticket).where(Ticket.number == secure["number"]))
-        assert a.status_code == "CLOSED" and a.closure_reason == "auto"
+        assert a.status_code == "CLOSED" and a.closure_reason == "no_response"
         assert b.status_code == "RESOLVED"
         assert db.scalar(select(TicketHistory).where(TicketHistory.ticket_id == a.id,
                                                      TicketHistory.new_value == "CLOSED"))

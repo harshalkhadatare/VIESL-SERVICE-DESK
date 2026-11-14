@@ -60,6 +60,13 @@ def pick_art(event: str, title: str, ticket, is_staff_recipient: bool) -> str:
 def headline(kind: str, ticket, is_staff_recipient: bool, title: str) -> tuple[str, str, str | None]:
     """(big headline, one friendly sentence, 'what happens next' tip) in plain language."""
     who = ticket.assignee.full_name if ticket is not None and ticket.assignee else None
+    if "we did not receive a response" in (title or "").lower():
+        if is_staff_recipient:
+            return ("Ticket closed — no reply", "The employee did not reply within 3 days of the last message, "
+                    "so the ticket was closed automatically.", None)
+        return ("We're closing your ticket",
+                "We have not received a response from you since our last message, so we are closing this ticket.",
+                "If you still need help, please raise a new ticket and mention this ticket number. We'll be happy to help.")
     desk = DESK_NAME.get(getattr(ticket, "desk", None) or "", "IT")
     if is_staff_recipient:
         return {

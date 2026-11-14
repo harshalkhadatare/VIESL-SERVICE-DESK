@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import SessionLocal
-from app.models import SLATracking, Ticket, TicketStatus, utcnow
+from app.models import SLATracking, Ticket, TicketComment, TicketHistory, TicketStatus, utcnow
 from app.services import sla as sla_svc
 from app.services.business_time import business_minutes_between
 from app.services.notifications import deliver_pending_emails, notify
@@ -74,30 +74,64 @@ def run_sla_checks(db: Session, now=None) -> dict:
     return stats
 
 
+NO_REPLY_TITLE = "closed: we did not receive a response"
+
+
 def run_auto_close(db: Session, now=None) -> dict:
-    """Reminder then auto-closure of resolved tickets. Protected categories are never auto-closed."""
+    """Close tickets the employee has not answered.
+
+    The clock starts when IT last wrote to the employee: a public reply on the ticket, or marking it Resolved.
+    If the employee does nothing on the ticket (reply, reopen, confirm, cancel, …) within `no_reply_close_days`
+    (default 3 calendar days), the ticket is closed and the employee is emailed. A new reply from IT restarts
+    the clock. Internal notes never count. Protected categories (e.g. Security Incident) are never auto-closed.
+    """
     now = now or utcnow()
-    close_days = get_int(db, "auto_close_after_days")
-    remind_days = get_int(db, "auto_close_reminder_days")
-    stats = {"reminded": 0, "closed": 0}
-    if close_days <= 0:
+    days = get_int(db, "no_reply_close_days")
+    stats = {"closed": 0}
+    if days <= 0:
         return stats
-    rows = db.scalars(select(Ticket).where(Ticket.status_code == "RESOLVED", Ticket.resolved_at.isnot(None))).all()
-    for t in rows:
-        if t.category.is_protected:
-            continue
-        age = now - t.resolved_at
-        if remind_days and age >= timedelta(days=remind_days) and age < timedelta(days=close_days):
-            if notify(db, t.requester_id, "ticket_resolved", f"Please confirm {t.number}",
-                      f"This ticket will close automatically after {close_days} days.", t,
-                      dedupe_key=f"autoclose-remind:{t.id}:{t.reopen_count}"):
-                stats["reminded"] += 1
-        if age >= timedelta(days=close_days):
-            t.status_code, t.closed_at, t.closure_reason = "CLOSED", now, "auto"
-            add_history(db, t, "status", "RESOLVED", "CLOSED", None, f"Auto-closed after {close_days} days")
-            notify(db, t.requester_id, "ticket_closed", f"{t.number} closed", "Closed automatically.", t,
-                   dedupe_key=f"autoclose:{t.id}:{t.reopen_count}")
-            stats["closed"] += 1
+    cutoff = now - timedelta(days=days)
+    candidates = db.scalars(select(Ticket).where(Ticket.status_code.notin_(["CLOSED", "CANCELLED"]),
+                                                 Ticket.updated_at < now)).all()
+    if not candidates:
+        return stats
+    ids = [t.id for t in candidates]
+    req_of = {t.id: t.requester_id for t in candidates}
+    # last public message from IT and last action by the employee, per ticket (two queries in total)
+    last_it: dict[int, object] = {}
+    last_emp: dict[int, object] = {}
+    for tid, author, at in db.execute(select(TicketComment.ticket_id, TicketComment.author_id, TicketComment.created_at)
+                                      .where(TicketComment.ticket_id.in_(ids), TicketComment.is_internal.is_(False))):
+        box = last_emp if author == req_of[tid] else last_it
+        if tid not in box or at > box[tid]:
+            box[tid] = at
+    for tid, actor, at in db.execute(select(TicketHistory.ticket_id, TicketHistory.actor_id, TicketHistory.created_at)
+                                     .where(TicketHistory.ticket_id.in_(ids), TicketHistory.actor_id.isnot(None))):
+        if actor == req_of[tid] and (tid not in last_emp or at > last_emp[tid]):
+            last_emp[tid] = at
+
+    for t in candidates:
+        it_at = max([x for x in (last_it.get(t.id), t.resolved_at if t.status_code == "RESOLVED" else None) if x],
+                    default=None)
+        if it_at is None or it_at > cutoff or t.category.is_protected:
+            continue                       # IT hasn't written yet, or it's less than N days ago
+        emp_at = last_emp.get(t.id)
+        if emp_at is not None and emp_at >= it_at:
+            continue                       # the employee answered after IT's last message — IT's turn
+        old = t.status_code
+        t.status_code, t.closed_at, t.closed_by, t.closure_reason = "CLOSED", now, None, "no_response"
+        t.updated_at = now
+        sla_svc.on_status_change(db, t, old, "CLOSED", now)
+        add_history(db, t, "status", old, "CLOSED", None,
+                    f"Closed automatically: no reply from the employee within {days} days of IT's last message")
+        notify(db, t.requester_id, "ticket_closed", f"{t.number} {NO_REPLY_TITLE}",
+               f"We have not received a response from you since our last message on this ticket, so we are "
+               f"closing it.\nIf you still need help, please raise a new ticket and mention {t.number}.", t,
+               dedupe_key=f"noreply-close:{t.id}:{now.date()}")
+        if t.assignee_id:
+            notify(db, t.assignee_id, "status_changed", f"{t.number} closed automatically — no reply from "
+                   f"{t.requester.full_name} in {days} days", t.subject, t, dedupe_key=f"noreply-close-it:{t.id}:{now.date()}")
+        stats["closed"] += 1
     db.commit()
     return stats
 

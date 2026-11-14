@@ -6,19 +6,31 @@ const ALLOWED = ".png,.jpg,.jpeg,.gif,.webp,.bmp,.tif,.tiff,.heic,.heif,.pdf";
 
 // Pre-filled starting points for the "Quick help" tiles on the home page (#/tickets/new?quick=…)
 const QUICK_TEMPLATES = {
-  password: { cat: "PASSWORD", type: "service_request", label: "Forgot password", urgency: 2,
+  password: {
+    cat: "PASSWORD", type: "service_request", label: "Forgot password", urgency: 2,
     subject: "Password reset / account unlock",
-    description: "System (Windows / Email / ERP / other): \nWhat happens when I try to sign in: \n" },
-  outlook: { cat: "EMAIL", label: "Email / Outlook", urgency: 2, subject: "Outlook problem: ",
-    description: "What is wrong (not syncing / cannot send / password prompt / other): \nSince when: \nError message (if any): \n" },
-  printer: { cat: "PRINTER", label: "Printer / scanner", subject: "Printer not working: ",
-    description: "Printer name or location: \nWhat happens (not printing / jammed / poor quality / offline): \n" },
-  internet: { cat: "NETWORK", label: "Internet / VPN", urgency: 2, subject: "Internet / VPN problem: ",
-    description: "Where are you working (office / home / site): \nWhat happens (slow / no connection / VPN drops): \nSince when: \n" },
-  erp: { cat: "ERP_APP", label: "ERP problem", urgency: 2, subject: "ERP: ",
-    description: "Screen / module: \nWhat I was trying to do: \nWhat happened instead (copy the error text): \n" },
-  laptop: { cat: "HARDWARE", label: "Laptop / desktop", subject: "Laptop / desktop: ",
-    description: "Device / asset tag: \nWhat is wrong (slow / not starting / broken part / need new device): \n" },
+    description: "System (Windows / Email / ERP / other): \nWhat happens when I try to sign in: \n"
+  },
+  outlook: {
+    cat: "EMAIL", label: "Email / Outlook", urgency: 2, subject: "Outlook problem: ",
+    description: "What is wrong (not syncing / cannot send / password prompt / other): \nSince when: \nError message (if any): \n"
+  },
+  printer: {
+    cat: "PRINTER", label: "Printer / scanner", subject: "Printer not working: ",
+    description: "Printer name or location: \nWhat happens (not printing / jammed / poor quality / offline): \n"
+  },
+  internet: {
+    cat: "NETWORK", label: "Internet / VPN", urgency: 2, subject: "Internet / VPN problem: ",
+    description: "Where are you working (office / home / site): \nWhat happens (slow / no connection / VPN drops): \nSince when: \n"
+  },
+  erp: {
+    cat: "ERP_APP", label: "ERP problem", urgency: 2, subject: "ERP: ",
+    description: "Screen / module: \nWhat I was trying to do: \nWhat happened instead (copy the error text): \n"
+  },
+  laptop: {
+    cat: "HARDWARE", label: "Laptop / desktop", subject: "Laptop / desktop: ",
+    description: "Device / asset tag: \nWhat is wrong (slow / not starting / broken part / need new device): \n"
+  },
 };
 
 const DESKS = [
@@ -139,7 +151,8 @@ export async function render(view, _params = [], query = {}) {
   }
   $("#desk-pick", view).addEventListener("click", (e) => { const o = e.target.closest(".desk-opt"); if (o) pickDesk(o.dataset.v); });
   $("#desk-pick", view).addEventListener("keydown", (e) => {
-    const o = e.target.closest(".desk-opt"); if (o && (e.key === " " || e.key === "Enter")) { e.preventDefault(); pickDesk(o.dataset.v); } });
+    const o = e.target.closest(".desk-opt"); if (o && (e.key === " " || e.key === "Enter")) { e.preventDefault(); pickDesk(o.dataset.v); }
+  });
   $("#wa-seg", view).addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { workaround = b.dataset.v; setSeg(e.currentTarget, workaround); } });
   setSeg($("#wa-seg", view), "");
 
