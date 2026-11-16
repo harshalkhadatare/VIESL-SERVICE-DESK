@@ -73,7 +73,8 @@ def test_excel_has_attachment_columns(client):
     head = [c.value for c in ws[4]]
     assert head[-3:] == ["Attachments", "File names", "Attachment link"]
     row = next(r for r in ws.iter_rows(min_row=5) if r[0].value == t["number"])
-    assert row[15].value == "Yes (1)" and row[16].value == "screen.png"
-    assert row[17].hyperlink is not None and row[17].hyperlink.target.endswith(f"#/tickets/{t['number']}/files")
-    other = next(r for r in ws.iter_rows(min_row=5) if r[15].value == "No")
-    assert other[17].hyperlink is None
+    a, f, k = head.index("Attachments"), head.index("File names"), head.index("Attachment link")
+    assert row[a].value == "Yes (1)" and row[f].value == "screen.png"
+    assert row[k].hyperlink is not None and row[k].hyperlink.target.endswith(f"#/tickets/{t['number']}/files")
+    other = next(r for r in ws.iter_rows(min_row=5) if r[a].value == "No")
+    assert other[k].hyperlink is None

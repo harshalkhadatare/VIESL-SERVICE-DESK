@@ -2,38 +2,94 @@ import { api } from "../api.js";
 import { $, $$, html, mount, icon, fmtRelative, fmtDate, emptyState, errorToast, toast, initials } from "../ui.js";
 import { refreshUnread } from "../app.js";
 
-const EV_ICON = { ticket_created: "ticket", ticket_assigned: "user", status_changed: "refresh", comment_added: "send",
-  info_requested: "alert", sla_warning: "clock", sla_breached: "alert", ticket_resolved: "checkCircle",
-  ticket_reopened: "refresh", ticket_closed: "check" };
+// What each event is called on screen, its icon and its colour
+const EV = {
+  ticket_created:  ["New ticket", "ticket", "info"],
+  ticket_assigned: ["Assigned", "user", "info"],
+  status_changed:  ["Status changed", "refresh", "neutral"],
+  comment_added:   ["New message", "send", "primary"],
+  info_requested:  ["Your reply needed", "alert", "warn"],
+  ticket_resolved: ["Resolved", "checkCircle", "ok"],
+  ticket_reopened: ["Reopened", "refresh", "warn"],
+  ticket_closed:   ["Closed", "check", "neutral"],
+  sla_warning:     ["Deadline near", "clock", "warn"],
+  sla_breached:    ["Overdue", "alert", "danger"],
+};
+const KINDS = [["", "All types"], ["messages", "Messages"], ["updates", "Status updates"], ["alerts", "Alerts"]];
+
+function dayLabel(v) {
+  const d = new Date(v), today = new Date();
+  const start = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((start(today) - start(d)) / 86400000);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  if (diff < 7) return d.toLocaleDateString(undefined, { weekday: "long" });
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
 
 export async function render(view) {
-  let unreadOnly = false, page = 1;
-  mount(view, html`<div class="page-head"><div><h1>Notifications</h1><div class="sub">Updates on tickets you raised or work on.</div></div>
-    <div class="row"><div class="seg" id="nf"><button class="on" data-v="all">All</button><button data-v="unread">Unread</button></div>
-    <button class="btn" id="mark">${icon("check")} Mark all read</button></div></div>
-    <div class="card"><ul class="list" id="nl"></ul><div class="pager" id="np"></div></div>`);
+  let unreadOnly = false, kind = "", page = 1;
+  mount(view, html`<div class="page-head"><div><h1>Notifications</h1>
+      <div class="sub" id="nsub">Updates on tickets you raised or work on.</div></div>
+    <button class="btn" id="mark">${icon("check")} Mark all as read</button></div>
+    <div class="nf-bar">
+      <div class="seg" id="nf"><button class="on" data-v="all">All</button><button data-v="unread">Unread</button></div>
+      <div class="nf-kinds" id="nk">${KINDS.map(([v, l]) => html`<button class="chip ${v === "" ? "on" : ""}" data-v="${v}">${l}</button>`)}</div>
+    </div>
+    <div id="nl" class="nf-list"></div><div class="pager" id="np"></div>`);
+
+  function item(n) {
+    const [label, ic, tone] = EV[n.event] || ["Update", "bell", "neutral"];
+    const body = (n.body || "").split("\n").map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("Assigned to:")).join(" · ")
+      .replace(n.ticket_subject ? new RegExp("^" + n.ticket_subject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "( · )?") : /^$/, "");
+    return html`<a class="nf-item ${n.is_read ? "" : "unread"}" href="${n.link || "#/notifications"}" data-id="${n.id}" data-read="${n.is_read}">
+      <span class="nf-ic tone-${tone}">${icon(ic)}</span>
+      <span class="nf-main">
+        <span class="nf-top"><span class="nf-tag tone-${tone}">${label}</span>
+          ${n.ticket_number ? html`<span class="nf-num">${n.ticket_number}</span>` : ""}
+          <span class="nf-time" title="${fmtDate(n.created_at)}">${fmtRelative(n.created_at)}</span></span>
+        <span class="nf-title">${n.title}</span>
+        ${n.ticket_subject ? html`<span class="nf-subj">${icon("ticket")} ${n.ticket_subject}</span>` : ""}
+        ${body ? html`<span class="nf-body">${body}</span>` : ""}
+        <span class="nf-meta">
+          ${n.ticket_status ? html`<span class="nf-pill">Status: <b>${n.ticket_status}</b></span>` : ""}
+          ${n.ticket_number ? (n.assignee_name
+            ? html`<span class="nf-pill"><span class="avatar">${initials(n.assignee_name)}</span>${n.assignee_name}</span>`
+            : html`<span class="nf-pill warn">Not yet assigned</span>`) : ""}
+          ${n.email_status === "sent" ? html`<span class="nf-pill" title="An email was also sent">${icon("mail")} Emailed</span>` : ""}
+        </span>
+      </span>
+      ${n.is_read ? "" : html`<span class="nf-dot" title="Unread"></span>`}
+    </a>`;
+  }
 
   async function load() {
     try {
-      const r = await api.get("/notifications", { unread_only: unreadOnly, page, page_size: 20 });
+      const [r, unread] = await Promise.all([
+        api.get("/notifications", { unread_only: unreadOnly, page, page_size: 20, ...(kind ? { kind } : {}) }),
+        api.get("/notifications/unread-count").catch(() => null),
+      ]);
       if (!$("#nl", view)?.isConnected) return;
-      mount($("#nl", view), r.items.length ? html`${r.items.map((n) => html`<li style="${n.is_read ? "" : "background:var(--surface-hover)"}">
-        <a class="item" style="display:flex;flex-wrap:nowrap;align-items:flex-start;gap:14px" href="${n.link || "#/notifications"}" data-id="${n.id}" data-read="${n.is_read}">
-          <span class="attach" style="padding:0"><span class="ic">${icon(EV_ICON[n.event] || "bell")}</span></span>
-          <span style="flex:1;min-width:0"><b style="font-weight:${n.is_read ? 500 : 650}">${n.title}</b>
-            ${n.ticket_subject ? html`<div class="t-sub2" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${n.ticket_subject}${n.ticket_status ? html` · ${n.ticket_status}` : ""}</div>` : ""}
-            ${n.body ? html`<div class="t-sub2" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${n.body.split("\n").filter((l) => !l.startsWith("Assigned to:")).join(" · ")}</div>` : ""}
-            ${n.ticket_number ? (n.assignee_name
-              ? html`<span class="assignee-chip"><span class="avatar">${initials(n.assignee_name)}</span>Assigned to <b>${n.assignee_name}</b></span>`
-              : html`<span class="assignee-chip none">Not yet assigned</span>`) : ""}
-            ${n.email_status === "sent" ? html`<span class="assignee-chip" style="margin-left:6px;padding-left:9px" title="An email was sent for this update">${icon("mail")} Emailed</span>` : ""}</span>
-          <span class="muted small" title="${fmtDate(n.created_at)}" style="white-space:nowrap">${fmtRelative(n.created_at)}</span></a></li>`)}` :
-        html`<li>${emptyState(unreadOnly ? "You're all caught up" : "No notifications yet", "We'll let you know when something changes on your tickets.", "bell")}</li>`);
+      if (unread) $("#nsub", view).textContent = unread.count
+        ? `You have ${unread.count} unread notification${unread.count === 1 ? "" : "s"}.` : "You're all caught up.";
+      // group by day
+      const groups = [];
+      for (const n of r.items) {
+        const d = dayLabel(n.created_at);
+        if (!groups.length || groups[groups.length - 1].d !== d) groups.push({ d, list: [] });
+        groups[groups.length - 1].list.push(n);
+      }
+      mount($("#nl", view), groups.length
+        ? html`${groups.map((g) => html`<section class="nf-day"><h3>${g.d}</h3><div class="card nf-card">${g.list.map(item)}</div></section>`)}`
+        : html`<div class="card">${emptyState(unreadOnly ? "You're all caught up" : "No notifications here",
+            "We'll let you know when something changes on your tickets.", "bell")}</div>`);
       const pages = Math.max(1, Math.ceil(r.total / r.page_size));
-      mount($("#np", view), html`<span>${r.total} total</span><div class="row"><button class="btn sm" id="pv" ${page <= 1 ? "disabled" : ""}>Previous</button>
-        <button class="btn sm" id="nx" ${page >= pages ? "disabled" : ""}>Next</button></div>`);
-      $("#pv", view).addEventListener("click", () => { page--; load(); });
-      $("#nx", view).addEventListener("click", () => { page++; load(); });
+      mount($("#np", view), r.total > r.page_size ? html`<span>Page ${page} of ${pages} · ${r.total} notifications</span><div class="row">
+        <button class="btn sm" id="pv" ${page <= 1 ? "disabled" : ""}>Previous</button>
+        <button class="btn sm" id="nx" ${page >= pages ? "disabled" : ""}>Next</button></div>` : html`<span>${r.total} notification${r.total === 1 ? "" : "s"}</span>`);
+      $("#pv", view)?.addEventListener("click", () => { page--; load(); });
+      $("#nx", view)?.addEventListener("click", () => { page++; load(); });
       $$("[data-id]", view).forEach((a) => a.addEventListener("click", () => {
         if (a.dataset.read === "false") api.post(`/notifications/${a.dataset.id}/read`).then(refreshUnread).catch(() => {});
       }));
@@ -43,6 +99,11 @@ export async function render(view) {
     const b = e.target.closest("button"); if (!b) return;
     $$("#nf button", view).forEach((x) => x.classList.toggle("on", x === b));
     unreadOnly = b.dataset.v === "unread"; page = 1; load();
+  });
+  $("#nk", view).addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    $$("#nk button", view).forEach((x) => x.classList.toggle("on", x === b));
+    kind = b.dataset.v; page = 1; load();
   });
   $("#mark", view).addEventListener("click", async () => {
     try { await api.post("/notifications/read-all"); toast("All notifications marked as read."); refreshUnread(); load(); } catch (e) { errorToast(e); }

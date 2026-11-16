@@ -238,10 +238,58 @@ def seed_reference(db: Session) -> None:
         ])
     for k, (v, d) in DEFAULTS.items():
         _get_or_create(db, ApplicationSetting, {"key": k}, value=v, description=d)
+    seed_departments(db)
     db.commit()
 
 
 # ---------------------------------------------------------------------------- demo data
+# The company's departments: (department category, department). Shown as two linked lists in Users & roles
+# and as two columns in the Excel report. Edit this list (and push) to add or rename a department.
+COMPANY_DEPARTMENTS = [
+    ("ACCOUNTS", "ACCOUNTS & FINANCE"), ("ACCOUNTS", "BILLING"), ("ACCOUNTS", "SALES"),
+    ("ADMINISTRATOR", "ADMIN"), ("ADMINISTRATOR", "COMPLIANCE"), ("ADMINISTRATOR", "HUMAN RESOURCES"),
+    ("ADMINISTRATOR", "INFORMATION TECHNOLOGY"), ("ADMINISTRATOR", "MANAGEMENT"), ("ADMINISTRATOR", "SAFETY"),
+    ("EQUIPMENT CATEGORY", "PAVER-ASPHALT"), ("EQUIPMENT CATEGORY", "PAVER-CONCRETE"), ("EQUIPMENT CATEGORY", "CONTRACT"),
+    ("EQUIPMENT CATEGORY", "CRUSHER"), ("EQUIPMENT CATEGORY", "EXCAVATOR & WHEEL LOADER"),
+    ("EQUIPMENT CATEGORY", "GENERAL ASSET"), ("EQUIPMENT CATEGORY", "MILLING"), ("EQUIPMENT CATEGORY", "PILLING RIG"),
+    ("ADMINISTRATOR", "PLANT & MACHINERY"), ("EQUIPMENT CATEGORY", "ROLLER"),
+    ("PROJECT EXCAVATION", "EXECUTION QUALITY ASSURANCE"), ("PROJECT EXCAVATION", "HIGHWAY"),
+    ("PROJECT EXCAVATION", "QUALITY CONTROL"), ("PROJECT EXCAVATION", "QUANTITY SURVEY"), ("PROJECT EXCAVATION", "SURVEY"),
+    ("PURCHASE & STORE", "ASSET MANAGEMENT"), ("PURCHASE & STORE", "LOGISTIC"), ("PURCHASE & STORE", "PURCHASE"),
+    ("PURCHASE & STORE", "STORES"), ("TRADING", "EXPORT & IMPORT"), ("TRADING", "REFURBISHMENT"),
+]
+DEPT_LIST_FLAG = "system.departments_list_v1"
+
+
+def seed_departments(db: Session) -> None:
+    """Make sure every company department exists with its category (matched by name, case-insensitive).
+    The first time the list is applied, older departments that aren't in it are hidden from the pick lists
+    (users already linked to them keep them until an admin picks a new one)."""
+    existing = {d.name.strip().lower(): d for d in db.scalars(select(Department))}
+    used_codes = {d.code for d in existing.values()}
+    wanted = set()
+    for i, (cat, name) in enumerate(COMPANY_DEPARTMENTS, start=1):
+        wanted.add(name.lower())
+        d = existing.get(name.lower())
+        if d is None:
+            code, k = f"D{i:02d}", i
+            while code in used_codes:
+                k += 100
+                code = f"D{k:03d}"
+            used_codes.add(code)
+            d = Department(code=code, name=name, category=cat, is_active=True)
+            db.add(d)
+            existing[name.lower()] = d
+        else:
+            d.category, d.is_active = cat, True
+    if not db.get(ApplicationSetting, DEPT_LIST_FLAG):
+        for key, d in existing.items():
+            if key not in wanted:
+                d.is_active = False
+        db.add(ApplicationSetting(key=DEPT_LIST_FLAG, value="1", description="Company department list applied"))
+    db.flush()
+
+
 DEPTS = [("FIN", "Finance & Accounts"), ("PROC", "Procurement"), ("PROJ", "Projects"), ("SALES", "Sales & Rental"),
          ("STORE", "Stores & Logistics"), ("HR", "HR & Admin"), ("IT", "Information Technology"),
          ("MGMT", "Management")]

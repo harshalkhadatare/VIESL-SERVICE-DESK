@@ -271,12 +271,16 @@ def change_status(db: Session, p: Principal, number: str, data: StatusChangeIn) 
         if len(notes) < 5:
             raise BusinessRuleError("Resolution notes (at least 5 characters) are required to resolve.",
                                     details=[{"field": "resolution_notes"}])
+        cause = (data.root_cause or "").strip()
+        if len(cause) < 3:
+            raise BusinessRuleError("Root cause (at least 3 characters) is required to resolve — it goes into the "
+                                    "Excel report.", details=[{"field": "root_cause"}])
         if t.resolution_notes != notes:
             add_history(db, t, "resolution_notes", None, "updated", p.id)
         t.resolution_notes = notes
-        if data.root_cause:
-            t.root_cause = data.root_cause.strip()
+        if t.root_cause != cause:
             add_history(db, t, "root_cause", None, "recorded", p.id, internal=True)
+        t.root_cause = cause
         t.resolved_at = now
     if target in ("IN_PROGRESS", "ASSIGNED") and t.assignee_id is None and staff:
         t.assignee_id, t.assigned_at = p.id, now

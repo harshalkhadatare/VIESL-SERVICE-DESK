@@ -220,17 +220,21 @@ def export_csv(f: ListFilters = Depends(list_filters), p: Principal = Depends(re
     z = ZoneInfo(p.user.timezone)
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["Ticket", "IT team", "Subject", "Type", "Status", "Priority", "Category", "Requester", "Employee ID", "Department",
-                "Support group", "Assignee", f"Created ({p.user.timezone})", "Resolved", "SLA breached"])
+    w.writerow(["Ticket", "IT team", "Subject", "Type", "Status", "Priority", "Category", "Requester", "Employee ID", "Dept. category",
+                "Department", "Support group", "Assignee", f"Created ({p.user.timezone})", "Resolved", "Resolution notes",
+                "Root cause", "SLA breached"])
     count = 0
     for t in db.scalars(stmt).all():
         count += 1
+        dept = t.requester.department or t.department
         w.writerow([_csv_safe(x) for x in [
             t.number, {"it": "IT", "erp": "ERP-IT", "both": "IT + ERP-IT"}.get(t.desk, t.desk), t.subject, t.ticket_type, t.status.name, t.priority.code, t.category.name,
-            t.requester.full_name, t.requester.employee_code or "", t.department.name if t.department else "",
+            t.requester.full_name, t.requester.employee_code or "",
+            (dept.category or "") if dept else "", dept.name if dept else "",
             t.support_group.name if t.support_group else "", t.assignee.full_name if t.assignee else "",
             t.created_at.astimezone(z).strftime("%Y-%m-%d %H:%M"),
             t.resolved_at.astimezone(z).strftime("%Y-%m-%d %H:%M") if t.resolved_at else "",
+            t.resolution_notes or "", t.root_cause or "",
             "Yes" if (t.sla and t.sla.resolution_breached) else "No"]])
     audit_p(db, p, "report.export", entity_type="ticket", detail={"rows": count, "filters": {
         k: v for k, v in f.items() if v}})

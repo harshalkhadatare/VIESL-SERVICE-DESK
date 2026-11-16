@@ -185,7 +185,7 @@ def test_every_it_action_emails_the_employee_but_not_delete(client, mail):
     v = client.post(f"/api/v1/tickets/{n}/status", headers=auth("admin"),
                     json={"to_status": "IN_PROGRESS", "expected_version": v}).json()["version"]
     client.post(f"/api/v1/tickets/{n}/status", headers=auth("admin"),
-                json={"to_status": "RESOLVED", "resolution_notes": "Replaced the keyboard", "expected_version": v})
+                json={"to_status": "RESOLVED", "root_cause": "Loose cable", "resolution_notes": "Replaced the keyboard", "expected_version": v})
     resolved = [m for m in to_emp() if "resolved" in m["subject"].lower()]
     assert resolved and "fixed" in resolved[0]["html"] and "sd-resolved" in resolved[0]["images"]
     assert resolved[0]["images"]["sd-resolved"][:6] == b"GIF89a"

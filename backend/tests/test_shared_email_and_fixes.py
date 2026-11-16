@@ -44,10 +44,10 @@ def test_resolution_notes_five_characters(client):
     v = client.post(f"/api/v1/tickets/{n}/status", headers=auth("admin"),
                     json={"to_status": "IN_PROGRESS", "expected_version": t["version"]}).json()["version"]
     r = client.post(f"/api/v1/tickets/{n}/status", headers=auth("admin"),
-                    json={"to_status": "RESOLVED", "resolution_notes": "done", "expected_version": v})
+                    json={"to_status": "RESOLVED", "root_cause": "Loose cable", "resolution_notes": "done", "expected_version": v})
     assert r.status_code == 422 and "5 characters" in r.json()["error"]["message"]
     r = client.post(f"/api/v1/tickets/{n}/status", headers=auth("admin"),
-                    json={"to_status": "RESOLVED", "resolution_notes": "Fixed", "expected_version": v})
+                    json={"to_status": "RESOLVED", "root_cause": "Loose cable", "resolution_notes": "Fixed", "expected_version": v})
     assert r.status_code == 200
 
 

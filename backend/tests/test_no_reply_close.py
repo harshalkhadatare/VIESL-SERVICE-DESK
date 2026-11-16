@@ -83,7 +83,7 @@ def test_resolved_ticket_closes_after_three_days_without_reply(client):
     n = t["number"]
     v = client.post(f"{API}/{n}/status", headers=auth("admin"), json={"to_status": "IN_PROGRESS", "expected_version": t["version"]}).json()["version"]
     client.post(f"{API}/{n}/status", headers=auth("admin"),
-                json={"to_status": "RESOLVED", "resolution_notes": "Replaced cable", "expected_version": v})
+                json={"to_status": "RESOLVED", "root_cause": "Loose cable", "resolution_notes": "Replaced cable", "expected_version": v})
     _age(n, 3.1)
     _run()
     assert _status(n) == "CLOSED"

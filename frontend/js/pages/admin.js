@@ -28,7 +28,7 @@ export async function renderUsers(view) {
       mount($("#ur", view), r.items.length ? html`${r.items.map((u) => html`<tr>
         <td class="u-user"><div class="row" style="flex-wrap:nowrap"><span class="avatar sm">${initials(u.full_name)}</span><div style="min-width:0"><b style="font-weight:600">${u.full_name}</b>
           ${u.is_demo ? html` <span class="pill demo">demo</span>` : ""}<div class="t-sub2">${u.has_email ? u.email : html`<span style="color:var(--warn)">No email yet</span>`}</div></div></div></td>
-        <td class="hide-sm mono u-code" data-label="Employee ID">${u.employee_code}</td><td class="hide-sm hide-md u-dept">${u.department || "—"}</td>
+        <td class="hide-sm mono u-code" data-label="Employee ID">${u.employee_code}</td><td class="hide-sm hide-md u-dept">${u.department ? html`${u.department}${u.department_category ? html`<div class="muted small">${u.department_category}</div>` : ""}` : "—"}</td>
         <td class="u-roles">${u.roles.map((c) => html`<span class="pill" style="margin:1px 3px 1px 0">${roleName[c] || c}</span>`)}${u.roles.includes("it_admin") && u.desk ? html` ${deskBadge(u.desk)}` : ""}</td>
         <td class="hide-sm hide-md muted small u-last">${u.last_login_at ? fmtRelative(u.last_login_at) : "Never"}</td>
         <td class="u-status">${!u.is_active ? html`<span class="badge">Inactive</span>` : u.locked ? html`<span class="badge warn">Locked</span>` : html`<span class="badge ok">Active</span>`}</td>
@@ -127,9 +127,9 @@ export async function renderUsers(view) {
       body: html`<form id="eu" class="form-grid" novalidate>
         <label class="field"><span class="lbl">Full name</span><input type="text" name="full_name" maxlength="150" value="${u.full_name}"></label>
         <label class="field"><span class="lbl">Employee ID (used to sign in)</span><input type="text" name="employee_code" maxlength="30" value="${u.employee_code}"></label>
+        <label class="field"><span class="lbl">Department category</span><select name="dept_category" data-dept-cat><option value="">Select category…</option></select></label>
+        <label class="field"><span class="lbl">Department</span><select name="department_id" data-dept><option value="">Select department…</option></select></label>
         <label class="field"><span class="lbl">Company email</span><input type="email" name="email" maxlength="254" value="${u.has_email ? u.email : ""}" placeholder="name@visioninfra.co.in"></label>
-        <label class="field"><span class="lbl">Department</span><select name="department_id"><option value="">—</option>
-          ${depts.map((d) => html`<option value="${d.id}" ${d.id === u.department_id ? "selected" : ""}>${d.name}</option>`)}</select></label>
         <label class="field"><span class="lbl">Job title</span><input type="text" name="job_title" maxlength="120" value="${u.job_title || ""}"></label>
         <label class="field"><span class="lbl">Phone</span><input type="text" name="phone" maxlength="30" value="${u.phone || ""}"></label>
         ${u.roles.includes("it_admin") ? html`<label class="field"><span class="lbl">IT department (for IT Administrators)</span><select name="desk">
@@ -137,7 +137,7 @@ export async function renderUsers(view) {
           <option value="erp" ${u.desk === "erp" ? "selected" : ""}>ERP-IT — ERP software</option></select>
           <div class="help">Decides which tickets and dashboard they see first.</div></label>` : ""}</form>`,
       actions: html`<button class="btn" data-close>Cancel</button><button class="btn primary" id="eu-save">Save changes</button>`,
-      onMount: (el, close) => $("#eu-save", el).addEventListener("click", async (e) => {
+      onMount: (el, close) => { deptPicker(el, depts, u.department_id); $("#eu-save", el).addEventListener("click", async (e) => {
         const f = $("#eu", el);
         const d = Object.fromEntries(new FormData(f));
         const body = { full_name: d.full_name.trim(), employee_code: d.employee_code.trim(),
@@ -147,7 +147,7 @@ export async function renderUsers(view) {
         busy(e.currentTarget);
         try { await api.patch(`/admin/users/${u.id}`, body); close(); toast("User updated."); load(); }
         catch (ex) { busy(e.currentTarget, false); showFieldErrors(f, ex.fieldErrors?.() || {}); errorToast(ex); }
-      }) });
+      }); } });
   }
 
   function importUsers() {
@@ -226,10 +226,10 @@ export async function renderUsers(view) {
     openModal({ title: "Add user", subtitle: "They sign in with their Employee ID. Add an email only if they have one — updates are emailed there.", wide: true,
       body: html`<form id="nu" class="form-grid" novalidate>
         <label class="field"><span class="lbl">Full name<span class="req">*</span></span><input type="text" name="full_name" maxlength="150" required></label>
-        <label class="field"><span class="lbl">Company email <span class="muted" style="font-weight:400">(optional)</span></span><input type="email" name="email" maxlength="254" placeholder="Leave blank if they don't have one"></label>
         <label class="field"><span class="lbl">Employee code<span class="req">*</span></span><input type="text" name="employee_code" maxlength="30" required></label>
-        <label class="field"><span class="lbl">Department</span><select name="department_id"><option value="">—</option>
-          ${depts.map((d) => html`<option value="${d.id}">${d.name}</option>`)}</select></label>
+        <label class="field"><span class="lbl">Department category</span><select name="dept_category" data-dept-cat><option value="">Select category…</option></select></label>
+        <label class="field"><span class="lbl">Department</span><select name="department_id" data-dept><option value="">Select department…</option></select></label>
+        <label class="field"><span class="lbl">Company email <span class="muted" style="font-weight:400">(optional)</span></span><input type="email" name="email" maxlength="254" placeholder="Leave blank if they don't have one"></label>
         <label class="field"><span class="lbl">Job title</span><input type="text" name="job_title" maxlength="120"></label>
         <label class="field"><span class="lbl">Phone</span><input type="text" name="phone" maxlength="30"></label>
         <div class="field full"><span class="lbl">Role</span>
@@ -249,6 +249,7 @@ export async function renderUsers(view) {
       actions: html`<button class="btn" data-close>Cancel</button><button class="btn primary" id="nu-save">Create user</button>`,
       onMount: (el, close) => {
         let role = "employee", desk = "it";
+        deptPicker(el, depts, null);
         $("#role-pick", el).addEventListener("click", (e) => {
           const c = e.target.closest(".choice"); if (!c) return;
           role = c.dataset.v; $$("#role-pick .choice", el).forEach((x) => x.classList.toggle("on", x === c));
@@ -272,6 +273,26 @@ export async function renderUsers(view) {
       } });
   }
   await load();
+}
+
+/** Two linked lists: Department category → Department. Shows the user's current department even if it was retired. */
+function deptPicker(el, depts, currentId) {
+  const catSel = el.querySelector("[data-dept-cat]"), depSel = el.querySelector("[data-dept]");
+  const current = depts.find((d) => d.id === currentId);
+  const list = depts.filter((d) => d.is_active !== false || d.id === currentId);
+  const catOf = (d) => d.category || "OTHER";
+  const cats = [...new Set(list.map(catOf))].sort((a, b) => (a === "OTHER") - (b === "OTHER") || a.localeCompare(b));
+  for (const c of cats) catSel.add(new Option(c, c));
+  const fill = (cat, keep) => {
+    depSel.length = 1;
+    depSel.disabled = !cat;
+    depSel.options[0].text = cat ? "Select department…" : "Choose a category first";
+    for (const d of list.filter((x) => catOf(x) === cat).sort((a, b) => a.name.localeCompare(b.name)))
+      depSel.add(new Option(d.name + (d.is_active === false ? " (old)" : ""), d.id, false, d.id === keep));
+  };
+  if (current) catSel.value = catOf(current);
+  fill(catSel.value, currentId);
+  catSel.addEventListener("change", () => fill(catSel.value, null));
 }
 
 function matrix(roles) {

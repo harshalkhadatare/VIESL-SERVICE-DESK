@@ -399,8 +399,9 @@ export async function render(view, [number], query = {}) {
         <div id="res-fields" class="stack" style="gap:14px" hidden>
           <label class="field"><span class="lbl">Resolution notes<span class="req">*</span></span>
             <textarea name="resolution_notes" rows="4" maxlength="8000" placeholder="What was done to fix it? (at least 5 characters) The requester will see this.">${t.resolution_notes || ""}</textarea></label>
-          <label class="field"><span class="lbl">Root cause <span class="tag-internal">${icon("lock")} internal</span></span>
-            <textarea name="root_cause" rows="2" maxlength="4000">${t.root_cause || ""}</textarea></label>
+          <label class="field"><span class="lbl">Root cause<span class="req">*</span> <span class="tag-internal">${icon("lock")} internal</span></span>
+            <textarea name="root_cause" rows="2" maxlength="4000" placeholder="Why did it happen? e.g. Loose network cable, Wrong GST rate in item master, Expired password">${t.root_cause || ""}</textarea>
+            <div class="help">Required. IT only — the employee doesn't see it. It appears in the Excel report.</div></label>
         </div></form>`,
       actions: html`<button class="btn" data-close>Cancel</button><button class="btn primary" id="sok">Update</button>`,
       onMount: (el, close) => {
@@ -417,8 +418,11 @@ export async function render(view, [number], query = {}) {
           const d = Object.fromEntries(new FormData(f));
           const body = { reason: d.reason.trim() || null };
           if (d.to_status === "RESOLVED") {
-            body.resolution_notes = d.resolution_notes.trim(); body.root_cause = d.root_cause.trim() || null;
-            if (body.resolution_notes.length < 5) return showFieldErrors(f, { resolution_notes: "Write at least 5 characters, e.g. “Fixed”." });
+            body.resolution_notes = d.resolution_notes.trim(); body.root_cause = d.root_cause.trim();
+            const errs = {};
+            if (body.resolution_notes.length < 5) errs.resolution_notes = "Write at least 5 characters, e.g. “Fixed”.";
+            if (body.root_cause.length < 3) errs.root_cause = "Write the root cause — it is required for the Excel report.";
+            if (Object.keys(errs).length) return showFieldErrors(f, errs);
           }
           showFieldErrors(f, {});
           busy(btn);

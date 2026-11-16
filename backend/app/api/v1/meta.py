@@ -159,7 +159,9 @@ def it_admins(p: Principal = Depends(require("ticket.assign")), db: Session = De
 
 @router.get("/departments", response_model=list[dict])
 def departments(p: Principal = Depends(require_any("dashboard.ops", "user.manage")), db: Session = Depends(get_db)):
-    return [{"id": d.id, "name": d.name} for d in db.scalars(select(Department).order_by(Department.name))]
+    """Active departments for the pick lists, plus inactive ones (flagged) so a user's old department still shows."""
+    return [{"id": d.id, "name": d.name, "category": d.category, "is_active": d.is_active}
+            for d in db.scalars(select(Department).order_by(Department.category, Department.name))]
 
 
 class AnnouncementOut(BaseModel):

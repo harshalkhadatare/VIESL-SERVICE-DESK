@@ -25,9 +25,17 @@ STATUS_FONT = {"RESOLVED": "157A52", "CLOSED": "55657A", "CANCELLED": "55657A", 
 COLUMNS = [
     ("Ticket No.", 17), ("Raised on", 17), ("IT team", 12), ("Category", 28), ("Subcategory", 22),
     ("Subject", 46), ("Status", 17), ("Priority", 12), ("Raised by", 22), ("Employee ID", 13),
-    ("Department", 20), ("Assigned to", 22), ("Assignee ID", 13), ("Resolved on", 17), ("Deadline", 12),
+    ("Dept. category", 20), ("Department", 24), ("Assigned to", 22), ("Assignee ID", 13), ("Resolved on", 17),
+    ("Resolution notes", 40), ("Root cause", 34), ("Deadline", 12),
     ("Attachments", 13), ("File names", 34), ("Attachment link", 18),
 ]
+COL = {name: i for i, (name, _w) in enumerate(COLUMNS, start=1)}   # header → column number
+WRAP = {COL["Subject"], COL["Resolution notes"], COL["Root cause"], COL["File names"]}
+
+
+def _dept(t):
+    """The requester's department (as set in Users & roles), falling back to the one stored on the ticket."""
+    return (t.requester.department if t.requester and t.requester.department else None) or t.department
 
 
 def _sla(t) -> str:
@@ -92,10 +100,13 @@ def build_ticket_workbook(tickets, *, tz: str, company: str, title: str, filters
             f"{t.priority.code} · {t.priority.name}",
             t.requester.full_name if t.requester else "",
             t.requester.employee_code if t.requester else "",
-            t.department.name if t.department else "",
+            (_dept(t).category or "") if _dept(t) else "",
+            _dept(t).name if _dept(t) else "",
             t.assignee.full_name if t.assignee else "Unassigned",
             t.assignee.employee_code if t.assignee else "",
             t.resolved_at.astimezone(z).replace(tzinfo=None) if t.resolved_at else None,
+            t.resolution_notes or "",
+            t.root_cause or "",
             _sla(t),
             f"Yes ({len(files.get(t.id, []))})" if files.get(t.id) else "No",
             ", ".join(files.get(t.id, [])),
@@ -108,33 +119,36 @@ def build_ticket_workbook(tickets, *, tz: str, company: str, title: str, filters
             c = ws.cell(row=r, column=i, value=v)
             c.border = border
             c.font = Font(name="Calibri", size=10.5)
-            c.alignment = Alignment(vertical="center", wrap_text=(i == 6))
+            c.alignment = Alignment(vertical="center", wrap_text=(i in WRAP))
             if zebra:
                 c.fill = zebra
         ws.cell(row=r, column=1).font = Font(name="Consolas", size=10.5, bold=True, color=BLUE)
-        for col in (2, 14):
+        for col in (COL["Raised on"], COL["Resolved on"]):
             ws.cell(row=r, column=col).number_format = "dd-mmm-yyyy hh:mm"
             ws.cell(row=r, column=col).alignment = Alignment(horizontal="center", vertical="center")
-        for col in (3, 10, 13, 15):
+        for col in (COL["IT team"], COL["Employee ID"], COL["Assignee ID"], COL["Deadline"]):
             ws.cell(row=r, column=col).alignment = Alignment(horizontal="center", vertical="center")
-        st = ws.cell(row=r, column=7)
+        st = ws.cell(row=r, column=COL["Status"])
         st.font = Font(name="Calibri", size=10.5, bold=True, color=STATUS_FONT.get(t.status_code, BLUE))
         fill, color = PRIO_FILL.get(t.priority.code, PRIO_FILL["P4"])
-        pc = ws.cell(row=r, column=8)
+        pc = ws.cell(row=r, column=COL["Priority"])
         pc.fill = PatternFill("solid", fgColor=fill)
         pc.font = Font(name="Calibri", size=10.5, bold=True, color=color)
         pc.alignment = Alignment(horizontal="center", vertical="center")
-        sla = ws.cell(row=r, column=15)
+        sla = ws.cell(row=r, column=COL["Deadline"])
         sla.font = Font(name="Calibri", size=10.5, bold=True,
                         color={"Late": "B42318", "Overdue": "B42318", "On time": "157A52", "On track": "157A52"}.get(sla.value, "55657A"))
+        if t.status_code in ("RESOLVED", "CLOSED") and not t.root_cause:
+            rc = ws.cell(row=r, column=COL["Root cause"], value="Not recorded")
+            rc.font = Font(name="Calibri", size=10.5, italic=True, color="B42318")
         if not t.assignee:
-            ws.cell(row=r, column=12).font = Font(name="Calibri", size=10.5, italic=True, color="74859B")
-        att = ws.cell(row=r, column=16)
+            ws.cell(row=r, column=COL["Assigned to"]).font = Font(name="Calibri", size=10.5, italic=True, color="74859B")
+        att = ws.cell(row=r, column=COL["Attachments"])
         att.alignment = Alignment(horizontal="center", vertical="center")
         att.font = Font(name="Calibri", size=10.5, bold=True, color="157A52" if files.get(t.id) else "74859B")
-        ws.cell(row=r, column=17).alignment = Alignment(vertical="center", wrap_text=True)
+        ws.cell(row=r, column=COL["File names"]).alignment = Alignment(vertical="center", wrap_text=True)
         if files.get(t.id) and base_url:
-            link = ws.cell(row=r, column=18)
+            link = ws.cell(row=r, column=COL["Attachment link"])
             link.hyperlink = f"{base_url.rstrip('/')}/#/tickets/{t.number}/files"
             link.font = Font(name="Calibri", size=10.5, color=BLUE, underline="single")
             link.alignment = Alignment(horizontal="center", vertical="center")
@@ -163,7 +177,8 @@ def build_ticket_workbook(tickets, *, tz: str, company: str, title: str, filters
     s["A1"].font = Font(size=14, bold=True, color=NAVY)
     rows = [("Total tickets", len(tickets))]
     for label, key in (("By IT team", lambda t: DESK_NAME.get(t.desk, t.desk)),
-                       ("By status", lambda t: t.status.name), ("By priority", lambda t: t.priority.code)):
+                       ("By status", lambda t: t.status.name), ("By priority", lambda t: t.priority.code),
+                       ("By department category", lambda t: (_dept(t).category if _dept(t) else None) or "Not set")):
         counts: dict[str, int] = {}
         for t in tickets:
             counts[key(t)] = counts.get(key(t), 0) + 1

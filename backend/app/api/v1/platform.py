@@ -44,12 +44,22 @@ def _notif_out(n: Notification, t: Ticket | None) -> NotificationOut:
         assignee_name=t.assignee.label if t and t.assignee else None)
 
 
+NOTIF_KINDS = {
+    "messages": ("comment_added", "info_requested"),
+    "updates": ("ticket_created", "ticket_assigned", "status_changed", "ticket_resolved", "ticket_reopened", "ticket_closed"),
+    "alerts": ("sla_warning", "sla_breached"),
+}
+
+
 @router.get("/notifications", response_model=Page[NotificationOut], tags=["Notifications"])
-def notifications(unread_only: bool = False, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+def notifications(unread_only: bool = False, kind: str | None = Query(None, pattern="^(messages|updates|alerts)$"),
+                  page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
                   p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     stmt = select(Notification).where(Notification.user_id == p.id)
     if unread_only:
         stmt = stmt.where(Notification.is_read.is_(False))
+    if kind:
+        stmt = stmt.where(Notification.event.in_(NOTIF_KINDS[kind]))
     total = db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = db.scalars(stmt.order_by(Notification.created_at.desc(), Notification.id.desc())
                       .offset((page - 1) * page_size).limit(page_size)).all()
@@ -153,6 +163,7 @@ class UserAdminOut(BaseModel):
     phone: str | None = None
     desk: str | None = None
     department: str | None
+    department_category: str | None = None
     location: str | None
     is_active: bool
     is_demo: bool
@@ -175,6 +186,7 @@ def _user_out(u: User) -> UserAdminOut:
                         has_email=not is_placeholder(u.email), department_id=u.department_id,
                         job_title=u.job_title, phone=u.phone, desk=u.desk,
                         department=u.department.name if u.department else None,
+                        department_category=u.department.category if u.department else None,
                         location=u.location.name if u.location else None, is_active=u.is_active,
                         is_demo=u.is_demo, roles=sorted(u.role_codes), last_login_at=u.last_login_at,
                         locked=bool(u.locked_until and u.locked_until > utcnow()))

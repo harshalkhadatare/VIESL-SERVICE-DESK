@@ -146,7 +146,7 @@ def test_invalid_transition_rejected(client):
 
 def test_employee_cannot_resolve_own_ticket(client):
     t = make_ticket(client)
-    r = act(client, "employee", t["number"], "status", to_status="RESOLVED", resolution_notes="I fixed it myself",
+    r = act(client, "employee", t["number"], "status", to_status="RESOLVED", root_cause="Config drift", resolution_notes="I fixed it myself",
             expected_version=t["version"])
     assert r.status_code == 422
 
@@ -174,7 +174,7 @@ def test_stale_version_conflict(client):
 
 def test_requester_cannot_reopen_after_window(client):
     t, adm = _erp(client)
-    act(client, adm, t["number"], "status", to_status="RESOLVED", resolution_notes="Fixed the configuration.",
+    act(client, adm, t["number"], "status", to_status="RESOLVED", root_cause="Config drift", resolution_notes="Fixed the configuration.",
         expected_version=t["version"])
     with SessionLocal() as db:
         row = db.scalar(select(Ticket).where(Ticket.number == t["number"]))
@@ -189,7 +189,7 @@ def test_requester_cannot_reopen_after_window(client):
 
 def test_reopen_within_window_counts(client):
     t, adm = _erp(client)
-    d = act(client, adm, t["number"], "status", to_status="RESOLVED", resolution_notes="Fixed the configuration.",
+    d = act(client, adm, t["number"], "status", to_status="RESOLVED", root_cause="Config drift", resolution_notes="Fixed the configuration.",
             expected_version=t["version"]).json()
     d = act(client, "employee", t["number"], "status", to_status="REOPENED", reason="Error is back",
             expected_version=d["version"]).json()

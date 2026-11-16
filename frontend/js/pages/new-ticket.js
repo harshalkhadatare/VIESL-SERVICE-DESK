@@ -91,26 +91,6 @@ export async function render(view, _params = [], query = {}) {
             </div>
           </section>
 
-          <section class="form-section" id="erp-section" hidden>
-            <div class="fieldset-title">ERP details</div>
-            <div class="fieldset-sub">Optional, but these let the ERP team reproduce the problem without calling you.</div>
-            <div class="form-grid">
-              <label class="field"><span class="lbl">ERP module</span><select name="erp_module"><option value="">Select…</option>
-                ${cat.erp_modules.map((m) => html`<option>${m}</option>`)}</select></label>
-              <label class="field"><span class="lbl">Transaction / document type</span><input type="text" name="transaction_type" maxlength="80" placeholder="e.g. Purchase Order"></label>
-              <label class="field"><span class="lbl">Document reference no.</span><input type="text" name="reference_no" maxlength="80" placeholder="e.g. PO/PUN/2026/01482"></label>
-              <label class="field"><span class="lbl">Company / branch / project</span><input type="text" name="company_branch" maxlength="120"></label>
-              <label class="field"><span class="lbl">When did it happen?</span><input type="datetime-local" name="occurred_at"></label>
-              <div class="field"><span class="lbl">Is there a workaround?</span>
-                <div class="seg" id="wa-seg"><button type="button" data-v="">Not sure</button><button type="button" data-v="true">Yes</button><button type="button" data-v="false">No</button></div></div>
-              <label class="field full"><span class="lbl">Error message</span><textarea name="error_message" rows="2" maxlength="4000" placeholder="Copy the exact text shown on screen"></textarea></label>
-              <label class="field"><span class="lbl">Expected result</span><textarea name="expected_result" rows="2" maxlength="4000"></textarea></label>
-              <label class="field"><span class="lbl">Actual result</span><textarea name="actual_result" rows="2" maxlength="4000"></textarea></label>
-              <label class="field full"><span class="lbl">Steps to reproduce</span><textarea name="steps_to_reproduce" rows="3" maxlength="4000" placeholder="1. Open …&#10;2. Click …"></textarea></label>
-              <label class="field full"><span class="lbl">Business impact</span><input type="text" name="business_impact" maxlength="500" placeholder="e.g. Month-end billing for Mumbai branch is blocked"></label>
-            </div>
-          </section>
-
           <section class="form-section">
             <div class="fieldset-title">How urgent is it?</div>
             <div class="field" style="margin-top:10px"><span class="lbl">Urgency — how soon is it needed?</span><div class="choice-grid" id="urgency">
@@ -134,7 +114,7 @@ export async function render(view, _params = [], query = {}) {
     </div>`);
 
   const form = $("#tf", view);
-  let workaround = "", desk = "";
+  let desk = "";
 
   const setSeg = (seg, v) => $$("button", seg).forEach((b) => b.classList.toggle("on", b.dataset.v === v));
   // ---- 1. IT department first, then categories of that department
@@ -153,15 +133,12 @@ export async function render(view, _params = [], query = {}) {
   $("#desk-pick", view).addEventListener("keydown", (e) => {
     const o = e.target.closest(".desk-opt"); if (o && (e.key === " " || e.key === "Enter")) { e.preventDefault(); pickDesk(o.dataset.v); }
   });
-  $("#wa-seg", view).addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { workaround = b.dataset.v; setSeg(e.currentTarget, workaround); } });
-  setSeg($("#wa-seg", view), "");
 
   form.category_id.addEventListener("change", () => {
     const c = cat.categories.find((x) => String(x.id) === form.category_id.value);
     const sub = form.subcategory_id;
     mount(sub, html`<option value="">${c?.subcategories.length ? "Select…" : "—"}</option>${(c?.subcategories || []).map((s) => html`<option value="${s.id}">${s.name}</option>`)}`);
     sub.disabled = !c?.subcategories.length;
-    $("#erp-section", view).hidden = !c?.uses_erp_fields;
     $("#cat-help", view).textContent = c?.requires_approval ? "This request type needs approval before work starts." : (c?.description || "");
     checkDupes();
   });
@@ -247,14 +224,6 @@ export async function render(view, _params = [], query = {}) {
       impact, urgency, contact_method: "portal",
       related_ticket_number: v.related_ticket_number?.trim() || null,
     };
-    if (c?.uses_erp_fields) {
-      const erp = {};
-      for (const k of ["erp_module", "transaction_type", "reference_no", "company_branch", "error_message", "expected_result",
-        "actual_result", "steps_to_reproduce", "business_impact"]) if (v[k]?.trim()) erp[k] = v[k].trim();
-      if (v.occurred_at) erp.occurred_at = new Date(v.occurred_at).toISOString();
-      if (workaround) erp.workaround_available = workaround === "true";
-      if (Object.keys(erp).length) body.erp = erp;
-    }
     const btn = $("button[type=submit]", form);
     busy(btn);
     try {
