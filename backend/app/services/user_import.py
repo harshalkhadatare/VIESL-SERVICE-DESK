@@ -30,7 +30,9 @@ ALIASES = {
              "staffid", "erpid", "erpuserid"},
     "name": {"username", "name", "employeename", "empname", "fullname", "employee", "staffname"},
     "email": {"email", "emailid", "mail", "emailaddress", "officialemail"},
-    "department": {"department", "dept", "departmentname"},
+    "department": {"department", "dept", "departmentname", "subdepartment"},
+    "department_category": {"departmentcategory", "deptcategory", "category", "departmentgroup"},
+    "desk": {"itdepartment", "itteam", "desk", "itdesk"},
     "job_title": {"designation", "jobtitle", "title", "position", "role_title"},
     "phone": {"phone", "mobile", "mobileno", "phoneno", "contact", "contactno"},
     "role": {"role", "portalrole", "access"},
@@ -155,6 +157,14 @@ def import_users(db: Session, filename: str, content: bytes, default_password: s
             role_code = default_role
         password = str(cell(row, "password") or "").strip() or default_password
         dept_name = " ".join(str(cell(row, "department") or "").split())
+        cat_name = " ".join(str(cell(row, "department_category") or "").split()).upper()[:60]
+        if cat_name.startswith("="):
+            cat_name = ""   # an unsaved formula cell
+        desk_raw = _key(cell(row, "desk"))
+        desk = "erp" if desk_raw in {"erpit", "erp"} else "it" if desk_raw == "it" else None
+        if desk_raw and desk is None:
+            res.errors.append({"row": n, "employee_id": code, "message": "IT department must be IT or ERP-IT."})
+            continue
         job = " ".join(str(cell(row, "job_title") or "").split())[:120] or None
         phone = " ".join(str(cell(row, "phone") or "").split())[:30] or None
 
@@ -184,10 +194,12 @@ def import_users(db: Session, filename: str, content: bytes, default_password: s
                 while db.scalar(select(Department.id).where(Department.code == dcode)):
                     k += 1
                     dcode = f"{code_base[:10]}{k}"
-                dept = Department(code=dcode, name=dept_name[:120])
+                dept = Department(code=dcode, name=dept_name[:120], category=cat_name or None)
                 db.add(dept)
                 db.flush()
                 depts[dept_name.lower()] = dept
+            elif cat_name and not dept.category:
+                dept.category = cat_name
         if uid:
             u = db.get(User, uid)
             u.full_name = name
@@ -199,13 +211,15 @@ def import_users(db: Session, filename: str, content: bytes, default_password: s
                 u.job_title = job
             if phone:
                 u.phone = phone
+            if desk and "it_admin" in u.role_codes:
+                u.desk = desk
             res.updated += 1
         else:
             if password not in hash_cache:
                 hash_cache[password] = hash_password(password)
             u = User(employee_code=code, email=email, full_name=name, department_id=dept.id if dept else None,
                      job_title=job, phone=phone, password_plain=password, password_hash=hash_cache[password],
-                     timezone=tz)
+                     timezone=tz, desk=(desk or "it") if role_code == "it_admin" else None)
             db.add(u)
             db.flush()
             db.add(UserRole(user_id=u.id, role_id=roles[role_code].id, granted_by=actor_id, granted_at=utcnow()))

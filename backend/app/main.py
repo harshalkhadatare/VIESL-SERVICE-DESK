@@ -181,7 +181,8 @@ def cron_jobs(request: Request):
 @api.get("/brand", tags=["Health"])
 def brand():
     """Public: company name shown on the sign-in page, header, emails and Excel (COMPANY_NAME / COMPANY_SHORT)."""
-    return {"name": settings.company_name, "short": settings.company_short}
+    return {"name": settings.company_name, "short": settings.company_short,
+            "help_contacts": [x.strip() for x in settings.password_help_contacts.split(",") if x.strip()]}
 
 
 @api.get("/health", tags=["Health"])

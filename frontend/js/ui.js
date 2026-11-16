@@ -82,7 +82,7 @@ export function icon(name, cls = "") {
   return raw(`<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ` +
     `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ""}</svg>`);
 }
-export const brandMark = () => raw(`<svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 9l6.2 14h1.6L21 9" fill="none" stroke="#8EC5FF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="24.5" cy="22" r="2.4" fill="#fff"/></svg>`);
+export const brandMark = () => raw(`<img src="/static/assets/logo-mark.png" alt="Vision" width="34" height="34" decoding="async">`);
 
 // ------------------------------------------------------------------ formatting
 let TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;

@@ -1,6 +1,7 @@
 // Company branding comes from the server (COMPANY_NAME / COMPANY_SHORT settings), so a copy of this portal for
 // another company needs no code changes — only those two environment variables.
-export const brand = { name: "Vision Infra Equipment Solutions Ltd.", short: "Vision Infra · VIESL" };
+export const brand = { name: "Vision Infra Equipment Solutions Ltd.", short: "Vision Infra · VIESL",
+  help_contacts: ["Sandeep", "Harshal", "Aniket", "Vishal"] };
 
 export async function loadBrand() {
   try {

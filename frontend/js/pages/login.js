@@ -21,7 +21,7 @@ export async function render(root, { onLogin }) {
     <section class="login-form">
       <form id="login-form" novalidate>
         <div class="login-company">
-          <div class="logo">${brandMark()}</div>
+          <div class="logo-full"><img src="/static/assets/logo-full.png" alt="Vision — #NewBharat #NewVision" width="240" height="224"></div>
           <h1>${brand.name}</h1>
           <span class="tag">IT Service Desk</span>
         </div>
@@ -35,7 +35,10 @@ export async function render(root, { onLogin }) {
             <input type="password" name="password" autocomplete="current-password" required></label>
           <button class="btn primary block" type="submit" style="height:42px">Sign in</button>
         </div>
-        <p class="muted small" style="margin-top:16px">Forgot your password? Contact the IT department to reset it.</p>
+        <div class="pw-help">
+          <div class="pw-help-head">${icon("key")}<span><b>Forgot your password?</b> Contact one of these IT administrators to reset it:</span></div>
+          <div class="pw-help-names">${brand.help_contacts.map((n, k) => html`<span class="pw-name"><span class="avatar">${n.slice(0, 1).toUpperCase()}</span>${n}</span>`)}</div>
+        </div>
       </form>
     </section></div>`);
 

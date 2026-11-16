@@ -153,10 +153,11 @@ export async function renderUsers(view) {
   function importUsers() {
     let file = null;
     openModal({ title: "Import employees from Excel", wide: true,
-      subtitle: "Upload an .xlsx or .csv file. Required columns: employee ID (e.g. USER_ID) and name (e.g. USER_NAME). Optional: EMAIL, DEPARTMENT, DESIGNATION, PHONE, ROLE, PASSWORD.",
+      subtitle: "Upload an .xlsx or .csv file. Required: USER_ID and USER_NAME. Optional: EMAIL, DEPARTMENT, DEPARTMENT_CATEGORY, DESIGNATION, PHONE, ROLE, IT_DEPARTMENT, PASSWORD.",
       body: html`<form id="imp" class="stack" style="gap:14px" novalidate>
-        <div class="notice">${icon("info")}<div>New to this? <a href="/static/assets/Employee_Upload_Template.xlsx" download>Download the Excel template</a>
-          — fill the first sheet and upload it here.</div></div>
+        <div class="notice">${icon("info")}<div>New to this? <a href="#" id="imp-tpl">Download the Excel template</a>
+          — it has dropdowns for department, role and IT department, the department list, an example and instructions.
+          Fill the first sheet and upload it here.</div></div>
         <div class="field"><span class="lbl">File</span>
           <div class="dropzone" id="imp-drop" tabindex="0" role="button">${icon("file")} <span id="imp-name">Choose or drop your Excel file here</span></div>
           <input type="file" id="imp-file" accept=".xlsx,.csv" hidden></div>
@@ -173,6 +174,10 @@ export async function renderUsers(view) {
       actions: html`<button class="btn" data-close>Close</button><button class="btn" id="imp-preview">Preview</button>
         <button class="btn primary" id="imp-go" disabled>Import</button>`,
       onMount: (el, close) => {
+        $("#imp-tpl", el).addEventListener("click", async (e) => {
+          e.preventDefault();
+          try { await api.download("/admin/users/template.xlsx", null, "Users_Upload_Template.xlsx"); } catch (ex) { errorToast(ex); }
+        });
         const f = $("#imp", el), drop = $("#imp-drop", el), input = $("#imp-file", el), out = $("#imp-result", el);
         const go = $("#imp-go", el);
         const pick = (fl) => { if (!fl) return; file = fl; $("#imp-name", el).textContent = `${fl.name} · ${(fl.size / 1024).toFixed(0)} KB`; go.disabled = true; out.innerHTML = ""; };

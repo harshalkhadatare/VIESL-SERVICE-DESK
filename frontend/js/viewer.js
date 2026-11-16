@@ -29,20 +29,37 @@ export function fileBlob(number, a) {
   return blobs.get(key);
 }
 
+// Images are shown from data: URLs — they never expire (unlike blob: links) and work on every browser setting
+const dataUrls = new Map();   // same key as blobs → Promise<string>
+export function imageSrc(number, a) {
+  const key = `${number}:${a.id}`;
+  if (!dataUrls.has(key)) {
+    const p = fileBlob(number, a).then((b) => new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result);
+      r.onerror = () => rej(r.error);
+      r.readAsDataURL(b.type ? b : new Blob([b], { type: a.content_type }));
+    }));
+    p.catch(() => dataUrls.delete(key));
+    dataUrls.set(key, p);
+  }
+  return dataUrls.get(key);
+}
+
 /** Small previews for image tiles (only reasonably small images, to keep the page fast). */
 export function loadThumbs(root, number, files) {
   for (const a of files) {
     const box = root.querySelector(`[data-thumb="${a.id}"]`);
-    if (!box || !isImage(a) || a.size_bytes > 4 * 1024 * 1024) continue;
-    fileBlob(number, a).then((b) => {
+    if (!box || !isImage(a) || a.size_bytes > 6 * 1024 * 1024) continue;
+    imageSrc(number, a).then((src) => {
       if (!box.isConnected) return;
       const img = new Image();
       img.alt = "";
-      img.onload = () => URL.revokeObjectURL(img.src);
-      img.src = URL.createObjectURL(b);
-      box.replaceChildren(img);
-      box.classList.add("has-img");
-    }).catch(() => {});
+      img.decoding = "async";
+      img.onload = () => { box.replaceChildren(img); box.classList.add("has-img"); };
+      img.onerror = () => box.classList.add("no-prev");   // keep the plain file icon instead of a broken image
+      img.src = src;
+    }).catch(() => box.classList.add("no-prev"));
   }
 }
 
@@ -161,10 +178,16 @@ export function openViewer({ number, files, index = 0, canDelete = false, onDele
     if (want !== cur) return;   // the user moved on while it was loading
     url = URL.createObjectURL(blob);
     if (isImage(cur)) {
+      let src;
+      try { src = await imageSrc(number, cur); } catch { src = url; }
+      if (want !== cur) return;
       mount(stage, html`<div class="vw-imgbox"><img alt="${cur.original_name}" draggable="false"></div>`);
       const img = $("img", stage);
       img.onload = () => { nat = { w: img.naturalWidth, h: img.naturalHeight }; applyZoom(); };
-      img.src = url;
+      img.onerror = () => mount(stage, html`<div class="vw-msg">${icon("image")}<b>This image can't be shown here</b>
+        <span>Your browser can't display this picture. Download it to open it.</span>
+        <button class="btn primary" data-a="dl">${icon("download")} Download</button></div>`);
+      img.src = src;
       img.addEventListener("dblclick", () => { zoom = zoom > 1 ? 1 : 2; applyZoom(); });
     } else if (isPdf(cur)) {
       try {
@@ -234,7 +257,7 @@ export function openViewer({ number, files, index = 0, canDelete = false, onDele
         await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
         pages.push(c.toDataURL("image/jpeg", 0.92));
       }
-    } else pages = [url];
+    } else pages = [await imageSrc(number, cur).catch(() => url)];
     const fr = document.createElement("iframe");
     fr.className = "vw-print-frame";
     fr.srcdoc = `<!doctype html><title>${cur.original_name.replace(/</g, "&lt;")}</title>

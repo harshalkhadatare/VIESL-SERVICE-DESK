@@ -292,6 +292,17 @@ class ResetPasswordIn(StrictIn):
     password: str = Field(min_length=1, max_length=200)
 
 
+@router.get("/admin/users/template.xlsx", tags=["Administration"])
+def users_template(p: Principal = Depends(require("user.manage")), db: Session = Depends(get_db)):
+    """Excel template for bulk upload, with the current department list as dropdowns."""
+    from app.core.config import get_settings
+    from app.services.user_template import build_user_template
+    data = build_user_template(db, get_settings().company_name)
+    return Response(content=data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="Users_Upload_Template.xlsx"',
+                             "Cache-Control": "no-store"})
+
+
 @router.post("/admin/users/import", tags=["Administration"])
 async def import_users(file: UploadFile = File(...), default_password: str = Form(..., min_length=1, max_length=200),
                        default_role: str = Form("employee", pattern="^(employee|it_admin)$"),
