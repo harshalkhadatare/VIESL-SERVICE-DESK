@@ -95,17 +95,18 @@ GROUPS = [("SD", "Service Desk", "manual"), ("ERP", "ERP Application Support", "
           ("SEC", "Information Security", "manual")]
 # code, name, type, group, erp, approval, protected, subcategories
 # Categories handled by the ERP-IT department; every other category belongs to IT (hardware, network, email…)
-ERP_DESK = {"ERP_APP", "ERP_DATA", "ERP_REPORT", "DB_INTEG", "ENHANCE"}
+ERP_DESK = {"ERP_APP", "ERP_DATA", "ERP_REPORT", "ERP_BACKDATE", "DB_INTEG", "ENHANCE"}
 
 CATEGORIES = [
     ("ERP_APP", "ERP Application Issue", "incident", "ERP", True, False, False,
      ["Screen error", "Login / session", "Performance", "Workflow stuck"]),
-     ("ERP_APP", "ERP Backdate Lock Open", "incident", "ERP", True, False, False,
-          ["Pending Work"]),
     ("ERP_DATA", "ERP Data / Transaction Issue", "incident", "ERP", True, False, False,
      ["Posting failure", "Wrong values", "Duplicate entry", "Missing record"]),
     ("ERP_REPORT", "ERP Report / Excel Discrepancy", "incident", "ERP", True, False, False,
      ["Totals mismatch", "Export to Excel", "Missing columns", "Scheduled report"]),
+    # Every category needs its OWN code (first value); re-using a code only adds subcategories to that category.
+    ("ERP_BACKDATE", "ERP Back Date Lock Open", "service_request", "ERP", False, False, False,
+     ["Pending work"]),
     ("ACCESS", "User Account and Access Request", "service_request", "SD", False, True, False,
      ["New ERP role", "Shared folder access", "Application access", "Remove access"]),
     ("PASSWORD", "Password Reset / Account Unlock", "service_request", "SD", False, False, False,
@@ -172,6 +173,17 @@ def _fold_legacy_roles(db: Session) -> None:
         db.flush()
 
 
+def _remove_stray_subcategory(db: Session, cat_code: str, name: str) -> None:
+    """Clean-up: 'Pending Work' was once added to ERP Application Issue by mistake (it belongs to
+    'ERP Back Date Lock Open'). Removed only if no ticket uses it."""
+    from app.models import Ticket
+    sub = db.scalar(select(Subcategory).join(Category, Category.id == Subcategory.category_id)
+                    .where(Category.code == cat_code, Subcategory.name == name))
+    if sub is not None and not db.scalar(select(Ticket.id).where(Ticket.subcategory_id == sub.id).limit(1)):
+        db.delete(sub)
+        db.flush()
+
+
 def seed_reference(db: Session) -> None:
     perms = {}
     for code, desc in PERMISSIONS.items():
@@ -222,6 +234,7 @@ def seed_reference(db: Session) -> None:
                                 is_protected=prot, sort_order=i * 10, desk="erp" if code in ERP_DESK else "it")
         for s in subs:
             _get_or_create(db, Subcategory, {"category_id": cat.id, "name": s})
+    _remove_stray_subcategory(db, "ERP_APP", "Pending Work")
     sec = db.scalar(select(Category).where(Category.code == "SECURITY"))
     _get_or_create(db, SLAPolicy, {"priority_id": prio["P1"].id, "category_id": sec.id},
                    name="Security P1", calendar_id=cal.id, response_minutes=15, resolution_minutes=180,
