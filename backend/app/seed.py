@@ -100,6 +100,8 @@ ERP_DESK = {"ERP_APP", "ERP_DATA", "ERP_REPORT", "DB_INTEG", "ENHANCE"}
 CATEGORIES = [
     ("ERP_APP", "ERP Application Issue", "incident", "ERP", True, False, False,
      ["Screen error", "Login / session", "Performance", "Workflow stuck"]),
+     ("ERP_APP", "ERP Backdate Lock Open", "incident", "ERP", True, False, False,
+          ["Pending Work"]),
     ("ERP_DATA", "ERP Data / Transaction Issue", "incident", "ERP", True, False, False,
      ["Posting failure", "Wrong values", "Duplicate entry", "Missing record"]),
     ("ERP_REPORT", "ERP Report / Excel Discrepancy", "incident", "ERP", True, False, False,
