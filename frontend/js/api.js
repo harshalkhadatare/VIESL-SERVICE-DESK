@@ -93,6 +93,11 @@ export const api = {
   async logout() {
     try { await request("POST", "/auth/logout", {}, false); } finally { accessToken = null; }
   },
+  /** Fetch a protected file (sign-in required) as a Blob, for the in-app viewer. */
+  async blob(path, query) {
+    const r = await request("GET", path, { query, raw: true });
+    return r.blob();
+  },
   async download(path, query, fallbackName) {
     const r = await request("GET", path, { query, raw: true });
     const blob = await r.blob();

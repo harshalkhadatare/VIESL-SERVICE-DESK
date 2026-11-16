@@ -91,8 +91,10 @@ app.add_middleware(
 
 INDEX_CACHE = "public, max-age=0, s-maxage=31536000, must-revalidate"
 STATIC_CACHE = "public, max-age=300, s-maxage=31536000, stale-while-revalidate=86400"
-CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
-       "font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+# blob: lets the in-app file viewer show images/PDFs that were fetched with the user's sign-in (never external URLs)
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+       "frame-src 'self' blob:; object-src 'none'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; "
+       "base-uri 'self'; form-action 'self'")
 
 
 async def _send_queued_emails() -> None:

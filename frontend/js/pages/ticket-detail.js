@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { openViewer, downloadFile, loadThumbs, isPdf } from "../viewer.js";
 import { state, catalog, supportGroups, can } from "../state.js";
 import { $, $$, html, mount, icon, fmtDate, fmtRelative, statusBadge, prioBadge, initials, toast, errorToast,
   openModal, busy, emptyState, fileSize, showFieldErrors, realEmail, confirmDialog, deskBadge, nameId, nameIdText, empId } from "../ui.js";
@@ -199,6 +200,8 @@ export async function render(view, [number], query = {}) {
     if (h.field === "status") return html`<b>${who(h)}</b> moved it to ${statusChip(h.new_value)}${why}`;
     if (h.field === "assignee") return h.new_value ? html`<b>${who(h)}</b> assigned it to <b>${h.new_value}</b>` : html`<b>${who(h)}</b> removed ${h.old_value}`;
     if (h.field === "support_group") return html`${h.actor ? html`<b>${who(h)}</b> sent` : "Sent"} to the <b>${h.new_value}</b> team`;
+    if (h.field === "attachment") return h.new_value === "removed"
+      ? html`<b>${who(h)}</b> removed the file <b>${h.old_value}</b>` : html`<b>${who(h)}</b> attached <b>${h.new_value}</b>`;
     if (h.field === "priority") return html`<b>${who(h)}</b> changed priority to <b>${h.new_value}</b>${why}`;
     return html`<b>${who(h)}</b> updated ${FIELD_LABEL[h.field] || h.field}`;
   }
@@ -254,14 +257,26 @@ export async function render(view, [number], query = {}) {
   }
 
   function attachmentsCard(closed) {
+    const canAdd = !closed && (t.can_work || isRequester());
     return html`<div class="card" id="att-card"><div class="card-head"><h2>Attachments</h2><span class="hint">${attachments.length}</span></div>
-      <div class="card-body">${attachments.length ? attachments.map((a) => html`<div class="attach"><span class="ic">${icon("file")}</span>
-        <div style="flex:1;min-width:0"><a href="#" data-dl="${a.id}" data-name="${a.original_name}" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.original_name}</a>
-        <span class="t-sub2">${fileSize(a.size_bytes)} · ${nameIdText(a.uploader)}${a.is_internal ? html` · <span class="tag-internal">internal</span>` : ""}</span></div></div>`) :
+      <div class="card-body">${attachments.length ? html`<div class="att-grid">${attachments.map((a, k) => html`<div class="att-tile">
+          <button class="att-prev" data-view="${k}" title="View ${a.original_name}">
+            <span class="att-thumb ${isPdf(a) ? "pdf" : ""}" data-thumb="${a.id}">${icon(isPdf(a) ? "file" : "image")}</span>
+            <span class="att-eye"><span>${icon("eye")} View</span></span></button>
+          <div class="att-info"><span class="att-name" title="${a.original_name}">${a.original_name}</span>
+            <span class="att-sub">${fileSize(a.size_bytes)} · ${a.uploader.full_name}</span>
+            ${a.is_internal ? html`<span class="tag-internal">${icon("lock")} internal</span>` : ""}</div>
+          <div class="att-acts">
+            <button data-view="${k}" title="View">${icon("eye")}View</button>
+            <button data-dl="${k}" title="Download">${icon("download")}Save</button>
+            ${t.can_work ? html`<button class="danger" data-del="${k}" title="Delete (IT only)">${icon("trash")}</button>` : ""}</div>
+        </div>`)}</div>` :
         html`<p class="muted small">No files attached.</p>`}
-      ${!closed && (t.can_work || isRequester()) ? html`<div class="dropzone" id="up" tabindex="0" role="button" style="margin-top:12px">${icon("clip")} Add an image or PDF</div>
-        <input type="file" id="upf" hidden accept="image/*,.heic,.heif,.pdf">` : ""}</div></div>`;
+      ${canAdd ? html`<div class="dropzone" id="up" tabindex="0" role="button" style="margin-top:12px">${icon("clip")} Add an image or PDF</div>
+        <input type="file" id="upf" hidden accept="image/*,.heic,.heif,.pdf">` : ""}
+      ${attachments.length ? html`<p class="muted small" style="margin:10px 0 0">${icon("lock")} Files open inside the service desk and are only available to signed-in users who can see this ticket.</p>` : ""}</div></div>`;
   }
+
 
   function ratingCard() {
     return html`<div class="card"><div class="card-head"><h2>How did we do?</h2><span class="hint">Your feedback helps the IT team improve</span></div>
@@ -308,10 +323,19 @@ export async function render(view, [number], query = {}) {
         } catch (ex) { errorToast(ex); busy(btn, false); }
       });
     }
-    $$("[data-dl]", view).forEach((a) => a.addEventListener("click", async (e) => {
-      e.preventDefault();
-      try { await api.download(`/tickets/${number}/attachments/${a.dataset.dl}`, null, a.dataset.name); } catch (ex) { errorToast(ex); }
+    const viewFile = (k) => openViewer({ number, files: attachments.slice(), index: k, canDelete: !!t.can_work,
+      onDeleted: () => reload() });
+    $$("[data-view]", view).forEach((b) => b.addEventListener("click", () => viewFile(Number(b.dataset.view))));
+    $$("[data-dl]", view).forEach((b) => b.addEventListener("click", () => downloadFile(number, attachments[Number(b.dataset.dl)])));
+    $$("[data-del]", view).forEach((b) => b.addEventListener("click", async () => {
+      const a = attachments[Number(b.dataset.del)];
+      const ok = await confirmDialog({ title: "Delete this file?", danger: true, confirmText: "Delete file",
+        message: `“${a.original_name}” will be removed from ${number} for everyone. This cannot be undone.` });
+      if (!ok) return;
+      try { await api.del(`/tickets/${number}/attachments/${a.id}`); await reload("File deleted."); } catch (ex) { errorToast(ex); }
     }));
+    const card = $("#att-card", view);
+    if (card) loadThumbs(card, number, attachments);
     const up = $("#up", view), upf = $("#upf", view);
     if (up) {
       up.addEventListener("click", () => upf.click());
@@ -505,5 +529,6 @@ export async function render(view, [number], query = {}) {
   if (query.files) {   // opened from an "Attachment link" in the Excel export
     const card = $("#att-card", view);
     if (card) { card.scrollIntoView({ behavior: "smooth", block: "center" }); card.classList.add("flash"); }
+    if (attachments.length) openViewer({ number, files: attachments.slice(), index: 0, canDelete: !!t.can_work, onDeleted: () => reload() });
   }
 }

@@ -475,8 +475,11 @@ async def upload_attachment(number: str, file: UploadFile = File(...), is_intern
 
 
 @router.get("/{number}/attachments/{attachment_id}")
-def download_attachment(number: str, attachment_id: int, p: Principal = Depends(get_principal),
-                        db: Session = Depends(get_db)):
+def download_attachment(number: str, attachment_id: int,
+                        mode: Literal["view", "download"] = Query("download"),
+                        p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Files are only served to signed-in users who can see the ticket. mode=view shows the file inside the
+    portal's viewer (inline); mode=download saves it. Both are written to the audit log."""
     t = get_visible_ticket(db, p, number)
     a = db.scalar(select(TicketAttachment).where(TicketAttachment.id == attachment_id,
                                                  TicketAttachment.ticket_id == t.id))
@@ -489,12 +492,38 @@ def download_attachment(number: str, attachment_id: int, p: Principal = Depends(
         blob = db.get(TicketAttachmentBlob, a.id)
         if blob is None:
             raise NotFound("Attachment file is missing from storage.")
-    audit_p(db, p, "ticket.attachment_download", entity_type="ticket", entity_id=t.number,
-            detail={"attachment_id": a.id})
+    audit_p(db, p, "ticket.attachment_view" if mode == "view" else "ticket.attachment_download",
+            entity_type="ticket", entity_id=t.number, detail={"attachment_id": a.id, "file": a.original_name})
     db.commit()
+    disposition = "inline" if mode == "view" else "attachment"
     if blob is not None:
         from urllib.parse import quote
-        headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(a.original_name)}"
+        headers["Content-Disposition"] = f"{disposition}; filename*=UTF-8''{quote(a.original_name)}"
         return Response(content=blob.data, media_type=a.content_type, headers=headers)
     return FileResponse(path, media_type=a.content_type, filename=a.original_name,
-                        content_disposition_type="attachment", headers=headers)
+                        content_disposition_type=disposition, headers=headers)
+
+
+@router.delete("/{number}/attachments/{attachment_id}", status_code=204)
+def delete_attachment(number: str, attachment_id: int, p: Principal = Depends(get_principal),
+                      db: Session = Depends(get_db)):
+    """IT administrators working the ticket can remove a wrong or sensitive file. Employees cannot."""
+    t = get_visible_ticket(db, p, number)
+    if not can_work_ticket(p, t):
+        raise Forbidden("Only IT administrators can remove attachments.")
+    a = db.scalar(select(TicketAttachment).where(TicketAttachment.id == attachment_id,
+                                                 TicketAttachment.ticket_id == t.id))
+    if not a:
+        raise NotFound("Attachment not found.")
+    from app.services.ticket_delete import remove_files
+    name, stored, internal = a.original_name, a.stored_name, a.is_internal
+    blob = db.get(TicketAttachmentBlob, a.id)
+    if blob is not None:
+        db.delete(blob)
+    db.delete(a)
+    svc.add_history(db, t, "attachment", name, "removed", p.id, internal=internal)
+    audit_p(db, p, "ticket.attachment_delete", entity_type="ticket", entity_id=t.number,
+            detail={"attachment_id": attachment_id, "file": name})
+    db.commit()
+    remove_files([stored])
+    return Response(status_code=204)
