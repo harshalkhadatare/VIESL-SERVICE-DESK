@@ -1315,8 +1315,15 @@ html[data-mode="dark"] .login-company .logo-full { box-shadow: 0 0 0 1px var(--b
 .pw-help-head { display: flex; gap: 10px; font-size: 13px; color: var(--text-2); line-height: 1.5; }
 .pw-help-head svg { width: 17px; height: 17px; flex: none; margin-top: 2px; color: var(--primary); }
 .pw-help-head b { color: var(--text); font-weight: 600; }
-.pw-help-names { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding-left: 27px; }
-.pw-name { display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px 4px 4px; border-radius: 999px; background: var(--surface);
-  border: 1px solid var(--border); font-size: 13px; font-weight: 600; color: var(--text); }
-.pw-name .avatar { width: 22px; height: 22px; font-size: 11px; }
-@media (max-width: 640px) { .login-company .logo-full img { height: 92px; } .pw-help-names { padding-left: 0; } }
+.pw-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.pw-list li { display: flex; align-items: center; gap: 11px; padding: 8px 10px; border-radius: 9px; background: var(--surface);
+  border: 1px solid var(--border); }
+.pw-list li + li { margin-top: 6px; }
+.pw-list .avatar { width: 32px; height: 32px; font-size: 11.5px; flex: none; }
+.pw-who { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
+.pw-who b { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.pw-who a { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--primary-text); text-decoration: none;
+  overflow-wrap: anywhere; }
+.pw-who a:hover { text-decoration: underline; }
+.pw-who a svg { width: 13px; height: 13px; flex: none; opacity: .8; }
+@media (max-width: 640px) { .login-company .logo-full img { height: 92px; }  }

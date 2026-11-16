@@ -71,8 +71,12 @@ class Settings(BaseSettings):
     app_base_url: str = "http://localhost:8000"
     company_name: str = "Vision Infra Equipment Solutions Ltd."
     company_short: str = "Vision Infra · VIESL"        # small line under "IT Service Desk" in the menu
-    # Shown on the sign-in page under "Forgot your password?" — the IT administrators to contact, in this order
-    password_help_contacts: str = "Sandeep, Harshal, Aniket, Vishal"
+    # Shown on the sign-in page under "Forgot your password?" — the IT administrators to contact, in this order.
+    # Format: "Name | email; Name | email; …" (email optional)
+    password_help_contacts: str = ("Mr. Sandeep Patil | pnm_audit@visioninfraindia.com; "
+                                   "Mr. Harshal Khadatare | itsupport@visioninfraindia.com; "
+                                   "Mr. Aniket | it@visioninfraindia.com; "
+                                   "Mr. Vishal | it@visioninfraindia.com")
 
     @field_validator("database_url")
     @classmethod

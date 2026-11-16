@@ -36,8 +36,13 @@ export async function render(root, { onLogin }) {
           <button class="btn primary block" type="submit" style="height:42px">Sign in</button>
         </div>
         <div class="pw-help">
-          <div class="pw-help-head">${icon("key")}<span><b>Forgot your password?</b> Contact one of these IT administrators to reset it:</span></div>
-          <div class="pw-help-names">${brand.help_contacts.map((n, k) => html`<span class="pw-name"><span class="avatar">${n.slice(0, 1).toUpperCase()}</span>${n}</span>`)}</div>
+          <div class="pw-help-head">${icon("key")}<span><b>Forgot your password?</b> Please contact any of the following IT administrators to have it reset:</span></div>
+          <ol class="pw-list">${brand.help_contacts.map((c) => {
+            const n = typeof c === "string" ? { name: c } : c;
+            const ini = n.name.replace(/^(mr|mrs|ms|dr)\.?\s+/i, "").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+            return html`<li><span class="avatar">${ini}</span><div class="pw-who"><b>${n.name}</b>
+              ${n.email ? html`<a href="mailto:${n.email}?subject=${encodeURIComponent("Password reset request — IT Service Desk")}">${icon("mail")}${n.email}</a>` : ""}</div></li>`;
+          })}</ol>
         </div>
       </form>
     </section></div>`);

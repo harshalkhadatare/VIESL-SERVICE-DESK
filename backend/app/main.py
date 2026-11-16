@@ -182,7 +182,17 @@ def cron_jobs(request: Request):
 def brand():
     """Public: company name shown on the sign-in page, header, emails and Excel (COMPANY_NAME / COMPANY_SHORT)."""
     return {"name": settings.company_name, "short": settings.company_short,
-            "help_contacts": [x.strip() for x in settings.password_help_contacts.split(",") if x.strip()]}
+            "help_contacts": _help_contacts(settings.password_help_contacts)}
+
+
+def _help_contacts(raw: str) -> list[dict]:
+    """'Mr. A B | a@x.com; Mr. C | c@x.com' → [{name, email}], kept in the given order."""
+    out = []
+    for part in (raw or "").replace("\n", ";").split(";"):
+        name, _, email = part.partition("|")
+        if name.strip():
+            out.append({"name": name.strip()[:80], "email": email.strip()[:254] or None})
+    return out
 
 
 @api.get("/health", tags=["Health"])
