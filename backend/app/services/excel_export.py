@@ -16,7 +16,7 @@ BLUE = "1D5FC4"
 LIGHT = "E4EEFB"
 ZEBRA = "F6F9FD"
 GRID = "C9D6E6"
-PRIO_FILL = {"P1": ("FDECEB", "B42318"), "P2": ("FDF1DC", "A15C07"), "P3": ("E4EEFB", "1D5FC4"), "P4": ("EDF1F6", "55657A")}
+PRIO_FILL = {"P1": ("FDECEB", "B42318"), "P2": ("FDF1DC", "A15C07"), "P3": ("E4EEFB", "1D5FC4")}
 STATUS_FONT = {"RESOLVED": "157A52", "CLOSED": "55657A", "CANCELLED": "55657A", "PENDING_EMPLOYEE": "A15C07",
                "PENDING_VENDOR": "A15C07", "PENDING_APPROVAL": "A15C07", "PENDING_CHANGE": "A15C07",
                "REOPENED": "A15C07"}
@@ -93,7 +93,7 @@ def build_ticket_workbook(tickets, *, tz: str, company: str, title: str, filters
             t.number,
             t.created_at.astimezone(z).replace(tzinfo=None),
             DESK_NAME.get(t.desk, t.desk),
-            t.category.name if t.category else "",
+            t.category_label if t.category else "",
             t.subcategory.name if t.subcategory else "",
             t.subject,
             t.status.name,
@@ -130,7 +130,7 @@ def build_ticket_workbook(tickets, *, tz: str, company: str, title: str, filters
             ws.cell(row=r, column=col).alignment = Alignment(horizontal="center", vertical="center")
         st = ws.cell(row=r, column=COL["Status"])
         st.font = Font(name="Calibri", size=10.5, bold=True, color=STATUS_FONT.get(t.status_code, BLUE))
-        fill, color = PRIO_FILL.get(t.priority.code, PRIO_FILL["P4"])
+        fill, color = PRIO_FILL.get(t.priority.code, PRIO_FILL["P3"])
         pc = ws.cell(row=r, column=COL["Priority"])
         pc.fill = PatternFill("solid", fgColor=fill)
         pc.font = Font(name="Calibri", size=10.5, bold=True, color=color)

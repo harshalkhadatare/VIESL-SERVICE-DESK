@@ -23,7 +23,7 @@ class Notification(Base):
     link: Mapped[str | None] = mapped_column(Unicode(200))
     dedupe_key: Mapped[str] = mapped_column(Unicode(120), nullable=False, unique=True)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    # Email outbox state: none | pending | sent | failed
+    # Email outbox state: none | pending | sending (claimed by a sender) | sent | merged (same inbox already got it) | failed
     email_status: Mapped[str] = mapped_column(Unicode(10), default="none", nullable=False)
     email_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     email_last_error: Mapped[str | None] = mapped_column(Unicode(500))
@@ -131,7 +131,6 @@ class AuditLog(Base):
     entity_id: Mapped[str | None] = mapped_column(Unicode(40))
     detail: Mapped[str | None] = mapped_column(Unicode(2000))
     ip_address: Mapped[str | None] = mapped_column(Unicode(45))
-    device_id: Mapped[str | None] = mapped_column(Unicode(40), index=True)   # browser's permanent device ID
     device: Mapped[str | None] = mapped_column(Unicode(160))                 # e.g. "Chrome 130 · Windows 10/11"
     request_id: Mapped[str | None] = mapped_column(Unicode(36))
     outcome: Mapped[str] = mapped_column(Unicode(10), default="success", nullable=False)

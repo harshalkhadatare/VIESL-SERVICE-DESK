@@ -18,12 +18,14 @@ from abc import ABC, abstractmethod
 from email.message import EmailMessage
 from email.utils import formataddr
 
-from sqlalchemy import select
+from datetime import timedelta
+
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.models import Notification, NotificationPreference, Ticket, User
+from app.models import Notification, NotificationPreference, Ticket, User, utcnow
 
 log = logging.getLogger("servicedesk.notify")
 
@@ -234,32 +236,64 @@ def get_email_provider() -> EmailProvider:
 def deliver_pending_emails(db: Session, provider: EmailProvider | None = None, batch: int = 50,
                            first_attempt_only: bool = False) -> int:
     """Send queued emails. first_attempt_only=True is used right after a request (fast path);
-    the scheduler calls it without the flag to retry failures."""
+    the scheduler calls it without the flag to retry failures.
+
+    No duplicates:
+    * each email is *claimed* (pending → sending) with a conditional UPDATE before it is sent, so two requests
+      finishing at the same moment (e.g. a new ticket and its attachment upload) can never both send it;
+    * when several people share one inbox (e.g. two admins on it@…), that inbox gets one copy of the same update.
+    """
     if not email_configured():
         return 0
     provider = provider or get_email_provider()
-    stmt = select(Notification).where(Notification.email_status == "pending")
+    now = utcnow()
+    if not first_attempt_only:   # a sender that crashed mid-way: release its claims after 10 minutes
+        db.execute(update(Notification).where(Notification.email_status == "sending",
+                                              Notification.created_at < now - timedelta(minutes=10))
+                   .values(email_status="pending"))
+        db.commit()
+    stmt = select(Notification.id).where(Notification.email_status == "pending")
     if first_attempt_only:
         stmt = stmt.where(Notification.email_attempts == 0)
-    rows = db.scalars(stmt.order_by(Notification.id).limit(batch)).all()
-    sent = 0
-    if not rows:
+    ids = list(db.scalars(stmt.order_by(Notification.id).limit(batch)))
+    if not ids:
         return 0
+    claimed = []
+    for nid in ids:
+        r = db.execute(update(Notification).where(Notification.id == nid, Notification.email_status == "pending")
+                       .values(email_status="sending"))
+        if r.rowcount == 1:
+            claimed.append(nid)
+    db.commit()
+    if not claimed:
+        return 0
+    rows = db.scalars(select(Notification).where(Notification.id.in_(claimed)).order_by(Notification.id)).all()
+    sent = 0
+    seen: set[tuple] = set()
     with provider.batch():
         for n in rows:
             user = db.get(User, n.user_id)
             ticket = db.get(Ticket, n.ticket_id) if n.ticket_id else None
+            inbox = ((user.email or "").strip().lower(), n.ticket_id, n.event)
+            if n.ticket_id and inbox in seen:
+                n.email_status = "merged"
+                continue
             try:
                 subject, text, page, images = render_email(n, user, ticket)
                 provider.send(user.email, subject, text, page, images=images)
                 n.email_status, sent = "sent", sent + 1
+                seen.add(inbox)
             except Exception as exc:  # noqa: BLE001 - provider errors are recorded, retried later
+                n.email_status = "pending"
                 n.email_attempts += 1
                 n.email_last_error = str(exc)[:500]
                 if n.email_attempts >= MAX_EMAIL_ATTEMPTS:
                     n.email_status = "failed"
                 log.warning("email delivery failed id=%s attempt=%s error=%s", n.id, n.email_attempts, exc)
                 if first_attempt_only:  # don't keep trying a broken relay; the scheduler retries later
+                    for rest in rows:
+                        if rest.email_status == "sending":
+                            rest.email_status = "pending"
                     break
     db.commit()
     return sent

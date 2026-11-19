@@ -12,6 +12,7 @@ import * as guidePage from "./pages/guide.js";
 import * as notificationsPage from "./pages/notifications.js";
 import * as adminPage from "./pages/admin.js";
 import * as annPage from "./pages/announcements.js";
+import * as slaPage from "./pages/sla.js";
 import { setupThemeMenu } from "./theme.js";
 
 import { brand, loadBrand } from "./brand.js";
@@ -27,6 +28,7 @@ const ROUTES = [
   [/^\/kb\/(\d+)$/, kbPage.renderArticle, "kb"],
   [/^\/kb$/, kbPage.render, "kb"],
   [/^\/notifications$/, notificationsPage.render, "notifications"],
+  [/^\/sla$/, slaPage.render, "dashboard", "dashboard.ops"],
   [/^\/admin\/users$/, adminPage.renderUsers, "users", "user.manage"],
   [/^\/admin\/audit$/, adminPage.renderAudit, "audit", "audit.view"],
   [/^\/admin\/email$/, adminPage.renderEmail, "email", "settings.manage"],
@@ -73,7 +75,7 @@ function renderShell() {
         ${can("audit.view") ? navLink("/admin/audit", "audit", "shield", "Audit log") : ""}
         <button type="button" class="side-theme" id="side-theme">${icon("palette")}<span>Colours & dark mode</span></button>
       </nav>
-      <div class="sidebar-foot">Need urgent help? Call the IT Service Desk<br>for P1 outages after raising a ticket.</div>
+      <div class="sidebar-foot">Need urgent help? Call the IT Service Desk<br>for urgent (High) problems after raising a ticket.</div>
     </aside>
     <div class="main">
       <header class="topbar">

@@ -17,6 +17,7 @@ from app.models import SLATracking, Ticket, TicketComment, TicketHistory, Ticket
 from app.services import sla as sla_svc
 from app.services.business_time import business_minutes_between
 from app.services.notifications import deliver_pending_emails, notify
+from app.services.staff import desk_staff_ids
 from app.services.settings_service import get_int
 from app.services.staff import group_staff_ids
 from app.services.tickets import add_history
@@ -24,8 +25,10 @@ from app.services.tickets import add_history
 log = logging.getLogger("servicedesk.scheduler")
 
 
-def _leads(db: Session, group_id: int | None) -> list[int]:
-    return group_staff_ids(db, group_id)
+def _leads(db: Session, group_id: int | None, desk: str | None = None) -> list[int]:
+    """Support-group members, limited to the ticket's IT department (IT / ERP-IT)."""
+    team = set(desk_staff_ids(db, desk))
+    return [uid for uid in group_staff_ids(db, group_id) if uid in team] or sorted(team)
 
 
 def run_sla_checks(db: Session, now=None) -> dict:
@@ -47,7 +50,7 @@ def run_sla_checks(db: Session, now=None) -> dict:
             sla.warning_sent = True
             stats["warned"] += 1
             target = t.assignee_id or None
-            recipients = [target] if target else _leads(db, t.support_group_id)
+            recipients = [target] if target else _leads(db, t.support_group_id, t.desk)
             for uid in recipients:
                 notify(db, uid, "sla_warning", f"{t.number} is approaching its SLA",
                        f"{int(pct)}% of the resolution target used.", t, dedupe_key=f"slawarn:{t.id}:{uid}")
@@ -57,18 +60,18 @@ def run_sla_checks(db: Session, now=None) -> dict:
             stats["breached"] += 1
             add_history(db, t, "sla", None, f"resolution breached; escalation level {sla.escalation_level}",
                         None, internal=True)
-            for uid in set(_leads(db, t.support_group_id) + ([t.assignee_id] if t.assignee_id else [])):
+            for uid in set(_leads(db, t.support_group_id, t.desk) + ([t.assignee_id] if t.assignee_id else [])):
                 notify(db, uid, "sla_breached", f"SLA breached: {t.number} ({t.priority.code})", t.subject, t,
                        dedupe_key=f"slabreach:{t.id}:{uid}:{sla.escalation_level}")
-        # Unassigned critical incidents escalate after 15 business minutes
+        # Unassigned High (P1) tickets are flagged to the team after 30 business minutes
         if t.assignee_id is None and t.priority.code == "P1" and sla.escalation_level == 0:
             spec = sla_svc.spec_for(db, sla.calendar_id)
-            if business_minutes_between(sla.started_at, now, spec) >= 15:
+            if business_minutes_between(sla.started_at, now, spec) >= 30:
                 sla.escalation_level = 1
                 stats["escalated_unassigned"] += 1
-                add_history(db, t, "sla", None, "unassigned P1 escalated to leads", None, internal=True)
-                for uid in _leads(db, t.support_group_id):
-                    notify(db, uid, "sla_warning", f"Unassigned P1: {t.number}", t.subject, t,
+                add_history(db, t, "sla", None, "unassigned P1 High escalated to the team", None, internal=True)
+                for uid in _leads(db, t.support_group_id, t.desk):
+                    notify(db, uid, "sla_warning", f"Unassigned High-priority ticket: {t.number}", t.subject, t,
                            dedupe_key=f"p1unassigned:{t.id}:{uid}")
     db.commit()
     return stats

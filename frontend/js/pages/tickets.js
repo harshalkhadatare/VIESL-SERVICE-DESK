@@ -64,7 +64,7 @@ export async function render(view, _p, query) {
         <select id="f-status" aria-label="Status"><option value="">Any status</option><option value="open">All open</option>
           ${cat.statuses.map((s) => html`<option value="${s.code}">${s.name}</option>`)}</select>
         <select id="f-priority" aria-label="Priority"><option value="">Any priority</option>
-          ${cat.priorities.map((p) => html`<option value="${p.code}">${p.code} · ${p.name}</option>`)}<option value="P1,P2">P1 + P2</option></select>
+          ${cat.priorities.map((p) => html`<option value="${p.code}">${p.code} · ${p.name}</option>`)}</select>
         <select id="f-category" aria-label="Category"><option value="">Any category</option>
           ${cat.categories.map((c) => html`<option value="${c.id}">${c.name}</option>`)}</select>
         ${groups.length ? html`<select id="f-group" aria-label="Support group"><option value="">Any group</option>
@@ -72,7 +72,8 @@ export async function render(view, _p, query) {
         <select id="f-sla" aria-label="Due time"><option value="">Any due time</option><option value="at_risk">Due within 4 hours</option><option value="breached">Overdue</option></select>
         <span class="spacer"></span>
         <select id="f-sort" aria-label="Sort"><option value="updated_desc">Recently updated</option><option value="created_desc">Newest</option>
-          <option value="created_asc">Oldest</option><option value="priority">Priority</option><option value="due">Due soonest</option></select>
+          <option value="created_asc">Oldest</option><option value="priority">Priority</option>${staff ? html`<option value="due">Due soonest</option>` : ""}</select>
+        <button type="button" class="btn reset-btn" id="f-reset" title="Clear search and every filter">${icon("refresh")} Reset filters<span class="n" id="f-count"></span></button>
         </div>
       </div>
       <div id="req-chip"></div>
@@ -102,8 +103,25 @@ export async function render(view, _p, query) {
     history.replaceState(null, "", `#/tickets${q.toString() ? "?" + q : ""}`);
   };
 
+  // ---- reset: back to the page as it first opens (your own department, default tab, no search)
+  const DEFAULTS = { ...tabs[0][2], ...(staff ? { desk: state.me.desk || "all" } : {}) };
+  const activeFilters = () => ["q", "requester", "priority", "category_id", "group_id", "sla", "department_id",
+    "status", "assignee", "starred", "sort"].filter((k) => (f[k] || "") !== (DEFAULTS[k] || "") && !(k === "sort" && f[k] === "updated_desc")).length;
+  $("#f-reset", view).addEventListener("click", () => {
+    for (const k of KEYS) delete f[k];
+    Object.assign(f, DEFAULTS, { page: 1 });
+    $("#f-q", view).value = "";
+    if ($("#f-req", view)) $("#f-req", view).value = "";
+    for (const [k, s] of Object.entries(sel)) { const el = $(s, view); if (el) el.value = f[k] || (k === "sort" ? "updated_desc" : ""); }
+    toast("Filters cleared.");
+    load();
+  });
+
   async function load() {
     syncTabs(); pushUrl();
+    const nAct = activeFilters();
+    $("#f-count", view).textContent = nAct ? String(nAct) : "";
+    $("#f-reset", view).classList.toggle("has", nAct > 0);
     mount($("#rows", view), skeletonRows(6, cols));
     try {
       const page = Number(f.page || 1);

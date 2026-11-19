@@ -50,6 +50,23 @@ def ops(start: date | None = None, end: date | None = None, category_id: int | N
                             department_id=department_id, group_id=group_id, assignee_id=assignee_id, desk=desk)
 
 
+@router.get("/sla")
+def sla_report(start: date | None = None, end: date | None = None,
+               desk: str | None = Query(None, pattern="^(it|erp|all)$"),
+               state: str | None = Query(None, pattern="^[a-z_,]{1,80}$"), q: str | None = Query(None, max_length=60),
+               p: Principal = Depends(require("dashboard.ops")), db: Session = Depends(get_db)):
+    """SLA details per ticket (IT administrators only)."""
+    tz = p.user.timezone
+    today = datetime.now(ZoneInfo(tz)).date()
+    end = end or today
+    start = start or end - timedelta(days=13)
+    if start > end:
+        raise BusinessRuleError("Start date must be before end date.")
+    if (end - start).days > 366:
+        raise BusinessRuleError("Date range cannot exceed one year.")
+    return dash.sla_report(db, p, start=start, end=end, tz=tz, desk=desk, state=state, q=q)
+
+
 @router.get("/search")
 def global_search(q: str = Query(min_length=2, max_length=100), p: Principal = Depends(get_principal),
                   db: Session = Depends(get_db)):

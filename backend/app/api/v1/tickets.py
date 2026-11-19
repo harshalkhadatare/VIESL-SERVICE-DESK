@@ -53,17 +53,18 @@ def _list_item(t: Ticket, now: datetime, flag=None, p: Principal | None = None) 
             sla_state = "breached"
         else:
             sla_state = "on_track"
+    it_view = bool(p and (p.can("ticket.work") or p.can("ticket.view_all")))   # SLA/deadline is for IT only
     return TicketListItem(
         number=t.number, version=t.version, assignee_id=t.assignee_id, desk=t.desk, subject=t.subject, ticket_type=t.ticket_type,
         status=CodeRef(code=t.status.code, name=t.status.name),
-        priority=CodeRef(code=t.priority.code, name=t.priority.name), category=t.category.name,
+        priority=CodeRef(code=t.priority.code, name=t.priority.name), category=t.category_label,
         requester=t.requester.full_name, requester_code=t.requester.employee_code, requester_id=t.requester_id,
         starred=bool(flag and flag.starred), is_new=bool(p and is_new(p, t, flag, now)), department=t.department.name if t.department else None,
         assignee=t.assignee.full_name if t.assignee else None,
         assignee_code=t.assignee.employee_code if t.assignee else None,
         support_group=t.support_group.name if t.support_group else None,
-        created_at=t.created_at, updated_at=t.updated_at, sla_state=sla_state,
-        resolution_due_at=t.sla.resolution_due_at if t.sla else None,
+        created_at=t.created_at, updated_at=t.updated_at, sla_state=sla_state if it_view else None,
+        resolution_due_at=t.sla.resolution_due_at if (t.sla and it_view) else None,
     )
 
 
@@ -75,7 +76,7 @@ def _detail(db: Session, p: Principal, t: Ticket) -> TicketDetail:
         number=t.number, version=t.version, desk=t.desk, subject=t.subject, description=t.description,
         ticket_type=t.ticket_type, status=CodeRef(code=t.status.code, name=t.status.name),
         priority=CodeRef(code=t.priority.code, name=t.priority.name), impact=t.impact, urgency=t.urgency,
-        category=Ref(id=t.category.id, name=t.category.name),
+        category=Ref(id=t.category.id, name=t.category_label),
         subcategory=Ref(id=t.subcategory.id, name=t.subcategory.name) if t.subcategory else None,
         requester=UserRef.model_validate(t.requester),
         requester_phone=t.requester.phone if (staff or is_requester(p, t)) else None,
@@ -88,7 +89,8 @@ def _detail(db: Session, p: Principal, t: Ticket) -> TicketDetail:
         resolution_notes=t.resolution_notes, created_at=t.created_at, updated_at=t.updated_at,
         first_response_at=t.first_response_at, assigned_at=t.assigned_at, resolved_at=t.resolved_at,
         closed_at=t.closed_at, closure_reason=t.closure_reason, reopen_count=t.reopen_count, is_demo=t.is_demo,
-        erp=t.erp, sla=snap, rating=RatingOut.model_validate(rating) if rating else None,
+        erp=t.erp, sla=snap if (staff or p.can("ticket.view_all")) else None,   # SLA is for IT only
+        rating=RatingOut.model_validate(rating) if rating else None,
         relations=svc.get_relations(db, p, t),
         can_work=staff, can_assign=can_assign_ticket(p, t),
         can_set_priority=p.can("ticket.set_priority") and (can_assign_ticket(p, t) or p.can("ticket.manage_all")),
@@ -228,7 +230,7 @@ def export_csv(f: ListFilters = Depends(list_filters), p: Principal = Depends(re
         count += 1
         dept = t.requester.department or t.department
         w.writerow([_csv_safe(x) for x in [
-            t.number, {"it": "IT", "erp": "ERP-IT", "both": "IT + ERP-IT"}.get(t.desk, t.desk), t.subject, t.ticket_type, t.status.name, t.priority.code, t.category.name,
+            t.number, {"it": "IT", "erp": "ERP-IT", "both": "IT + ERP-IT"}.get(t.desk, t.desk), t.subject, t.ticket_type, t.status.name, t.priority.code, t.category_label,
             t.requester.full_name, t.requester.employee_code or "",
             (dept.category or "") if dept else "", dept.name if dept else "",
             t.support_group.name if t.support_group else "", t.assignee.full_name if t.assignee else "",

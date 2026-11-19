@@ -1,17 +1,8 @@
-"""Per-request details used by the audit log: the browser's device ID and a readable device description."""
+"""Per-request details used by the audit log: a readable browser/device description (no device IDs are collected)."""
 import re
 from contextvars import ContextVar
 
-device_id_var: ContextVar[str | None] = ContextVar("device_id", default=None)
 user_agent_var: ContextVar[str | None] = ContextVar("user_agent", default=None)
-
-_DEVICE_RE = re.compile(r"^[A-Za-z0-9]{8,32}$")
-
-
-def clean_device_id(raw: str | None) -> str | None:
-    """The browser sends a random ID it generated once and keeps (X-Device-Id). Shown as e.g. PC-7F3A9C."""
-    return raw if raw and _DEVICE_RE.match(raw) else None
-
 
 def describe_user_agent(ua: str | None) -> str | None:
     """'Mozilla/5.0 (Windows NT 10.0; …) Chrome/130…' → 'Chrome 130 · Windows 10/11'."""

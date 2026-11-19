@@ -13,8 +13,9 @@ def priority_for(db: Session, impact: int, urgency: int) -> Priority:
     row = db.scalar(select(PriorityMatrix).where(PriorityMatrix.impact == impact, PriorityMatrix.urgency == urgency))
     if row:
         return db.get(Priority, row.priority_id)
-    # Fallback when matrix incomplete: P(min(impact+urgency-1, 4))
-    code = f"P{min(4, max(1, impact + urgency - 1))}"
+    # Fallback when the matrix is incomplete: same rule as the seed (≤3 → P1 High, 4 → P2 Medium, else P3 Low)
+    s = impact + urgency
+    code = "P1" if s <= 3 else "P2" if s == 4 else "P3"
     return db.scalar(select(Priority).where(Priority.code == code))
 
 

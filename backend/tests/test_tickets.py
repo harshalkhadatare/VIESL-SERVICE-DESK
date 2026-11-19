@@ -23,12 +23,13 @@ def test_create_sets_identity_number_priority_and_routing(client):
     assert t["number"].startswith("ERP-26-") and len(t["number"]) == 13   # ERP category → ERP-IT series
     assert t["requester"]["id"] == user_id(EMAILS["employee"])
     assert t["department"]["name"] == "Finance & Accounts"   # from profile, not client
-    assert t["priority"]["code"] == "P2"                       # impact 1 + urgency 2
+    assert t["priority"]["code"] == "P1"                       # impact 1 + urgency 2 → P1 High
     assert t["support_group"]["name"] == "ERP Application Support"
     assert t["assignee"]["full_name"] in ("Amit Deshmukh", "Priya Nair")  # round robin within ERP team
     assert t["status"]["code"] == "ASSIGNED"
     assert t["erp"]["reference_no"] == "PO/77"
-    assert t["sla"]["state"] == "on_track"
+    assert t["sla"] is None                                     # SLA is for IT only
+    assert client.get(f"{API}/{t['number']}", headers=auth("admin")).json()["sla"]["state"] == "on_track"
 
 
 def test_cannot_spoof_requester_or_protected_fields(client):
@@ -271,7 +272,7 @@ def test_it_admin_list(client):
 
 def test_priority_change_keeps_sla_start(client):
     t = make_ticket(client, impact=3, urgency=3)
-    assert t["priority"]["code"] == "P4"
+    assert t["priority"]["code"] == "P3"                       # P3 Low
     with SessionLocal() as db:
         tid = db.scalar(select(Ticket.id).where(Ticket.number == t["number"]))
         started = db.get(SLATracking, tid).started_at
@@ -280,7 +281,7 @@ def test_priority_change_keeps_sla_start(client):
     assert r.status_code == 200 and r.json()["priority"]["code"] == "P1"
     with SessionLocal() as db:
         s = db.get(SLATracking, tid)
-        assert s.started_at == started and s.resolution_target_minutes == 240
+        assert s.started_at == started and s.resolution_target_minutes == 540
         h = db.scalars(select(TicketHistory).where(TicketHistory.ticket_id == tid,
                                                    TicketHistory.field == "priority")).all()
         assert h and h[-1].reason == "Whole team blocked"
@@ -320,3 +321,27 @@ def test_notifications_show_assigned_person(client):
     assert any("Sneha Iyer" in n["title"] for n in mine)            # "IT-… assigned to Sneha Iyer"
     staff = client.get("/api/v1/notifications", headers=auth("sd_admin")).json()["items"]
     assert any(n["ticket_number"] == t["number"] and "assigned to you" in n["title"] for n in staff)
+
+
+def test_three_priorities_high_medium_low(client):
+    pr = client.get("/api/v1/meta/catalog", headers=auth("employee")).json()["priorities"]
+    assert [(p["code"], p["name"]) for p in pr] == [("P1", "High"), ("P2", "Medium"), ("P3", "Low")]
+    # employee form: impact fixed at Medium (2); urgency High/Medium/Low → P1/P2/P3
+    for urgency, code in ((1, "P1"), (2, "P2"), (3, "P3")):
+        assert make_ticket(client, impact=2, urgency=urgency)["priority"]["code"] == code
+
+
+def test_custom_category_when_nothing_fits(client):
+    body = {"subject": "Biometric machine not syncing", "description": "Attendance machine at gate 2 not syncing",
+            "custom_category": "Biometric attendance machine", "desk": "it", "impact": 2, "urgency": 2}
+    r = client.post(API, json=body, headers=auth("employee"))
+    assert r.status_code == 201, r.text
+    t = r.json()
+    assert t["category"]["name"] == "Other: Biometric attendance machine" and t["number"].startswith("IT-")
+    erp = client.post(API, json={**body, "desk": "erp", "custom_category": "Vendor portal"}, headers=auth("employee")).json()
+    assert erp["category"]["name"] == "Other ERP issue: Vendor portal" and erp["number"].startswith("ERP-")
+    # neither a category nor a custom one → clear error
+    r = client.post(API, json={k: v for k, v in body.items() if k != "custom_category"}, headers=auth("employee"))
+    assert r.status_code == 422 and "type your own" in r.json()["error"]["message"]
+    cats = client.get("/api/v1/meta/catalog", headers=auth("employee")).json()["categories"]
+    assert {c["code"] for c in cats if c["is_other"]} == {"OTHER", "ERP_OTHER"}

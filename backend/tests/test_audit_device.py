@@ -20,21 +20,18 @@ def _login(client, headers):
                        headers={"X-Requested-With": "fetch", **headers})
 
 
-def test_login_records_device_id_and_device(client):
+def test_login_records_device_but_no_device_id(client):
     r = _login(client, {"X-Device-Id": "ABCD1234EFGH5678", "User-Agent": CHROME_WIN})
     assert r.status_code == 200
-    rows = client.get("/api/v1/audit-logs", params={"device_id": "ABCD1234EFGH5678"}, headers=auth("admin")).json()["items"]
-    assert rows and rows[0]["action"] == "auth.login" and rows[0]["device"] == "Chrome 130 · Windows 10/11"
-    assert "Manoj Gupta (" in rows[0]["actor_label"]          # name + employee ID instead of email
-    # junk device IDs are ignored, never stored
-    _login(client, {"X-Device-Id": "<script>", "User-Agent": IPHONE})
-    last = client.get("/api/v1/audit-logs", params={"action": "auth.login"}, headers=auth("admin")).json()["items"][0]
-    assert last["device_id"] is None and last["device"] == "Safari 18 · iPhone"
+    row = client.get("/api/v1/audit-logs", params={"action": "auth.login"}, headers=auth("admin")).json()["items"][0]
+    assert row["action"] == "auth.login" and row["device"] == "Chrome 130 · Windows 10/11"
+    assert "Manoj Gupta (" in row["actor_label"]          # name + employee ID instead of email
+    assert "device_id" not in row                            # device IDs are no longer collected or shown
 
 
 def test_real_ip_from_vercel_header(client, monkeypatch):
     monkeypatch.setenv("VERCEL", "1")
-    r = _login(client, {"x-vercel-forwarded-for": "49.36.12.7", "X-Device-Id": "IPTEST000001"})
+    r = _login(client, {"x-vercel-forwarded-for": "49.36.12.7", "User-Agent": IPHONE})
     assert r.status_code == 200
     rows = client.get("/api/v1/audit-logs", params={"ip": "49.36.12.7"}, headers=auth("admin")).json()["items"]
-    assert rows and rows[0]["device_id"] == "IPTEST000001"
+    assert rows and rows[0]["device"] == "Safari 18 · iPhone"

@@ -14,19 +14,20 @@ from app.models import Department
 NAVY, BLUE, LIGHT, GREY, REQ = "0B2545", "1F5FD1", "EAF1FD", "F2F4F7", "B42318"
 ROWS = 1000   # rows prepared with dropdowns
 
+# The same fields as "Edit user" in Users & roles, in the same order.
 # header, width, required, help shown when the cell is selected
 COLUMNS = [
-    ("USER_ID", 14, True, "Employee ID / code. Used to sign in. Must be unique."),
-    ("USER_NAME", 28, True, "Full name, e.g. Harshal Khadatare."),
-    ("EMAIL", 32, False, "Optional. Company email — ticket updates are emailed here. Several people may share one."),
+    ("FULL_NAME", 28, True, "Full name, e.g. Ramesh Patil."),
+    ("EMPLOYEE_ID", 15, True, "Employee ID — used to sign in. Must be unique."),
+    ("DEPARTMENT_CATEGORY", 22, False, "Filled automatically when you pick a DEPARTMENT — no need to type."),
     ("DEPARTMENT", 30, False, "Pick from the list. The category fills in by itself."),
-    ("DEPARTMENT_CATEGORY", 22, False, "Filled automatically from DEPARTMENT — no need to type."),
-    ("DESIGNATION", 24, False, "Optional. Job title, e.g. Site Engineer."),
+    ("COMPANY_EMAIL", 32, False, "Optional. Ticket updates are emailed here. Several people may share one."),
+    ("JOB_TITLE", 24, False, "Optional, e.g. Site Engineer."),
     ("PHONE", 16, False, "Optional. Mobile or desk number."),
-    ("ROLE", 18, False, "Employee (default) or IT Administrator."),
-    ("IT_DEPARTMENT", 16, False, "Only for IT Administrators: IT or ERP-IT. Leave blank for employees."),
-    ("PASSWORD", 18, False, "Optional. Starting password. Blank = the password you choose on the import screen."),
+    ("IT_DEPARTMENT", 16, False, "Only for IT Administrators: IT or ERP-IT. Filling it makes the person an IT "
+                                 "Administrator of that department. Leave blank for employees."),
 ]
+C = {name: get_column_letter(i) for i, (name, *_r) in enumerate(COLUMNS, start=1)}   # header → column letter
 
 
 def _header(ws, row, cols, fill=BLUE):
@@ -58,33 +59,26 @@ def build_user_template(db: Session, company: str = "") -> bytes:
     dv_dept = DataValidation(type="list", formula1=f"=Departments!$C$2:$C${last}", allow_blank=True,
                              showErrorMessage=True, errorStyle="warning", errorTitle="Department not in the list",
                              error="Pick a department from the list. A new name will create a new department.")
-    dv_role = DataValidation(type="list", formula1='"Employee,IT Administrator"', allow_blank=True,
-                             showErrorMessage=True, errorTitle="Role", error="Choose Employee or IT Administrator.")
     dv_desk = DataValidation(type="list", formula1='"IT,ERP-IT"', allow_blank=True,
                              showErrorMessage=True, errorTitle="IT department", error="Choose IT or ERP-IT.")
-    for dv, col in ((dv_dept, "D"), (dv_role, "H"), (dv_desk, "I")):
-        dv.add(f"{col}2:{col}{ROWS + 1}")
-        ws.add_data_validation(dv)
-    for i, (_name, _w, _req, help_text) in enumerate(COLUMNS, start=1):
-        dv = DataValidation(type="custom", formula1="TRUE", allow_blank=True, showInputMessage=True,
-                            promptTitle=COLUMNS[i - 1][0], prompt=help_text[:250])
+    lists = {C["DEPARTMENT"]: dv_dept, C["IT_DEPARTMENT"]: dv_desk}
+    for i, (name, _w, _req, help_text) in enumerate(COLUMNS, start=1):
         col = get_column_letter(i)
-        if col in ("D", "H", "I"):   # these already have a list; add the prompt to it
-            {"D": dv_dept, "H": dv_role, "I": dv_desk}[col].showInputMessage = True
-            {"D": dv_dept, "H": dv_role, "I": dv_desk}[col].promptTitle = COLUMNS[i - 1][0]
-            {"D": dv_dept, "H": dv_role, "I": dv_desk}[col].prompt = help_text[:250]
-            continue
+        dv = lists.get(col) or DataValidation(type="custom", formula1="TRUE", allow_blank=True)
+        dv.showInputMessage, dv.promptTitle, dv.prompt = True, name, help_text[:250]
         dv.add(f"{col}2:{col}{ROWS + 1}")
         ws.add_data_validation(dv)
     grey = PatternFill("solid", fgColor=GREY)
+    dep, cat = C["DEPARTMENT"], C["DEPARTMENT_CATEGORY"]
     for r in range(2, ROWS + 2):
-        c = ws.cell(row=r, column=5, value=f'=IF(D{r}="","",IFERROR(INDEX(Departments!$B$2:$B${last},'
-                                           f'MATCH(D{r},Departments!$C$2:$C${last},0)),""))')
+        c = ws[f"{cat}{r}"]
+        c.value = (f'=IF({dep}{r}="","",IFERROR(INDEX(Departments!$B$2:$B${last},'
+                   f'MATCH({dep}{r},Departments!$C$2:$C${last},0)),""))')
         c.fill = grey
         c.font = Font(color="4A5C74", italic=True)
-        for col in (1, 7):   # IDs and phones stay as text (no lost leading zeros)
-            ws.cell(row=r, column=col).number_format = "@"
-    ws.cell(row=1, column=1).comment = Comment("Required. Fill one employee per row from row 2.", "IT Service Desk")
+        for col in (C["EMPLOYEE_ID"], C["PHONE"]):   # IDs and phones stay as text (no lost leading zeros)
+            ws[f"{col}{r}"].number_format = "@"
+    ws["A1"].comment = Comment("Required. Fill one employee per row from row 2.", "IT Service Desk")
 
     # ---- 2. Departments (reference + source of the dropdown)
     d = wb.create_sheet("Departments")
@@ -102,15 +96,15 @@ def build_user_template(db: Session, company: str = "") -> bytes:
     ex = wb.create_sheet("Example")
     _header(ex, 1, COLUMNS)
     pick = lambda k: depts[min(k, len(depts) - 1)] if depts else None  # noqa: E731
-    samples = [
-        ("90001", "Ramesh Patil (sample)", "ramesh.patil@example.com", pick(0), "Accountant", "9876543210", "Employee", "", ""),
-        ("90002", "Sunita Jadhav (sample)", "", pick(10), "Site Engineer", "", "", "", "Welcome@123"),
-        ("90003", "Vikas More (sample)", "it.team@example.com", pick(6), "ERP Executive", "", "IT Administrator", "ERP-IT", ""),
-        ("90004", "Pooja Shinde (sample)", "it.team@example.com", pick(6), "System Administrator", "", "IT Administrator", "IT", ""),
+    samples = [   # full name, employee ID, department, email, job title, phone, IT department
+        ("Ramesh Patil (sample)", "90001", pick(0), "ramesh.patil@example.com", "Accountant", "9876543210", None),
+        ("Sunita Jadhav (sample)", "90002", pick(10), None, "Site Engineer", None, None),
+        ("Vikas More (sample)", "90003", pick(6), "it.team@example.com", "ERP Executive", None, "ERP-IT"),
+        ("Pooja Shinde (sample)", "90004", pick(6), "it.team@example.com", "System Administrator", None, "IT"),
     ]
-    for r, (uid, name, email, dep, job, phone, role, desk, pw) in enumerate(samples, start=2):
-        for j, v in enumerate((uid, name, email or None, dep.name if dep else None, (dep.category if dep else None),
-                               job, phone or None, role or None, desk or None, pw or None), start=1):
+    for r, (name, uid, dep, email, job, phone, desk) in enumerate(samples, start=2):
+        for j, v in enumerate((name, uid, dep.category if dep else None, dep.name if dep else None, email, job, phone,
+                               desk), start=1):
             ex.cell(row=r, column=j, value=v)
     note = ex.cell(row=len(samples) + 3, column=1,
                    value="Example only — this sheet is NOT imported. Fill the 'Users' sheet (the first sheet).")
@@ -123,16 +117,16 @@ def build_user_template(db: Session, company: str = "") -> bytes:
         ("How to add employees to the IT Service Desk" + (f" — {company}" if company else ""), "title"),
         ("", None),
         ("1. Fill the first sheet, 'Users' — one employee per row, starting on row 2. Do not change the header row.", None),
-        ("2. USER_ID and USER_NAME are required (dark headers marked *). Every other column is optional.", None),
+        ("2. FULL_NAME and EMPLOYEE_ID are required (dark headers marked *). Every other column is optional.", None),
         ("3. DEPARTMENT: pick from the dropdown. DEPARTMENT_CATEGORY fills in by itself (see the 'Departments' sheet).", None),
-        ("4. ROLE: Employee (default) or IT Administrator. For IT Administrators also choose IT_DEPARTMENT: IT or ERP-IT.", None),
-        ("5. PASSWORD: leave blank to use the starting password you type on the import screen.", None),
-        ("6. EMAIL is optional. Without it the person can still sign in and use the portal, but gets no emails.", None),
+        ("4. IT_DEPARTMENT: only for IT Administrators (IT or ERP-IT). Leave it blank for employees.", None),
+        ("5. Everyone gets the starting password you type on the import screen; they can change it after signing in.", None),
+        ("6. COMPANY_EMAIL is optional. Without it the person can still sign in and use the portal, but gets no emails.", None),
         ("7. Save as .xlsx. In the portal: Users & roles → Import from Excel → choose the file → Preview → Import.", None),
         ("8. The preview shows every problem row before anything is saved. Fix them and preview again.", None),
         ("9. Tick 'Update people who already exist' to change names, emails or departments of existing users.", None),
         ("", None),
-        ("Employees sign in with their USER_ID and password and can change the password after signing in.", "note"),
+        ("The columns are the same as 'Edit user' in Users & roles. Employees sign in with their EMPLOYEE_ID.", "note"),
         ("Keep this file private — it can contain passwords.", "warn"),
     ]
     for i, (text, kind) in enumerate(lines, start=1):

@@ -127,7 +127,7 @@ async function renderOps(view) {
     <div class="section-label">Live now <span class="pill" id="live-at"></span><span class="spacer"></span>
       <span class="queue-line" id="queue-line"></span></div>
     <div class="kpis" id="live">${Array.from({ length: 6 }, () => html`<div class="kpi"><div class="skeleton" style="width:60%"></div><div class="skeleton" style="width:35%;height:26px;margin-top:8px"></div></div>`)}</div>
-    <div class="section-label">Selected period <span class="pill" id="period"></span></div>
+    <div class="section-label">Performance</div>
     <div class="kpis" id="hist"></div>
     <div class="grid" style="grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);margin-top:20px" id="row1">
       <div class="card"><div class="card-head"><h2>Ticket trend</h2>
@@ -140,7 +140,7 @@ async function renderOps(view) {
       <div class="card"><div class="card-head"><h2>By category</h2></div><div class="card-body" id="bycat"></div></div>
       <div class="card"><div class="card-head"><h2>By department</h2></div><div class="card-body" id="bydept"></div></div>
       <div class="card"><div class="card-head"><h2>Engineer workload</h2><span class="hint">Open now</span></div>
-        <div class="card-body flush"><table class="data"><thead><tr><th>Engineer</th><th class="num">Open</th><th class="num">P1/P2</th></tr></thead>
+        <div class="card-body flush"><table class="data"><thead><tr><th>Engineer</th><th class="num">Open</th><th class="num">High</th></tr></thead>
         <tbody id="work"></tbody></table></div></div>
     </div>`);
   wireSwitch(view);
@@ -189,12 +189,11 @@ async function load(view, quiet = false) {
   const L = d.live, H = d.historical;
   const q = (s) => `#/tickets?${s}&desk=${filters.desk}${filters.group_id ? `&group_id=${filters.group_id}` : ""}`;
   $("#live-at", view).textContent = `as of ${new Date(d.generated_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: state.me.timezone })}`;
-  $("#period", view).textContent = RANGES.find((r) => r[0] === filters.days)[1].toLowerCase();
   mount($("#live", view), html`
     ${kpi("Open", fmtNum(L.open), q("status=open"))}
     ${kpi("New today", fmtNum(L.new_today), q("status=open&sort=created_desc"))}
     ${kpi("Unassigned", fmtNum(L.unassigned), q("status=open&assignee=unassigned"), L.unassigned ? "warn" : "")}
-    ${kpi("Critical / high", fmtNum(L.critical_high), q("status=open&priority=P1,P2"), L.critical_high ? "alert" : "")}
+    ${kpi("High", fmtNum(L.high), q("status=open&priority=P1"), L.high ? "alert" : "", "P1 · open")}
     ${kpi("Due within 4h", fmtNum(L.approaching_sla), q("sla=at_risk&sort=due"), L.approaching_sla ? "warn" : "")}
     ${kpi("Overdue", fmtNum(L.overdue), q("sla=breached&status=open&sort=due"), L.overdue ? "alert" : "")}
 `);
@@ -203,16 +202,17 @@ async function load(view, quiet = false) {
     <a href="${q("status=PENDING_APPROVAL")}">Pending approval <b>${fmtNum(L.pending_approval)}</b></a>
     <a href="${q("status=RESOLVED,CLOSED&sort=updated_desc")}">Resolved today <b>${fmtNum(L.resolved_today)}</b></a>`);
   mount($("#hist", view), html`
-    ${kpi("Tickets created", fmtNum(H.created))}
+    ${kpi("Total tickets", fmtNum(H.total_all_time), q("scope=all"), "", "all time · since the first ticket")}
     ${kpi("Avg first response", fmtMinutes(H.avg_first_response_minutes), null, "", "business time")}
     ${kpi("Avg resolution", fmtMinutes(H.avg_resolution_minutes), null, "", "business time, net of pauses")}
-    ${kpi("SLA compliance", H.sla_compliance_percent === null ? "—" : html`${H.sla_compliance_percent}<small>%</small>`, null,
-      H.sla_compliance_percent !== null && H.sla_compliance_percent < 80 ? "warn" : "", `${H.sla_measured} resolved tickets`)}
+    ${kpi("SLA compliance", H.sla_compliance_percent === null ? "—" : html`${H.sla_compliance_percent}<small>%</small>`,
+      `#/sla?desk=${filters.desk}&days=${filters.days}`, `clickable-kpi ${H.sla_compliance_percent !== null && H.sla_compliance_percent < 80 ? "warn" : ""}`,
+      html`${H.sla_measured} resolved tickets<span class="kpi-go">View ticket-wise details ${icon("chevRight")}</span>`)}
     ${kpi("Reopen rate", H.reopen_rate_percent === null ? "—" : html`${H.reopen_rate_percent}<small>%</small>`)}
     ${kpi("Satisfaction", H.csat_average === null ? "—" : html`${H.csat_average}<small>/ 5</small>`, null, "", `${H.csat_responses} ratings`)}`);
 
   trendChart($("#trend", view), d.trend);
-  const colors = { P1: "#d92d20", P2: "#ef8a17", P3: "#2f74d6", P4: "#98a6b8" };
+  const colors = { P1: "#d92d20", P2: "#ef8a17", P3: "#2f74d6" };
   mount($("#prio", view), d.by_priority.length ? html`<div class="row" style="gap:22px;align-items:center;flex-wrap:nowrap">
     <div id="donut">${donut(d.by_priority, colors)}</div>
     <div class="stack" style="gap:8px;flex:1">${d.by_priority.map((p) => html`<div class="row" style="justify-content:space-between">

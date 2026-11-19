@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { state, catalog } from "../state.js";
 import { $, $$, html, mount, icon, debounce, busy, toast, errorToast, showFieldErrors, prioBadge, fileSize, empId } from "../ui.js";
+import { readClipboardFiles, onPasteFiles } from "../paste.js";
 
 const ALLOWED = ".png,.jpg,.jpeg,.gif,.webp,.bmp,.tif,.tiff,.heic,.heif,.pdf";
 
@@ -45,8 +46,7 @@ export async function render(view, _params = [], query = {}) {
   const me = state.me;
   const files = [];
   const idemKey = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random();
-  // Employees only choose urgency; impact is fixed at "Medium" so urgency High → P2, Medium → P3, Low → P4.
-  // IT administrators can still raise a ticket to P1 with the Priority button.
+  // Employees only choose urgency; impact is fixed at "Medium" so urgency High → P1, Medium → P2, Low → P3.
   const impact = 2;
   let urgency = 3;
 
@@ -69,8 +69,11 @@ export async function render(view, _params = [], query = {}) {
               <label class="field"><span class="lbl">Category<span class="req">*</span></span>
                 <select name="category_id" required disabled><option value="">Choose the IT department first</option></select>
                 <div class="help" id="cat-help"></div></label>
-              <label class="field"><span class="lbl">Subcategory <span class="muted" style="font-weight:400">(optional)</span></span>
+              <label class="field" id="sub-wrap"><span class="lbl">Subcategory <span class="muted" style="font-weight:400">(optional)</span></span>
                 <select name="subcategory_id" disabled><option value="">—</option></select></label>
+              <label class="field" id="custom-wrap" hidden><span class="lbl">Type your category<span class="req">*</span></span>
+                <input type="text" name="custom_category" maxlength="80" placeholder="e.g. Biometric attendance machine, CCTV, Vendor portal">
+                <div class="help">No category fits? Describe it in a few words — IT will sort it.</div></label>
             </div>
           </section>
 
@@ -85,7 +88,9 @@ export async function render(view, _params = [], query = {}) {
                 <textarea name="description" rows="5" maxlength="8000" required placeholder="What happened? When did it start? Who else is affected?"></textarea>
                 <div class="help"><span id="desc-count">0</span> / 8000</div></label>
               <div class="field"><span class="lbl">Screenshots or PDF <span class="muted" style="font-weight:400">(optional)</span></span>
-                <div class="dropzone" id="drop" tabindex="0" role="button">${icon("clip")} Drop files here or <u>browse</u> · up to ${MAX_MB} MB each · images and PDF only</div>
+                <div class="drop-row"><div class="dropzone" id="drop" tabindex="0" role="button">${icon("clip")} Drop files here or <u>browse</u> · up to ${MAX_MB} MB each · images and PDF only</div>
+                  <button type="button" class="btn paste-btn" id="paste" title="Paste a screenshot or copied image (or press Ctrl+V)">${icon("clipboard")} Paste</button></div>
+                <div class="help">Tip: take a screenshot (Win + Shift + S) and press <b>Ctrl + V</b> anywhere on this page.</div>
                 <input type="file" id="file" multiple accept="image/*,${ALLOWED}" hidden>
                 <div id="file-list"></div></div>
             </div>
@@ -121,9 +126,10 @@ export async function render(view, _params = [], query = {}) {
   function pickDesk(v) {
     desk = v;
     $$("#desk-pick .desk-opt", view).forEach((o) => { const on = o.dataset.v === v; o.classList.toggle("on", on); o.setAttribute("aria-checked", on); });
-    const list = cat.categories.filter((c) => v === "both" || c.desk === v);
+    const list = cat.categories.filter((c) => !c.is_other && (v === "both" || c.desk === v));
     const keep = form.category_id.value;
-    mount(form.category_id, html`<option value="">Select a category…</option>${list.map((c) => html`<option value="${c.id}">${c.name}</option>`)}`);
+    mount(form.category_id, html`<option value="">Select a category…</option>${list.map((c) => html`<option value="${c.id}">${c.name}</option>`)}
+      <option value="__other">Other — type your own…</option>`);
     form.category_id.disabled = false;
     if (list.some((c) => String(c.id) === keep)) form.category_id.value = keep;
     form.category_id.dispatchEvent(new Event("change"));
@@ -135,6 +141,10 @@ export async function render(view, _params = [], query = {}) {
   });
 
   form.category_id.addEventListener("change", () => {
+    const other = form.category_id.value === "__other";
+    $("#custom-wrap", view).hidden = !other;
+    $("#sub-wrap", view).hidden = other;
+    if (other) setTimeout(() => form.custom_category.focus(), 0);
     const c = cat.categories.find((x) => String(x.id) === form.category_id.value);
     const sub = form.subcategory_id;
     mount(sub, html`<option value="">${c?.subcategories.length ? "Select…" : "—"}</option>${(c?.subcategories || []).map((s) => html`<option value="${s.id}">${s.name}</option>`)}`);
@@ -159,7 +169,8 @@ export async function render(view, _params = [], query = {}) {
     const box = $("#dupes", view);
     if (subject.length < 6) { box.innerHTML = ""; return; }
     try {
-      const d = await api.post("/tickets/duplicate-check", { subject, category_id: form.category_id.value ? Number(form.category_id.value) : null });
+      const cid = Number(form.category_id.value) || null;
+      const d = await api.post("/tickets/duplicate-check", { subject, category_id: cid });
       mount(box, d.length ? html`<div class="notice warn">${icon("alert")}<div><b>You may already have a ticket for this</b>
         ${d.map((x) => html`<div><a href="#/tickets/${x.number}" target="_blank" rel="noopener">${x.number}</a> — ${x.subject} <span class="muted">(${x.status})</span></div>`)}
         <div class="small muted" style="margin-top:4px">Add a comment there instead of raising a new ticket, if it's the same issue.</div></div></div>` : "");
@@ -202,6 +213,11 @@ export async function render(view, _params = [], query = {}) {
   ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("drag"); }));
   ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("drag"); }));
   drop.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
+  $("#paste", view).addEventListener("click", async () => {
+    try { const got = await readClipboardFiles(); addFiles(got); toast(`${got.length} pasted image${got.length > 1 ? "s" : ""} added.`); }
+    catch (ex) { toast(ex.message, "info"); }
+  });
+  onPasteFiles(view, (got) => { addFiles(got); toast(`${got.length} pasted file${got.length > 1 ? "s" : ""} added.`); });
   $("#file-list", view).addEventListener("click", (e) => { const b = e.target.closest("[data-rm]"); if (b) { files.splice(Number(b.dataset.rm), 1); renderFiles(); } });
 
   // ---- submit
@@ -210,7 +226,9 @@ export async function render(view, _params = [], query = {}) {
     const v = Object.fromEntries(new FormData(form));
     const errs = {};
     if (!desk) { toast("First choose the IT department: IT, ERP-IT or Both.", "err"); $("#desk-pick", view).scrollIntoView({ behavior: "smooth", block: "center" }); return; }
-    if (!v.category_id) errs.category_id = "Choose a category.";
+    const other = v.category_id === "__other";
+    if (!v.category_id) errs.category_id = "Choose a category — or “Other — type your own” at the bottom of the list.";
+    if (other && (v.custom_category || "").trim().length < 3) errs.custom_category = "Type the category in a few words (at least 3 characters).";
     if ((v.subject || "").trim().length < 5) errs.subject = "Subject must be at least 5 characters.";
     if ((v.description || "").trim().length < 10) errs.description = "Please describe the issue (at least 10 characters).";
     if (v.related_ticket_number && !/^[A-Za-z]{2,5}-\d{2,4}-\d{6}$/.test(v.related_ticket_number.trim())) errs.related_ticket_number = "Use a ticket number like IT-26-000123 or ERP-26-000045.";
@@ -219,8 +237,10 @@ export async function render(view, _params = [], query = {}) {
 
     const c = cat.categories.find((x) => String(x.id) === v.category_id);
     const body = {
-      subject: v.subject.trim(), description: v.description.trim(), category_id: Number(v.category_id),
-      subcategory_id: v.subcategory_id ? Number(v.subcategory_id) : null, desk,
+      subject: v.subject.trim(), description: v.description.trim(),
+      category_id: other ? null : Number(v.category_id),
+      custom_category: other ? v.custom_category.trim() : null,
+      subcategory_id: !other && v.subcategory_id ? Number(v.subcategory_id) : null, desk,
       impact, urgency, contact_method: "portal",
       related_ticket_number: v.related_ticket_number?.trim() || null,
     };
@@ -248,8 +268,8 @@ function confirmation(view, t, failed) {
       <p class="muted">We've routed it to <b>${t.support_group?.name || "the Service Desk"}</b>${t.assignee ? html` and assigned it to <b>${t.assignee.full_name}</b>` : ""}.</p>
     </div>
     <div class="card-body" style="padding:0 28px 26px">
-      <dl class="kv"><dt>Subject</dt><dd>${t.subject}</dd><dt>Priority</dt><dd>${prioBadge(t.priority)}</dd>
-      <dt>Response target</dt><dd>${t.sla ? `${t.sla.response_target_minutes} business minutes` : "—"}</dd></dl>
+      <dl class="kv"><dt>Subject</dt><dd>${t.subject}</dd><dt>Category</dt><dd>${t.category.name}</dd>
+      <dt>Priority</dt><dd>${prioBadge(t.priority)}</dd></dl>
       ${failed ? html`<div class="notice warn" style="margin-top:16px">${icon("alert")}<div>${failed} attachment(s) could not be uploaded. You can add them from the ticket page.</div></div>` : ""}
       <div class="row" style="margin-top:22px;justify-content:center">
         <a class="btn primary" href="#/tickets/${t.number}">View ticket</a><a class="btn" href="#/tickets/new" id="another">Raise another</a></div>

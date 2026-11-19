@@ -48,7 +48,8 @@ class ErpDetailOut(ORM):
 class TicketCreate(StrictIn):
     subject: str = Field(min_length=5, max_length=200)
     description: str = Field(min_length=10, max_length=8000)
-    category_id: int
+    category_id: int | None = None             # required unless custom_category is given
+    custom_category: str | None = Field(None, min_length=3, max_length=80)   # "Other — type your own"
     subcategory_id: int | None = None          # optional
     desk: Desk | None = None                   # IT department chosen first; defaults to the category's
     ticket_type: TicketType | None = None

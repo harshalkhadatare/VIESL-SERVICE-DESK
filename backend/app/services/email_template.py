@@ -17,8 +17,7 @@ STATUS_COLORS = {"RESOLVED": ("#157a52", "#e3f4ec"), "CLOSED": ("#55657a", "#edf
                  "PENDING_EMPLOYEE": ("#a15c07", "#fdf1dc"), "PENDING_VENDOR": ("#a15c07", "#fdf1dc"),
                  "PENDING_APPROVAL": ("#a15c07", "#fdf1dc"), "PENDING_CHANGE": ("#a15c07", "#fdf1dc"),
                  "REOPENED": ("#c2410c", "#fdecde")}
-PRIO_COLORS = {"P1": ("#b42318", "#fdeceb"), "P2": ("#a15c07", "#fdf1dc"), "P3": ("#1d5fc4", "#e4eefb"),
-               "P4": ("#55657a", "#edf1f6")}
+PRIO_COLORS = {"P1": ("#b42318", "#fdeceb"), "P2": ("#a15c07", "#fdf1dc"), "P3": ("#1d5fc4", "#e4eefb")}
 ACCENT = {"received": "#1d5fc4", "bell": "#c4780a", "assigned": "#5a48d6", "working": "#1d5fc4", "question": "#c4780a",
           "reply": "#1d5fc4", "resolved": "#157a52", "reopened": "#d66216", "closed": "#4b5b72", "priority": "#b42318",
           "alert": "#b42318", "info": "#1d5fc4"}
@@ -165,7 +164,7 @@ def build(*, company: str, base_url: str, url: str, recipient_name: str, event: 
     details = progress = status_pill = ""
     if ticket is not None:
         sfg, sbg = STATUS_COLORS.get(ticket.status_code, ("#1d5fc4", "#e4eefb"))
-        pfg, pbg = PRIO_COLORS.get(ticket.priority.code, PRIO_COLORS["P4"])
+        pfg, pbg = PRIO_COLORS.get(ticket.priority.code, PRIO_COLORS["P3"])
         status_pill = _pill(ticket.status.name, sfg, sbg)
         assigned = (f'{e(ticket.assignee.full_name)} <span style="color:#74859b;font-weight:500">'
                     f'({e(ticket.assignee.employee_code)})</span>' if ticket.assignee else
@@ -175,7 +174,7 @@ def build(*, company: str, base_url: str, url: str, recipient_name: str, event: 
             + _row("Ticket number", f'<span style="font-family:Consolas,monospace;color:#1d5fc4">{e(ticket.number)}</span>')
             + _row("Subject", e(ticket.subject))
             + _row("IT department", _pill(DESK_NAME.get(ticket.desk, ticket.desk), "#1550ad", "#e4eefb"))
-            + _row("Category", e(ticket.category.name) if ticket.category else "—")
+            + _row("Category", e(ticket.category_label) if ticket.category else "—")
             + _row("Status", status_pill)
             + _row("Priority", _pill(f"{ticket.priority.code} · {ticket.priority.name}", pfg, pbg))
             + _row("Assigned to", assigned)

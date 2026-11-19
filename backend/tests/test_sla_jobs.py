@@ -33,8 +33,8 @@ def _age(number: str, business_minutes: int):
 
 
 def test_breach_marks_escalates_and_notifies_once(client):
-    t = make_ticket(client, code="ERP_APP", impact=1, urgency=1)  # P1: 240 business minutes
-    _age(t["number"], 300)
+    t = make_ticket(client, code="ERP_APP", impact=1, urgency=1)  # P1 High: 540 business minutes
+    _age(t["number"], 600)
     with SessionLocal() as db:
         stats = run_sla_checks(db)
         assert stats["breached"] >= 1
@@ -56,7 +56,7 @@ def test_breach_marks_escalates_and_notifies_once(client):
 
 def test_warning_before_breach(client):
     t = make_ticket(client, code="ERP_APP", impact=1, urgency=1)
-    _age(t["number"], 200)  # 83% of 240
+    _age(t["number"], 450)  # 83% of 540
     with SessionLocal() as db:
         run_sla_checks(db)
         tid = db.scalar(select(Ticket.id).where(Ticket.number == t["number"]))
@@ -109,4 +109,6 @@ def test_auto_close_skips_protected_categories(client):
 
 def test_security_category_uses_specific_policy(client):
     t = make_ticket(client, code="SECURITY", impact=1, urgency=1)
+    assert t["sla"] is None                                   # employees never see SLA data
+    t = client.get(f"{API}/{t['number']}", headers=auth("admin")).json()
     assert t["sla"]["response_target_minutes"] == 15

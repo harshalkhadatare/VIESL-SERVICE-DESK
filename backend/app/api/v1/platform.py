@@ -454,14 +454,13 @@ class AuditOut(BaseModel):
     entity_id: str | None
     detail: str | None
     ip_address: str | None
-    device_id: str | None = None
     device: str | None = None
     outcome: str
 
 
 @router.get("/audit-logs", response_model=Page[AuditOut], tags=["Audit"])
 def audit_logs(action: str | None = Query(None, max_length=60), actor: str | None = Query(None, max_length=100),
-               entity_id: str | None = Query(None, max_length=40), device_id: str | None = Query(None, max_length=40),
+               entity_id: str | None = Query(None, max_length=40),
                ip: str | None = Query(None, max_length=45), page: int = Query(1, ge=1),
                page_size: int = Query(50, ge=1, le=200), p: Principal = Depends(require("audit.view")),
                db: Session = Depends(get_db)):
@@ -472,8 +471,6 @@ def audit_logs(action: str | None = Query(None, max_length=60), actor: str | Non
         stmt = stmt.where(AuditLog.actor_label.ilike(f"%{actor}%"))
     if entity_id:
         stmt = stmt.where(AuditLog.entity_id == entity_id)
-    if device_id:
-        stmt = stmt.where(AuditLog.device_id == device_id)
     if ip:
         stmt = stmt.where(AuditLog.ip_address == ip)
     total = db.scalar(select(func.count()).select_from(stmt.subquery()))

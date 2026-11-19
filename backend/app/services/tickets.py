@@ -111,7 +111,16 @@ def create_ticket(db: Session, p: Principal, data: TicketCreate, idempotency_key
         if existing:
             return db.get(Ticket, existing.ticket_id)
 
-    cat = db.get(Category, data.category_id)
+    custom = " ".join((data.custom_category or "").split()) or None
+    if custom:   # no category fitted: the employee typed one → the department's "Other" category
+        from app.seed import OTHER_CODES
+        cat = db.scalar(select(Category).where(Category.code == OTHER_CODES[data.desk or "it"]))
+        data.subcategory_id = None
+    elif data.category_id is None:
+        raise BusinessRuleError("Select a category, or choose “Other — type your own”.",
+                                details=[{"field": "category_id"}])
+    else:
+        cat = db.get(Category, data.category_id)
     if not cat or not cat.is_active:
         raise BusinessRuleError("Select a valid category.", details=[{"field": "category_id"}])
     if data.subcategory_id:
@@ -133,7 +142,8 @@ def create_ticket(db: Session, p: Principal, data: TicketCreate, idempotency_key
         number=next_ticket_number(db, now.year, desk), ticket_type=data.ticket_type or cat.default_ticket_type,
         subject=data.subject, description=data.description,
         requester_id=user.id, department_id=user.department_id, location_id=user.location_id,  # never from client
-        category_id=cat.id, subcategory_id=data.subcategory_id, impact=data.impact, urgency=data.urgency,
+        category_id=cat.id, subcategory_id=data.subcategory_id, custom_category=custom,
+        impact=data.impact, urgency=data.urgency,
         priority_id=prio.id, status_code=INITIAL_STATUS, contact_method=data.contact_method,
         created_by=user.id, created_at=now, updated_at=now, desk=desk,
     )
@@ -189,8 +199,18 @@ def create_ticket(db: Session, p: Principal, data: TicketCreate, idempotency_key
                dedupe_key=f"created-staff:{t.id}:{uid}")
     _check_recurring(db, t)
     audit_p(db, p, "ticket.create", entity_type="ticket", entity_id=t.number,
-            detail={"category": cat.code, "priority": prio.code})
+            detail={"category": cat.code, "custom_category": custom, "priority": prio.code})
     return t
+
+
+def _settle_desk(db: Session, t: Ticket, assignee: User | None, actor_id: int | None) -> None:
+    """A 'Both' ticket assigned to an IT or ERP-IT administrator now belongs to that team only, so only that
+    team gets its future emails (reopen, replies when unassigned, deadline alerts)."""
+    if t.desk == "both" and assignee is not None and assignee.desk in ("it", "erp"):
+        from app.services.email_template import DESK_NAME as NAMES
+        add_history(db, t, "desk", NAMES["both"], NAMES[assignee.desk], actor_id,
+                    f"Assigned to {assignee.full_name} ({NAMES[assignee.desk]})")
+        t.desk = assignee.desk
 
 
 def _check_recurring(db: Session, t: Ticket) -> None:
@@ -354,6 +374,7 @@ def assign(db: Session, p: Principal, number: str, data: AssignIn) -> Ticket:
     t.assignee_id = data.assignee_id
     if data.assignee_id:
         t.assigned_at = now
+        _settle_desk(db, t, db.get(User, data.assignee_id), p.id)
     db.add(TicketAssignment(ticket_id=t.id, support_group_id=t.support_group_id, assignee_id=data.assignee_id,
                             assigned_by=p.id, method="manual", reason=data.reason))
     if moving_group:

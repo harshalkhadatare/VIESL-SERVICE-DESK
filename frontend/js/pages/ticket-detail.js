@@ -1,5 +1,7 @@
 import { api } from "../api.js";
 import { openViewer, downloadFile, loadThumbs, isPdf } from "../viewer.js";
+import { readClipboardFiles, onPasteFiles } from "../paste.js";
+import { slaCard } from "../sla-ui.js";
 import { state, catalog, supportGroups, can } from "../state.js";
 import { $, $$, html, mount, icon, fmtDate, fmtRelative, statusBadge, prioBadge, initials, toast, errorToast,
   openModal, busy, emptyState, fileSize, showFieldErrors, realEmail, confirmDialog, deskBadge, nameId, nameIdText, empId } from "../ui.js";
@@ -118,6 +120,7 @@ export async function render(view, [number], query = {}) {
               <dt>Last updated</dt><dd>${fmtRelative(t.updated_at)}</dd>
               ${t.reopen_count ? html`<dt>Reopened</dt><dd>${t.reopen_count}×</dd>` : ""}
             </dl></div></div>
+          ${slaCard(t)}
           ${attachmentsCard(closed)}
           ${t.relations.length ? html`<div class="card"><div class="card-head"><h2>Related tickets</h2></div><ul class="list">
             ${t.relations.map((r) => html`<li><a class="item" href="#/tickets/${r.number}"><span class="t-id">${r.number}</span>
@@ -200,6 +203,7 @@ export async function render(view, [number], query = {}) {
     if (h.field === "status") return html`<b>${who(h)}</b> moved it to ${statusChip(h.new_value)}${why}`;
     if (h.field === "assignee") return h.new_value ? html`<b>${who(h)}</b> assigned it to <b>${h.new_value}</b>` : html`<b>${who(h)}</b> removed ${h.old_value}`;
     if (h.field === "support_group") return html`${h.actor ? html`<b>${who(h)}</b> sent` : "Sent"} to the <b>${h.new_value}</b> team`;
+    if (h.field === "desk") return html`<b>${who(h)}</b> moved the ticket to <b>${h.new_value}</b> (was ${h.old_value})${h.reason ? html` — ${h.reason}` : ""}`;
     if (h.field === "attachment") return h.new_value === "removed"
       ? html`<b>${who(h)}</b> removed the file <b>${h.old_value}</b>` : html`<b>${who(h)}</b> attached <b>${h.new_value}</b>`;
     if (h.field === "priority") return html`<b>${who(h)}</b> changed priority to <b>${h.new_value}</b>${why}`;
@@ -272,7 +276,8 @@ export async function render(view, [number], query = {}) {
             ${t.can_work ? html`<button class="danger" data-del="${k}" title="Delete (IT only)">${icon("trash")}</button>` : ""}</div>
         </div>`)}</div>` :
         html`<p class="muted small">No files attached.</p>`}
-      ${canAdd ? html`<div class="dropzone" id="up" tabindex="0" role="button" style="margin-top:12px">${icon("clip")} Add an image or PDF</div>
+      ${canAdd ? html`<div class="drop-row" style="margin-top:12px"><div class="dropzone" id="up" tabindex="0" role="button">${icon("clip")} Add an image or PDF</div>
+        <button type="button" class="btn paste-btn" id="paste" title="Paste a screenshot or copied image (or press Ctrl+V)">${icon("clipboard")} Paste</button></div>
         <input type="file" id="upf" hidden accept="image/*,.heic,.heif,.pdf">` : ""}
       ${attachments.length ? html`<p class="muted small" style="margin:10px 0 0">${icon("lock")} Files open inside the service desk and are only available to signed-in users who can see this ticket.</p>` : ""}</div></div>`;
   }
@@ -340,11 +345,27 @@ export async function render(view, [number], query = {}) {
     if (up) {
       up.addEventListener("click", () => upf.click());
       up.addEventListener("keydown", (e) => { if (e.key === "Enter") upf.click(); });
-      upf.addEventListener("change", async () => {
-        const f = upf.files[0]; if (!f) return;
-        const fd = new FormData(); fd.append("file", f);
-        if (composeInternal && t.can_work) fd.append("is_internal", "true");
-        try { await api.upload(`/tickets/${number}/attachments`, fd); await reload("File attached."); } catch (ex) { errorToast(ex); }
+      const send = async (list, msg) => {
+        let ok = 0;
+        for (const f of list) {
+          const fd = new FormData(); fd.append("file", f);
+          if (composeInternal && t.can_work) fd.append("is_internal", "true");
+          try { await api.upload(`/tickets/${number}/attachments`, fd); ok++; } catch (ex) { errorToast(ex); }
+        }
+        if (ok) await reload(msg || (ok > 1 ? `${ok} files attached.` : "File attached."));
+      };
+      upf.addEventListener("change", async () => { const f = upf.files[0]; upf.value = ""; if (f) send([f]); });
+      $("#paste", view).addEventListener("click", async () => {
+        try { const got = await readClipboardFiles(); send(got, `Pasted image${got.length > 1 ? "s" : ""} attached.`); }
+        catch (ex) { toast(ex.message, "info"); }
+      });
+      view._pasteFiles = (got) => send(got, `Pasted file${got.length > 1 ? "s" : ""} attached.`);
+    } else view._pasteFiles = null;
+    if (!view._pasteBound) {   // one Ctrl+V listener per page visit (the page redraws many times)
+      view._pasteBound = true;
+      onPasteFiles(view, (got) => {
+        if (document.querySelector(".viewer, .modal-backdrop")) return;
+        if (view._pasteFiles) view._pasteFiles(got); else toast("Files can't be added to this ticket now.", "info");
       });
     }
     const rate = $("#rate", view);

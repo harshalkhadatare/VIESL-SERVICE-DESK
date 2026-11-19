@@ -15,22 +15,22 @@ def test_template_has_dropdowns_departments_and_sheets(client):
     wb = load_workbook(BytesIO(r.content))
     assert wb.sheetnames == ["Users", "Departments", "Example", "Instructions"]
     head = [c.value for c in wb["Users"][1]]
-    assert head == ["USER_ID *", "USER_NAME *", "EMAIL", "DEPARTMENT", "DEPARTMENT_CATEGORY", "DESIGNATION", "PHONE",
-                    "ROLE", "IT_DEPARTMENT", "PASSWORD"]
+    assert head == ["FULL_NAME *", "EMPLOYEE_ID *", "DEPARTMENT_CATEGORY", "DEPARTMENT", "COMPANY_EMAIL", "JOB_TITLE",
+                    "PHONE", "IT_DEPARTMENT"]
     deps = {(row[1], row[2]) for row in wb["Departments"].iter_rows(min_row=2, values_only=True)}
     assert ("ACCOUNTS", "BILLING") in deps and ("TRADING", "REFURBISHMENT") in deps
     lists = [dv.formula1 for dv in wb["Users"].data_validations.dataValidation if dv.type == "list"]
-    assert any("Departments!" in f for f in lists) and '"Employee,IT Administrator"' in lists and '"IT,ERP-IT"' in lists
+    assert any("Departments!" in f for f in lists) and '"IT,ERP-IT"' in lists
 
 
 def test_import_reads_category_and_it_department(client):
     wb = Workbook()
     ws = wb.active
-    ws.append(["USER_ID *", "USER_NAME *", "EMAIL", "DEPARTMENT", "DEPARTMENT_CATEGORY", "DESIGNATION", "PHONE",
-               "ROLE", "IT_DEPARTMENT", "PASSWORD"])
-    ws.append(["T-901", "Template Admin", None, "BILLING", "ACCOUNTS", "ERP lead", None, "IT Administrator", "ERP-IT", "x"])
-    ws.append(["T-902", "Template Emp", None, "NEW PLANT", "TRADING", None, None, "Employee", None, None])
-    ws.append(["T-903", "Bad Desk", None, None, None, None, None, "IT Administrator", "HR", None])
+    ws.append(["FULL_NAME *", "EMPLOYEE_ID *", "DEPARTMENT_CATEGORY", "DEPARTMENT", "COMPANY_EMAIL", "JOB_TITLE",
+               "PHONE", "IT_DEPARTMENT"])
+    ws.append(["Template Admin", "T-901", "ACCOUNTS", "BILLING", None, "ERP lead", None, "ERP-IT"])   # → IT Administrator
+    ws.append(["Template Emp", "T-902", "TRADING", "NEW PLANT", None, None, None, None])
+    ws.append(["Bad Desk", "T-903", None, None, None, None, None, "HR"])
     buf = BytesIO()
     wb.save(buf)
     r = client.post("/api/v1/admin/users/import", headers=auth("admin"),

@@ -66,7 +66,7 @@ def ops_summary(db: Session, p: Principal, *, start: date, end: date, tz: str,
         return func.coalesce(func.sum(case((cond, 1), else_=0)), 0)
     row = db.execute(
         select(n(open_q), n(and_(Ticket.created_at >= today_start, Ticket.created_at < today_end)),
-               n(and_(open_q, Ticket.assignee_id.is_(None))), n(and_(open_q, Priority.code.in_(["P1", "P2"]))),
+               n(and_(open_q, Ticket.assignee_id.is_(None))), n(and_(open_q, Priority.code == "P1")),
                n(and_(live_sla, SLATracking.resolution_breached.is_(False), SLATracking.resolution_due_at >= now,
                       SLATracking.resolution_due_at < now + timedelta(hours=4))),
                n(and_(live_sla, Ticket.status_code != "RESOLVED",
@@ -75,7 +75,7 @@ def ops_summary(db: Session, p: Principal, *, start: date, end: date, tz: str,
                n(and_(Ticket.resolved_at >= today_start, Ticket.resolved_at < today_end)))
         .select_from(Ticket).join(Priority, Priority.id == Ticket.priority_id)
         .outerjoin(SLATracking, SLATracking.ticket_id == Ticket.id).where(scope)).one()
-    live = dict(zip(["open", "new_today", "unassigned", "critical_high", "approaching_sla", "overdue",
+    live = dict(zip(["open", "new_today", "unassigned", "high", "approaching_sla", "overdue",
                      "pending_employee", "pending_approval", "resolved_today"], (int(x or 0) for x in row)))
 
     # ---- historical metrics for the selected range (by creation date)
@@ -102,7 +102,7 @@ def ops_summary(db: Session, p: Principal, *, start: date, end: date, tz: str,
     workload_rows = db.execute(
         select(User.id, User.full_name,
                func.count(Ticket.id),
-               func.sum(case((Ticket.priority.has(Priority.code.in_(["P1", "P2"])), 1), else_=0)))
+               func.sum(case((Ticket.priority.has(Priority.code == "P1"), 1), else_=0)))
         .join(Ticket, Ticket.assignee_id == User.id)
         .where(scope, open_q).group_by(User.id, User.full_name).order_by(func.count(Ticket.id).desc())
     ).all()
@@ -128,6 +128,7 @@ def ops_summary(db: Session, p: Principal, *, start: date, end: date, tz: str,
         "live": live,
         "historical": {
             "created": total,
+            "total_all_time": count(),        # every ticket ever raised (same filters, no date range)
             "avg_first_response_minutes": round(sum(fr) / len(fr)) if fr else None,
             "avg_resolution_minutes": round(sum(rs) / len(rs)) if rs else None,
             "sla_compliance_percent": round(met * 100 / len(resolved_rows), 1) if resolved_rows else None,
@@ -168,7 +169,7 @@ def admin_home(db: Session, p: Principal, tz: str) -> dict:
                       .join(Priority, Priority.id == Ticket.priority_id)
                       .where(vis, active, (Ticket.assignee_id.is_(None)) | (SLATracking.resolution_breached.is_(True))
                              | (SLATracking.resolution_due_at < now + timedelta(hours=4))
-                             | (Priority.code.in_(["P1", "P2"])))
+                             | (Priority.code == "P1"))
                       .order_by(Priority.rank.asc(), SLATracking.resolution_due_at.asc()).limit(60)).all()
 
     def reason(t: Ticket) -> tuple[int, str, str]:
@@ -216,3 +217,79 @@ def admin_home(db: Session, p: Principal, tz: str) -> dict:
     } for u in staff), key=lambda x: (-x["resolved_week"], x["open"], x["name"]))
     return {"my_open": my_open, "attention": attention, "team": team,
             "attention_total": len(rows)}
+
+
+# ---------------------------------------------------------------- SLA report (dashboard → SLA compliance)
+def sla_report(db: Session, p: Principal, *, start: date, end: date, tz: str, desk: str | None = None,
+               state: str | None = None, q: str | None = None) -> dict:
+    """Ticket-by-ticket SLA details for tickets raised in the period: targets, due times, first response,
+    resolution, business time used, pauses, breaches and escalation — plus a summary."""
+    now = utcnow()
+    range_start, _ = _local_day_bounds(tz, start)
+    _, range_end = _local_day_bounds(tz, end)
+    filters = [ticket_visibility_clause(p), Ticket.created_at >= range_start, Ticket.created_at < range_end]
+    if desk in ("it", "erp"):
+        filters.append(Ticket.desk.in_([desk, "both"]))
+    if q:
+        like = f"%{q.strip()}%"
+        filters.append(Ticket.number.ilike(like) | Ticket.subject.ilike(like))
+    tickets = db.scalars(select(Ticket).join(SLATracking, SLATracking.ticket_id == Ticket.id).where(*filters)
+                         .order_by(Ticket.created_at.desc())).all()
+    specs: dict = {}
+    items = []
+    for t in tickets:
+        s = t.sla
+        snap = sla_svc.sla_snapshot(db, t, now)
+        if s.calendar_id not in specs:
+            specs[s.calendar_id] = sla_svc.spec_for(db, s.calendar_id)
+        spec = specs[s.calendar_id]
+        resp_min = business_minutes_between(s.started_at, t.first_response_at, spec) if t.first_response_at else None
+        stopped = t.status_code in ("RESOLVED", "CLOSED", "CANCELLED")
+        used = snap["resolution_target_minutes"] - snap["remaining_business_minutes"]
+        if t.status_code == "CANCELLED":
+            st = "cancelled"
+        elif stopped:
+            st = "met" if not s.resolution_breached else "breached"
+        else:
+            st = snap["state"]          # on_track | at_risk | paused | breached
+        if t.first_response_at:
+            resp = "breached" if s.response_breached else "met"
+        else:
+            resp = "breached" if (s.response_breached or now > s.response_due_at) else "waiting"
+        items.append({
+            "number": t.number, "subject": t.subject, "desk": t.desk,
+            "priority": {"code": t.priority.code, "name": t.priority.name},
+            "status": {"code": t.status.code, "name": t.status.name},
+            "category": t.category_label,
+            "requester": t.requester.full_name, "requester_code": t.requester.employee_code,
+            "assignee": t.assignee.full_name if t.assignee else None,
+            "created_at": t.created_at, "sla_started_at": s.started_at,
+            "response_target_minutes": s.response_target_minutes, "response_due_at": s.response_due_at,
+            "first_response_at": t.first_response_at, "response_minutes": resp_min, "response_state": resp,
+            "resolution_target_minutes": s.resolution_target_minutes, "resolution_due_at": s.resolution_due_at,
+            "resolved_at": t.resolved_at, "closed_at": t.closed_at,
+            "business_minutes_used": max(0, used), "percent_used": snap["percent_used"],
+            "paused_minutes": s.paused_minutes, "is_paused": s.paused_at is not None,
+            "escalation_level": s.escalation_level, "reopen_count": t.reopen_count,
+            "state": st,
+        })
+    measured = [i for i in items if i["state"] in ("met", "breached")]
+    met = sum(1 for i in measured if i["state"] == "met")
+    responded = [i for i in items if i["response_state"] in ("met", "breached") and i["first_response_at"]]
+    summary = {
+        "total": len(items),
+        "met": met, "breached": sum(1 for i in items if i["state"] == "breached"),
+        "on_track": sum(1 for i in items if i["state"] == "on_track"),
+        "at_risk": sum(1 for i in items if i["state"] == "at_risk"),
+        "paused": sum(1 for i in items if i["state"] == "paused"),
+        "compliance_percent": round(met * 100 / len(measured), 1) if measured else None,
+        "response_met_percent": round(sum(1 for i in responded if i["response_state"] == "met") * 100 / len(responded), 1)
+        if responded else None,
+        "avg_response_minutes": round(sum(i["response_minutes"] for i in responded) / len(responded)) if responded else None,
+        "avg_used_minutes": round(sum(i["business_minutes_used"] for i in measured) / len(measured)) if measured else None,
+    }
+    if state:
+        wanted = set(state.split(","))
+        items = [i for i in items if i["state"] in wanted]
+    return {"generated_at": now, "range": {"start": start, "end": end, "timezone": tz}, "summary": summary,
+            "items": items}

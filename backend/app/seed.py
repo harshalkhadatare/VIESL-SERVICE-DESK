@@ -85,17 +85,18 @@ TRANSITIONS = [  # from, to, actor, requires_reason
     ("PENDING_VENDOR", "CANCELLED", R, True), ("PENDING_CHANGE", "CANCELLED", R, True),
     ("REOPENED", "CANCELLED", R, True),
 ]
-PRIORITIES = [("P1", "Critical", 1, "Major outage or critical service down for many users"),
-              ("P2", "High", 2, "Significant impact on a department or key business process"),
-              ("P3", "Medium", 3, "Normal issue with a workaround or limited impact"),
-              ("P4", "Low", 4, "Low-impact query, suggestion or routine request")]
-SLA_TARGETS = {"P1": (30, 240), "P2": (60, 540), "P3": (240, 1620), "P4": (480, 2700)}  # business minutes
+PRIORITIES = [("P1", "High", 1, "Significant impact on work or a key business process — handled first"),
+              ("P2", "Medium", 2, "Normal issue with a workaround or limited impact"),
+              ("P3", "Low", 3, "Low-impact query, suggestion or routine request")]
+SLA_TARGETS = {"P1": (60, 540), "P2": (240, 1620), "P3": (480, 2700)}  # business minutes (response, resolution)
 GROUPS = [("SD", "Service Desk", "manual"), ("ERP", "ERP Application Support", "round_robin"),
           ("INFRA", "Infrastructure & Network", "least_loaded"), ("EUC", "End-User Computing", "least_loaded"),
           ("SEC", "Information Security", "manual")]
 # code, name, type, group, erp, approval, protected, subcategories
 # Categories handled by the ERP-IT department; every other category belongs to IT (hardware, network, email…)
-ERP_DESK = {"ERP_APP", "ERP_DATA", "ERP_REPORT", "ERP_BACKDATE", "DB_INTEG", "ENHANCE"}
+ERP_DESK = {"ERP_APP", "ERP_DATA", "ERP_REPORT", "ERP_BACKDATE", "DB_INTEG", "ENHANCE", "ERP_OTHER"}
+# Where "Other — type your own" tickets go, per IT department (hidden from the category list itself)
+OTHER_CODES = {"it": "OTHER", "erp": "ERP_OTHER", "both": "OTHER"}
 
 CATEGORIES = [
     ("ERP_APP", "ERP Application Issue", "incident", "ERP", True, False, False,
@@ -138,6 +139,7 @@ CATEGORIES = [
     ("SUGGEST", "Employee Suggestion", "service_request", "SD", False, False, False, ["IT improvement idea"]),
     ("QUERY", "General Query", "service_request", "SD", False, False, False, ["How-to", "Policy question"]),
     ("OTHER", "Other", "incident", "SD", False, False, False, []),
+    ("ERP_OTHER", "Other ERP issue", "incident", "ERP", False, False, False, []),
 ]
 
 
@@ -212,7 +214,7 @@ def seed_reference(db: Session) -> None:
     for i in (1, 2, 3):
         for u in (1, 2, 3):
             s = i + u
-            code = "P1" if s == 2 else "P2" if s == 3 else "P3" if s == 4 else "P4"
+            code = "P1" if s <= 3 else "P2" if s == 4 else "P3"   # employee form: urgency High/Medium/Low
             _get_or_create(db, PriorityMatrix, {"impact": i, "urgency": u}, priority_id=prio[code].id)
     cal, created = _get_or_create(db, BusinessCalendar, {"name": "Head Office (IST)"}, timezone="Asia/Kolkata",
                                   work_start=time(9, 30), work_end=time(18, 30), working_days="1111110",
@@ -242,7 +244,7 @@ def seed_reference(db: Session) -> None:
     if not db.scalar(select(AutomationRule.id)):
         net = db.scalar(select(Category).where(Category.code == "NETWORK"))
         db.add_all([
-            AutomationRule(name="Critical network incidents to Infrastructure (least loaded)", sort_order=10,
+            AutomationRule(name="High-priority network incidents to Infrastructure (least loaded)", sort_order=10,
                            match_category_id=net.id, match_priority_id=prio["P1"].id,
                            target_group_id=groups["INFRA"].id, assignment_strategy="least_loaded"),
             AutomationRule(name="Payroll ERP module to ERP support (round robin)", sort_order=20,

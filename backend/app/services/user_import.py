@@ -29,7 +29,7 @@ ALIASES = {
     "code": {"userid", "employeeid", "empid", "employeecode", "empcode", "employeeno", "empno", "id", "code",
              "staffid", "erpid", "erpuserid"},
     "name": {"username", "name", "employeename", "empname", "fullname", "employee", "staffname"},
-    "email": {"email", "emailid", "mail", "emailaddress", "officialemail"},
+    "email": {"email", "emailid", "mail", "emailaddress", "officialemail", "companyemail"},
     "department": {"department", "dept", "departmentname", "subdepartment"},
     "department_category": {"departmentcategory", "deptcategory", "category", "departmentgroup"},
     "desk": {"itdepartment", "itteam", "desk", "itdesk"},
@@ -165,6 +165,8 @@ def import_users(db: Session, filename: str, content: bytes, default_password: s
         if desk_raw and desk is None:
             res.errors.append({"row": n, "employee_id": code, "message": "IT department must be IT or ERP-IT."})
             continue
+        if desk and not role_raw:
+            role_code = "it_admin"   # IT department filled (template has no Role column) → IT Administrator
         job = " ".join(str(cell(row, "job_title") or "").split())[:120] or None
         phone = " ".join(str(cell(row, "phone") or "").split())[:30] or None
 

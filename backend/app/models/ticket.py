@@ -46,6 +46,8 @@ class Ticket(Base, TimestampMixin, CreatedByMixin):
     location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"))
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
     subcategory_id: Mapped[int | None] = mapped_column(ForeignKey("subcategories.id"))
+    # typed by the employee when no category fits ("Other — type your own"); category is then the desk's Other
+    custom_category: Mapped[str | None] = mapped_column(Unicode(80))
 
     impact: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     urgency: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
@@ -77,6 +79,12 @@ class Ticket(Base, TimestampMixin, CreatedByMixin):
     location: Mapped[Location | None] = relationship(lazy="joined")
     category: Mapped[Category] = relationship(lazy="joined")
     subcategory: Mapped[Subcategory | None] = relationship(lazy="joined")
+
+    @property
+    def category_label(self) -> str:
+        """'Printer / Scanner', or 'Other: Biometric machine' when the employee typed their own category."""
+        name = self.category.name if self.category else ""
+        return f"{name}: {self.custom_category}" if self.custom_category else name
     priority: Mapped[Priority] = relationship(lazy="joined")
     status: Mapped[TicketStatus] = relationship(lazy="joined")
     support_group: Mapped[SupportGroup | None] = relationship(lazy="joined")

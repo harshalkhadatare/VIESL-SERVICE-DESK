@@ -38,6 +38,7 @@ class CategoryOut(BaseModel):
     uses_erp_fields: bool
     requires_approval: bool
     desk: str = "it"
+    is_other: bool = False         # the department's "Other" bucket — shown as "Other — type your own"
     subcategories: list[SubOut]
 
 
@@ -84,6 +85,7 @@ def _build_catalog(db: Session) -> CatalogOut:
         categories=[CategoryOut(id=c.id, code=c.code, name=c.name, description=c.description,
                                 default_ticket_type=c.default_ticket_type, uses_erp_fields=c.uses_erp_fields,
                                 requires_approval=c.requires_approval, desk=c.desk,
+                                is_other=c.code in ("OTHER", "ERP_OTHER"),
                                 subcategories=[SubOut(id=s.id, name=s.name) for s in c.subcategories if s.is_active])
                     for c in cats],
         priorities=[PriorityOut(id=x.id, code=x.code, name=x.name, description=x.description) for x in prios],

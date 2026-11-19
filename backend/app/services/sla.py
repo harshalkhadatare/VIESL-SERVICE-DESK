@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.models import BusinessCalendar, SLAPolicy, SLATracking, Ticket, TicketStatus, utcnow
 from app.services.business_time import CalendarSpec, add_business_minutes, business_minutes_between
 
-FALLBACK_TARGETS = {"P1": (30, 240), "P2": (60, 480), "P3": (240, 1440), "P4": (480, 2880)}
+FALLBACK_TARGETS = {"P1": (60, 540), "P2": (240, 1620), "P3": (480, 2700)}
 
 
 def _calendar(db: Session, calendar_id: int | None = None) -> BusinessCalendar:
@@ -52,7 +52,7 @@ def _apply_targets(db: Session, sla: SLATracking, ticket: Ticket) -> None:
         sla.resolution_target_minutes = policy.resolution_minutes
         sla.warning_percent = policy.warning_percent
     else:
-        r, s = FALLBACK_TARGETS.get(ticket.priority.code if ticket.priority else "P3", (240, 1440))
+        r, s = FALLBACK_TARGETS.get(ticket.priority.code if ticket.priority else "P2", (240, 1620))
         sla.policy_id = None
         sla.calendar_id = sla.calendar_id or _calendar(db).id
         sla.response_target_minutes, sla.resolution_target_minutes = r, s
