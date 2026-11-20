@@ -1,6 +1,6 @@
 import { api } from "./api.js";
 
-export const state = { me: null, catalog: null, groups: null };
+export const state = { me: null, catalog: null, groups: null, tasks: null };
 
 export const can = (perm) => !!state.me?.permissions?.includes(perm);
 export const isStaff = () => can("ticket.work");
@@ -22,7 +22,11 @@ export async function supportGroups() {
 }
 
 export function roleLabel() {
-  return state.me?.roles?.includes("it_admin") ? "IT Administrator" : "Employee";
+  const r = state.me?.roles || [];
+  const base = r.includes("it_admin") ? "IT Administrator" : "Employee";
+  if (r.includes("top_management")) return r.includes("it_admin") ? "Top management · IT Admin" : "Top management";
+  if (r.includes("task_manager")) return r.includes("it_admin") ? "Management · IT Admin" : "Management";
+  return base;
 }
 
-export function resetState() { state.me = null; state.catalog = null; state.groups = null; }
+export function resetState() { state.me = null; state.catalog = null; state.groups = null; state.tasks = null; }

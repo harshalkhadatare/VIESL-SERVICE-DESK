@@ -144,9 +144,11 @@ def run_all_jobs() -> None:
         try:
             s1 = run_sla_checks(db)
             s2 = run_auto_close(db)
+            from app.services.tasks import run_task_reminders
+            s3 = run_task_reminders(db)
             sent = deliver_pending_emails(db)
-            if any(s1.values()) or any(s2.values()) or sent:
-                log.info("jobs sla=%s autoclose=%s emails=%s", s1, s2, sent)
+            if any(s1.values()) or any(s2.values()) or any(s3.values()) or sent:
+                log.info("jobs sla=%s autoclose=%s tasks=%s emails=%s", s1, s2, s3, sent)
         except Exception:  # noqa: BLE001
             db.rollback()
             log.exception("background job failed")
@@ -169,8 +171,10 @@ JOBS_KEY = "jobs_last_run"
 def run_jobs_once(db: Session) -> dict:
     s1 = run_sla_checks(db)
     s2 = run_auto_close(db)
+    from app.services.tasks import run_task_reminders
+    s3 = run_task_reminders(db)
     sent = deliver_pending_emails(db)
-    return {"sla": s1, "auto_close": s2, "emails_sent": sent}
+    return {"sla": s1, "auto_close": s2, "tasks": s3, "emails_sent": sent}
 
 
 def maybe_run_jobs(db: Session, force: bool = False) -> dict | None:

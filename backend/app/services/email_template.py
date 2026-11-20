@@ -29,7 +29,50 @@ def art(name: str) -> bytes | None:
     return p.read_bytes() if p.exists() else None
 
 
+TASK_ART = {"task_assigned": "assigned", "task_update": "reply", "task_submitted": "bell", "task_completed": "resolved",
+            "task_returned": "reopened", "task_extension": "question", "task_due_soon": "alert", "task_overdue": "alert"}
+TASK_HEADLINE = {
+    "task_assigned": ("You have a new task", "A task has been assigned to you.",
+                      "Open it to read the details, then click “Start” and post updates as you go."),
+    "task_update": ("Task update", "There is an update on this task.", None),
+    "task_submitted": ("Task ready for your review", "The assignee has marked this task as complete.",
+                       "Open it to approve the work, or send it back with your feedback."),
+    "task_completed": ("Task completed", "This task is complete.", None),
+    "task_returned": ("Changes needed", "The task was sent back with feedback.",
+                      "Read the feedback, make the changes and submit it again."),
+    "task_extension": ("Deadline request", "There is news about the deadline of this task.", None),
+    "task_due_soon": ("Deadline coming up", "This task is due within 24 hours.",
+                      "Finish and submit it, post an update, or ask for more time."),
+    "task_overdue": ("Task overdue", "The deadline for this task has passed.",
+                     "Please post an update or ask for more time."),
+}
+
+
+def task_rows(t, due_text: str) -> str:
+    """Details table for a task email."""
+    from app.services.tasks import PRIORITY_NAME, STATUS_NAME
+    e = html.escape
+    pfg, pbg = {"high": PRIO_COLORS["P1"], "medium": PRIO_COLORS["P2"], "low": PRIO_COLORS["P3"]}[t.priority]
+    bar = (f'<div style="background:#e8edf4;border-radius:999px;height:8px;width:160px;display:inline-block;'
+           f'vertical-align:middle"><div style="background:#157a52;height:8px;border-radius:999px;width:{t.progress}%">'
+           f'</div></div> <span style="font-size:13px">{t.progress}%</span>')
+    return ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 0">'
+            + _row("Task number", f'<span style="font-family:Consolas,monospace;color:#1d5fc4">{e(t.number)}</span>')
+            + _row("Task", e(t.title))
+            + _row("Status", _pill(STATUS_NAME[t.status], "#1550ad", "#e4eefb"))
+            + _row("Priority", _pill(PRIORITY_NAME[t.priority], pfg, pbg))
+            + _row("Deadline", e(due_text))
+            + _row("Progress", bar)
+            + _row("Assigned by", f'{e(t.assigner.full_name)} <span style="color:#74859b;font-weight:500">'
+                                  f'({e(t.assigner.employee_code or "")})</span>')
+            + _row("Assigned to", f'{e(t.assignee.full_name)} <span style="color:#74859b;font-weight:500">'
+                                  f'({e(t.assignee.employee_code or "")})</span>')
+            + '</table>')
+
+
 def pick_art(event: str, title: str, ticket, is_staff_recipient: bool) -> str:
+    if event in TASK_ART:
+        return TASK_ART[event]
     t = (title or "").lower()
     if event == "ticket_created":
         return "bell" if is_staff_recipient else "received"
@@ -146,11 +189,16 @@ def _progress(ticket) -> str:
 
 
 def build(*, company: str, base_url: str, url: str, recipient_name: str, event: str, title: str, body: str | None,
-          ticket, is_staff_recipient: bool) -> tuple[str, dict[str, bytes]]:
-    """Returns (html, inline images {content-id: gif bytes})."""
+          ticket, is_staff_recipient: bool, task_rows_html: str | None = None,
+          button_label: str | None = None) -> tuple[str, dict[str, bytes]]:
+    """Returns (html, inline images {content-id: gif bytes}). Task emails pass task_rows_html instead of a ticket."""
     kind = pick_art(event, title, ticket, is_staff_recipient)
     accent = ACCENT.get(kind, "#1d5fc4")
-    big, sentence, tip = headline(kind, ticket, is_staff_recipient, title)
+    if event in TASK_HEADLINE:
+        big, sentence, tip = TASK_HEADLINE[event]
+        sentence = title or sentence
+    else:
+        big, sentence, tip = headline(kind, ticket, is_staff_recipient, title)
     images: dict[str, bytes] = {}
     gif = art(kind)
     hero = ""
@@ -182,6 +230,8 @@ def build(*, company: str, base_url: str, url: str, recipient_name: str, event: 
                                 f'({e(ticket.requester.employee_code)})</span>')
             + '</table>')
         progress = _progress(ticket)
+    elif task_rows_html:
+        details = task_rows_html
 
     body_box = ""
     if body:
@@ -191,7 +241,7 @@ def build(*, company: str, base_url: str, url: str, recipient_name: str, event: 
                     f'{e(body)}</td></tr></table>')
     tip_box = (f'<p style="margin:16px 0 0;font-size:13px;color:#4a5c74;line-height:1.5">'
                f'<span style="color:{accent};font-weight:700">What happens next?</span> {e(tip)}</p>') if tip else ""
-    btn_label = "Open ticket" if is_staff_recipient else "View your ticket"
+    btn_label = button_label or ("Open ticket" if is_staff_recipient else "View your ticket")
     button = (
         '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px auto 4px"><tr>'
         f'<td align="center" bgcolor="{accent}" style="border-radius:10px">'

@@ -17,6 +17,7 @@ class Notification(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     ticket_id: Mapped[int | None] = mapped_column(ForeignKey("tickets.id"))
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
     event: Mapped[str] = mapped_column(Unicode(40), nullable=False)
     title: Mapped[str] = mapped_column(Unicode(200), nullable=False)
     body: Mapped[str | None] = mapped_column(Unicode(1000))

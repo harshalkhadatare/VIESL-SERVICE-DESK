@@ -41,12 +41,21 @@ PERMISSIONS = {
     "ticket.manage_all": "Act on any ticket (admin)", "dashboard.ops": "IT operations dashboard",
     "report.export": "Export reports", "kb.view": "Read knowledge base", "kb.manage": "Author/review articles",
     "user.manage": "Manage users and roles", "audit.view": "View audit log", "settings.manage": "Manage settings",
+    # Task management
+    "task.assign": "Assign tasks to anyone and follow them up (Management)",
+    "task.view_all": "See every task in the company (Top management)",
+    "task.admin": "Act on any task: fix, reassign, cancel (Task admin — IT administrators)",
 }
 _EMP = ["ticket.create", "ticket.view_own", "kb.view"]
 ROLES = {
     "employee": ("Employee", "Raise and track own tickets, read the knowledge base", _EMP),
     "it_admin": ("IT Administrator", "Work and assign all tickets, dashboards, users and settings",
                  list(PERMISSIONS)),
+    # Task management roles — added next to a person's normal role (Employee or IT Administrator)
+    "task_manager": ("Management", "Assign tasks to anyone, set deadlines, follow progress and approve work",
+                     _EMP + ["task.assign"]),
+    "top_management": ("Top management (MD)", "Everything Management can do, and see every task in the company",
+                       _EMP + ["task.assign", "task.view_all"]),
 }
 # Roles from earlier releases are folded into the two roles above on the next seed run.
 LEGACY_ROLE_MAP = {"it_engineer": "it_admin", "it_lead": "it_admin", "management": "it_admin",

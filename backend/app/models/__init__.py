@@ -12,6 +12,7 @@ from app.models.ticket import (  # noqa: F401
     TicketComment,
     TicketErpDetail, TicketHistory, TicketRelationship, TicketSequence, TicketUserFlag, TicketWatcher,
 )
+from app.models.task import Task, TaskEvent  # noqa: F401
 from app.models.platform import (  # noqa: F401
     Announcement, ApplicationSetting, AuditLog, AutomationExecutionLog, AutomationRule, KnowledgeArticle,
     KnowledgeArticleVersion, Notification, NotificationPreference,

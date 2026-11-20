@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api.v1 import auth, dashboard, meta, platform, tickets
+from app.api.v1 import auth, dashboard, meta, platform, tasks, tickets
 from app.core.config import get_settings
 from app.core.database import engine
 from app.core.errors import register_error_handlers
@@ -158,7 +158,7 @@ async def request_context(request: Request, call_next):
 
 
 api = APIRouter(prefix="/api/v1")
-for r in (auth.router, tickets.router, meta.router, dashboard.router, platform.router):
+for r in (auth.router, tickets.router, meta.router, dashboard.router, platform.router, tasks.router):
     api.include_router(r)
 
 

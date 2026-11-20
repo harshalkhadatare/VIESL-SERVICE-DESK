@@ -34,6 +34,10 @@ EVENTS = {
     "comment_added": "New comment", "info_requested": "Information requested", "sla_warning": "SLA warning",
     "sla_breached": "SLA breached", "ticket_resolved": "Ticket resolved", "ticket_reopened": "Ticket reopened",
     "ticket_closed": "Ticket closed",
+    # task management
+    "task_assigned": "Task assigned to you", "task_update": "Task update", "task_submitted": "Task submitted",
+    "task_completed": "Task completed", "task_returned": "Task sent back", "task_extension": "Deadline extension",
+    "task_due_soon": "Task due soon", "task_overdue": "Task overdue",
 }
 # Events that are emailed unless the user switched them off in notification_preferences
 DEFAULT_EMAIL_EVENTS = set(EVENTS)
@@ -53,14 +57,15 @@ def _deliverable(user: User) -> bool:
 
 
 def notify(db: Session, user_id: int | None, event: str, title: str, body: str | None = None,
-           ticket: Ticket | None = None, dedupe_key: str | None = None, email: bool = True) -> Notification | None:
+           ticket: Ticket | None = None, dedupe_key: str | None = None, email: bool = True,
+           task=None) -> Notification | None:
     """In-app notification, also emailed unless email=False (e.g. ticket deleted) or the user opted out."""
     if not user_id:
         return None
     pref = db.get(NotificationPreference, (user_id, event))
     if pref is not None and not pref.in_app and not pref.email:
         return None
-    key = dedupe_key or f"{event}:{ticket.id if ticket else 0}:{user_id}:{uuid.uuid4().hex}"
+    key = dedupe_key or f"{event}:{ticket.id if ticket else (('t' + str(task.id)) if task else 0)}:{user_id}:{uuid.uuid4().hex}"
     if db.scalar(select(Notification.id).where(Notification.dedupe_key == key)):
         return None
     wants_email = email and (pref.email if pref is not None else event in DEFAULT_EMAIL_EVENTS)
@@ -69,8 +74,9 @@ def notify(db: Session, user_id: int | None, event: str, title: str, body: str |
         user = db.get(User, user_id)
         status = "pending" if user and _deliverable(user) else "skipped"
     n = Notification(
-        user_id=user_id, ticket_id=ticket.id if ticket else None, event=event, title=title[:200],
-        body=(body or "")[:1000] or None, link=f"#/tickets/{ticket.number}" if ticket else None,
+        user_id=user_id, ticket_id=ticket.id if ticket else None, task_id=task.id if task else None,
+        event=event, title=title[:200], body=(body or "")[:1000] or None,
+        link=f"#/tickets/{ticket.number}" if ticket else (f"#/tasks/{task.number}" if task else None),
         dedupe_key=key[:120], email_status=status,
     )
     try:
@@ -94,6 +100,8 @@ def render_email(n: Notification, user: User, ticket: Ticket | None) -> tuple[st
     s = get_settings()
     base = s.app_base_url.rstrip("/")
     url = f"{base}/{n.link}" if n.link else base
+    if n.task_id:
+        return _render_task_email(n, user, url, base)
     subject = f"[{ticket.number}] {n.title}" if ticket and ticket.number not in n.title else n.title
     assigned = ticket.assignee.label if ticket and ticket.assignee else "Not yet assigned"
     body = n.body
@@ -115,6 +123,31 @@ def render_email(n: Notification, user: User, ticket: Ticket | None) -> tuple[st
     page, images = build(company=s.company_name, base_url=base, url=url, recipient_name=user.full_name,
                          event=n.event, title=n.title, body=body, ticket=ticket, is_staff_recipient=is_staff_recipient)
     return subject[:200], text, page, images
+
+
+def _render_task_email(n: Notification, user: User, url: str, base: str) -> tuple[str, str, str, dict[str, bytes]]:
+    from zoneinfo import ZoneInfo
+
+    from app.models.task import Task
+    from app.services.email_template import build, task_rows
+    from app.services.tasks import PRIORITY_NAME, STATUS_NAME
+    s = get_settings()
+    t = Session.object_session(n).get(Task, n.task_id)
+    due = t.due_at.astimezone(ZoneInfo(user.timezone)).strftime("%d %b %Y, %I:%M %p")
+    subject = f"[{t.number}] {n.title}"
+    lines = [f"Hello {user.full_name},", "", n.title]
+    if n.body:
+        lines += ["", n.body]
+    lines += ["", f"Task:         {t.number}", f"Title:        {t.title}", f"Status:       {STATUS_NAME[t.status]}",
+              f"Priority:     {PRIORITY_NAME[t.priority]}", f"Deadline:     {due}", f"Progress:     {t.progress}%",
+              f"Assigned by:  {t.assigner.label}", f"Assigned to:  {t.assignee.label}",
+              "", f"Open the task: {url}", "", f"— {s.smtp_from_name}",
+              "This is an automated message. Reply in the portal, not to this email."]
+    page, images = build(company=s.company_name, base_url=base, url=url, recipient_name=user.full_name,
+                         event=n.event, title=n.title, body=n.body, ticket=None,
+                         is_staff_recipient=user.id == t.assigner_id, task_rows_html=task_rows(t, due),
+                         button_label="Open task")
+    return subject[:200], "\n".join(lines), page, images
 
 
 # ---------------------------------------------------------------- providers

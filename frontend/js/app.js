@@ -13,6 +13,7 @@ import * as notificationsPage from "./pages/notifications.js";
 import * as adminPage from "./pages/admin.js";
 import * as annPage from "./pages/announcements.js";
 import * as slaPage from "./pages/sla.js";
+import * as tasksPage from "./pages/tasks.js";
 import { setupThemeMenu } from "./theme.js";
 
 import { brand, loadBrand } from "./brand.js";
@@ -29,6 +30,10 @@ const ROUTES = [
   [/^\/kb$/, kbPage.render, "kb"],
   [/^\/notifications$/, notificationsPage.render, "notifications"],
   [/^\/sla$/, slaPage.render, "dashboard", "dashboard.ops"],
+  [/^\/tasks$/, tasksPage.renderOverview, "tasks-home"],
+  [/^\/tasks\/list$/, tasksPage.renderList, "tasks-list"],
+  [/^\/tasks\/new$/, tasksPage.renderNew, "tasks-new"],
+  [/^\/tasks\/(TSK-[\w-]+)$/, tasksPage.renderDetail, "tasks-list"],
   [/^\/admin\/users$/, adminPage.renderUsers, "users", "user.manage"],
   [/^\/admin\/audit$/, adminPage.renderAudit, "audit", "audit.view"],
   [/^\/admin\/email$/, adminPage.renderEmail, "email", "settings.manage"],
@@ -38,6 +43,7 @@ const ROUTES = [
 let cleanup = null;
 let pollTimer = null;
 let annTimer = null;
+let landed = false;   // the first page after signing in follows the person's Tasks / IT desk preference
 
 function parseHash() {
   const h = location.hash.replace(/^#/, "") || "/";
@@ -45,6 +51,36 @@ function parseHash() {
   return { path, query: Object.fromEntries(new URLSearchParams(qs || "")) };
 }
 export function navigate(path) { location.hash = path; }
+
+// ------------------------------------------------------------------ tasks area
+// Management (and IT admins, as Task admins) switch between "Tasks" and "IT Service Desk" at the top.
+const switchable = () => !!(state.tasks?.can_assign);
+const prefersTasks = () => { try { return (localStorage.getItem("sd-mode") || (state.tasks?.is_management ? "tasks" : "desk")) === "tasks"; } catch { return !!state.tasks?.is_management; } };
+
+function tasksNav() {
+  const t = state.tasks || {};
+  if (!t.can_assign && !t.has_tasks) return "";
+  return html`<nav class="nav nav-tasks">
+    <div class="nav-section">Tasks</div>
+    ${t.can_assign ? navLink("/tasks", "tasks-home", "home", "Overview") : ""}
+    ${t.can_assign ? navLink("/tasks/list?view=by_me", "tasks-by_me", "send", "Assigned by me") : ""}
+    ${navLink("/tasks/list?view=to_me", "tasks-to_me", "target", "My tasks", html`<span class="count" id="nav-mytasks2" hidden></span>`)}
+    ${t.sees_all ? navLink("/tasks/list?view=all", "tasks-all", "list", "All tasks") : ""}
+    ${t.can_assign ? navLink("/tasks/new", "tasks-new", "plus", "Assign a task") : ""}
+    ${navLink("/notifications", "notifications", "bell", "Notifications")}
+    <div class="nav-section">Switch</div>
+    <a href="#/" data-mode-go="desk">${icon("ticket")}<span>IT Service Desk</span></a>
+    <button type="button" class="side-theme" data-theme-open>${icon("palette")}<span>Colours & dark mode</span></button>
+  </nav>`;
+}
+
+export async function refreshTaskAccess() {
+  try {
+    state.tasks = await api.get("/tasks/me");
+    const n = state.tasks.open_assigned_to_me;
+    for (const id of ["nav-mytasks", "nav-mytasks2"]) { const el = $(`#${id}`); if (el) { el.textContent = n; el.hidden = !n; } }
+  } catch { /* ignore */ }
+}
 
 // ------------------------------------------------------------------ shell
 function navLink(href, key, ic, label, extra = "") {
@@ -58,13 +94,15 @@ function renderShell() {
   <div class="shell" id="shell">
     <aside class="sidebar" aria-label="Main navigation">
       <div class="brand"><div class="brand-mark">${brandMark()}</div>
-        <div><div class="brand-name">IT Service Desk</div><div class="brand-sub">${brand.short}</div></div></div>
-      <nav class="nav">
+        <div><div class="brand-name"><span class="only-desk">IT Service Desk</span><span class="only-tasks">Task Management</span></div><div class="brand-sub">${brand.short}</div></div></div>
+      ${tasksNav()}
+      <nav class="nav nav-desk">
         <div class="nav-section">Workspace</div>
         ${navLink("/", "dashboard", "home", isStaff() || can("dashboard.ops") ? "Dashboard" : "Home")}
         ${navLink("/tickets", "tickets", "ticket", isStaff() || can("ticket.view_all") ? "Tickets" : "My tickets")}
         ${navLink("/tickets/new", "new", "plus", "Raise a ticket")}
         ${navLink("/notifications", "notifications", "bell", "Notifications", html`<span class="count" id="nav-unread" hidden></span>`)}
+        ${!switchable() && state.tasks?.has_tasks ? navLink("/tasks/list?view=to_me", "tasks-to_me", "target", "My tasks", html`<span class="count" id="nav-mytasks" hidden></span>`) : ""}
         <div class="nav-section">Self-service</div>
         ${navLink("/kb", "kb", "book", "Knowledge base")}
         ${navLink("/kb/guide", "guide", "info", "How to use")}
@@ -75,12 +113,15 @@ function renderShell() {
         ${can("audit.view") ? navLink("/admin/audit", "audit", "shield", "Audit log") : ""}
         <button type="button" class="side-theme" id="side-theme">${icon("palette")}<span>Colours & dark mode</span></button>
       </nav>
-      <div class="sidebar-foot">Need urgent help? Call the IT Service Desk<br>for urgent (High) problems after raising a ticket.</div>
+      <div class="sidebar-foot only-desk-block">Need urgent help? Call the IT Service Desk<br>for urgent (High) problems after raising a ticket.</div>
     </aside>
     <div class="main">
       <header class="topbar">
         <button class="icon-btn menu-btn" id="menu-btn" aria-label="Open navigation">${icon("menu")}</button>
         <div class="company-title" title="${brand.name}">${brand.name}</div>
+        ${switchable() ? html`<div class="mode-switch" role="tablist" aria-label="Switch area">
+          <a href="#/tasks" data-mode-go="tasks" role="tab">${icon("target")}<span>Tasks</span></a>
+          <a href="#/" data-mode-go="desk" role="tab">${icon("ticket")}<span>IT Service Desk</span></a></div>` : ""}
         <div class="search" role="search">
           ${icon("search")}
           <input type="search" id="global-search" placeholder="${isStaff() ? "Search tickets, employee ID or name…  ( / )" : "Search tickets and articles…  ( / )"}" autocomplete="off"
@@ -100,21 +141,29 @@ function renderShell() {
       </header>
       <div id="ann-bar" class="ann-bar" aria-live="polite"></div>
       <main class="content" id="view" tabindex="-1"></main>
-      <nav class="bottom-nav" aria-label="Quick navigation">
+      <nav class="bottom-nav only-tasks-flex" aria-label="Quick navigation (tasks)">
+        <a href="#/tasks" data-nav="tasks-home">${icon("home")}<span>Home</span></a>
+        <a href="#/tasks/list" data-nav="tasks-list">${icon("list")}<span>Tasks</span></a>
+        ${state.tasks?.can_assign ? html`<a href="#/tasks/new" data-nav="tasks-new" class="bn-raise">${icon("plus")}<span>Assign</span></a>` : ""}
+        <a href="#/notifications" data-nav="notifications">${icon("bell")}<span>Alerts</span></a>
+        <button type="button" class="bn-more">${icon("menu")}<span>Menu</span></button>
+      </nav>
+      <nav class="bottom-nav only-desk-flex" aria-label="Quick navigation">
         <a href="#/" data-nav="dashboard">${icon("home")}<span>Home</span></a>
         <a href="#/tickets" data-nav="tickets">${icon("ticket")}<span>Tickets</span></a>
         <a href="#/tickets/new" data-nav="new" class="bn-raise">${icon("plus")}<span>Raise</span></a>
         <a href="#/notifications" data-nav="notifications">${icon("bell")}<span>Alerts</span><span class="bn-count" id="bn-unread" hidden></span></a>
-        <button type="button" id="bn-more">${icon("menu")}<span>Menu</span></button>
+        <button type="button" id="bn-more" class="bn-more">${icon("menu")}<span>Menu</span></button>
       </nav>
       <div class="nav-scrim" id="nav-scrim"></div>
     </div>
   </div>`);
 
   $("#menu-btn").addEventListener("click", () => $("#shell").classList.toggle("nav-open"));
-  $("#bn-more").addEventListener("click", () => $("#shell").classList.toggle("nav-open"));
+  $$(".bn-more").forEach((b) => b.addEventListener("click", () => $("#shell").classList.toggle("nav-open")));
+  $$("[data-mode-go]").forEach((a) => a.addEventListener("click", () => { try { localStorage.setItem("sd-mode", a.dataset.modeGo); } catch { /* */ } }));
   $("#nav-scrim").addEventListener("click", () => $("#shell").classList.remove("nav-open"));
-  $("#side-theme").addEventListener("click", (e) => { e.stopPropagation(); $("#shell").classList.remove("nav-open"); setTimeout(() => $("#theme-btn").click(), 50); });
+  $$("#side-theme, [data-theme-open]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); $("#shell").classList.remove("nav-open"); setTimeout(() => $("#theme-btn").click(), 50); }));
   $("#search-btn").addEventListener("click", () => {
     const open = $("#shell").classList.toggle("search-open");
     if (open) setTimeout(() => $("#global-search")?.focus(), 30);
@@ -230,6 +279,7 @@ async function signOut() {
   try { await api.logout(); } catch { /* ignore */ }
   clearInterval(pollTimer);
   resetState();
+  landed = false;
   navigate("/login");
   route();
 }
@@ -245,7 +295,13 @@ async function route() {
     return loginPage.render($("#app"), { onLogin: boot });
   }
   if (!state.me) return navigate("/login");
+  if (path === "/" && switchable() && prefersTasks() && !landed) { landed = true; return navigate("/tasks"); }
+  landed = true;
   if (!$("#view")) renderShell();
+  const mode = path.startsWith("/tasks") || (path === "/notifications" && $("#shell")?.dataset.mode === "tasks") ? "tasks" : "desk";
+  $("#shell").dataset.mode = mode;
+  $$("[data-mode-go]").forEach((a) => a.classList.toggle("on", a.dataset.modeGo === mode));
+  if (mode === "desk" && path === "/") { try { localStorage.setItem("sd-mode", "desk"); } catch { /* */ } }
 
   // Each navigation renders into a fresh container, so a slow page that finishes loading after the
   // user has moved on writes into a detached element instead of over the current page.
@@ -256,7 +312,8 @@ async function route() {
   for (const [re, fn, key, perm] of ROUTES) {
     const m = path.match(re);
     if (!m) continue;
-    $$(".nav a, .bottom-nav a").forEach((a) => a.classList.toggle("active", a.dataset.nav === key));
+    const navKey = key === "tasks-list" && path === "/tasks/list" ? `tasks-${query.view || (state.tasks?.can_assign ? "by_me" : "to_me")}` : key;
+    $$(".nav a, .bottom-nav a").forEach((a) => a.classList.toggle("active", a.dataset.nav === navKey || (key === "tasks-list" && a.dataset.nav === "tasks-list")));
     $("#shell")?.classList.remove("nav-open", "search-open");
     if (perm && !can(perm)) {
       mount(view, html`<div class="card"><div class="empty">${icon("lock")}<h3>Not available</h3><p>You do not have access to this page.</p></div></div>`);
@@ -278,6 +335,7 @@ async function boot() {
   try {
     // load the profile and the (rarely changing) catalog together: saves one round trip on most pages
     await Promise.all([loadMe(), catalog().catch(() => null)]);
+    await refreshTaskAccess();
     setTimezone(state.me.timezone);
     $("#app").innerHTML = "";
     if (parseHash().path === "/login") navigate("/"); // hashchange triggers route()
@@ -288,6 +346,7 @@ async function boot() {
 setSessionLostHandler(() => {
   if (!state.me) return;
   resetState();
+  landed = false;
   toast("Your session has ended. Please sign in again.", "info");
   navigate("/login");
 });

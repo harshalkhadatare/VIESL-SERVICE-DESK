@@ -28,9 +28,9 @@ def test_invalid_date_range(client):
     assert r.status_code == 422
 
 
-def test_only_two_roles_exist(client):
+def test_roles_are_employee_admin_and_task_management(client):
     roles = client.get("/api/v1/admin/roles", headers=auth("admin")).json()
-    assert [r["code"] for r in roles] == ["employee", "it_admin"]
+    assert sorted(r["code"] for r in roles) == ["employee", "it_admin", "task_manager", "top_management"]
 
 
 def test_role_change_admin_only_and_audited(client):
