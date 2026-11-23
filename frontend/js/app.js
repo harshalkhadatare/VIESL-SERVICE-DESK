@@ -72,7 +72,7 @@ function tasksNav() {
     ${t.can_assign ? navLink("/tasks/new", "tasks-new", "plus", "Assign a task") : ""}
     ${navLink("/tasks/performance", "tasks-performance", "target", "Performance")}
     ${navLink("/tasks/analytics", "tasks-analytics", "activity", "Analytics")}
-    ${navLink("/notifications", "notifications", "bell", "Notifications")}
+    ${navLink("/notifications?area=tasks", "tasks-notifications", "bell", "Notifications", html`<span class="count" id="nav-unread-t" hidden></span>`)}
     <div class="nav-section">Switch</div>
     <a href="#/" data-mode-go="desk">${icon("ticket")}<span>IT Service Desk</span></a>
     <button type="button" class="side-theme" data-theme-open>${icon("palette")}<span>Colours & dark mode</span></button>
@@ -135,7 +135,7 @@ function renderShell() {
         </div>
         <div class="topbar-right">
           <button class="icon-btn search-btn" id="search-btn" aria-label="Search" title="Search">${icon("search")}</button>
-          <a class="icon-btn" href="#/notifications" aria-label="Notifications" title="Notifications">${icon("bell")}
+          <a class="icon-btn" href="#/notifications" id="bell-link" aria-label="Notifications" title="Notifications">${icon("bell")}
             <span class="dot-count" id="bell-count" hidden></span></a>
           <button class="icon-btn theme-btn" id="theme-btn" aria-label="Colour theme and dark mode" title="Colour theme & dark mode" aria-haspopup="dialog" aria-expanded="false">${icon("palette")}</button>
           <button class="user-chip" id="user-btn" aria-haspopup="menu" aria-expanded="false">
@@ -150,7 +150,7 @@ function renderShell() {
         <a href="#/tasks" data-nav="tasks-home">${icon("home")}<span>Home</span></a>
         <a href="#/tasks/list" data-nav="tasks-list">${icon("list")}<span>Tasks</span></a>
         ${state.tasks?.can_assign ? html`<a href="#/tasks/new" data-nav="tasks-new" class="bn-raise">${icon("plus")}<span>Assign</span></a>` : ""}
-        <a href="#/notifications" data-nav="notifications">${icon("bell")}<span>Alerts</span></a>
+        <a href="#/notifications?area=tasks" data-nav="tasks-notifications">${icon("bell")}<span>Alerts</span><span class="bn-count" id="bn-unread-t" hidden></span></a>
         <button type="button" class="bn-more">${icon("menu")}<span>Menu</span></button>
       </nav>
       <nav class="bottom-nav only-desk-flex" aria-label="Quick navigation">
@@ -264,10 +264,16 @@ function setupSearch() {
   });
 }
 
+/** Which notifications this area shows: Task management → tasks only; IT desk → tickets only (people who use both). */
+export function notifArea() {
+  if ($("#shell")?.dataset.mode === "tasks") return "tasks";
+  return switchable() ? "desk" : undefined;   // employees without the switch see everything in one list
+}
+
 export async function refreshUnread() {
   try {
-    const { count } = await api.get("/notifications/unread-count");
-    for (const id of ["bell-count", "nav-unread", "bn-unread"]) {
+    const { count } = await api.get("/notifications/unread-count", { area: notifArea() });
+    for (const id of ["bell-count", "nav-unread", "bn-unread", "nav-unread-t", "bn-unread-t"]) {
       const el = document.getElementById(id);
       if (!el) continue;
       el.hidden = !count; el.textContent = count > 99 ? "99+" : count;
@@ -303,8 +309,11 @@ async function route() {
   if (path === "/" && switchable() && prefersTasks() && !landed) { landed = true; return navigate("/tasks"); }
   landed = true;
   if (!$("#view")) renderShell();
-  const mode = path.startsWith("/tasks") || (path === "/notifications" && $("#shell")?.dataset.mode === "tasks") ? "tasks" : "desk";
+  const mode = path.startsWith("/tasks") || (path === "/notifications" && query.area === "tasks") ? "tasks" : "desk";
+  const modeChanged = $("#shell").dataset.mode !== mode;
   $("#shell").dataset.mode = mode;
+  if (modeChanged) refreshUnread();   // the bell counts this area's notifications only
+  $("#bell-link")?.setAttribute("href", mode === "tasks" ? "#/notifications?area=tasks" : "#/notifications");
   $$("[data-mode-go]").forEach((a) => a.classList.toggle("on", a.dataset.modeGo === mode));
   if (mode === "desk" && path === "/") { try { localStorage.setItem("sd-mode", "desk"); } catch { /* */ } }
 

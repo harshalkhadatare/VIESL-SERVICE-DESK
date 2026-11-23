@@ -107,3 +107,22 @@ def test_advanced_search_and_no_deadline(client):
     assert an["scope"] == "team" and an["totals"]["tasks"] >= 2 and len(an["weeks"]) == 8
     me = client.get(f"{API}/analytics", headers=auth("employee2")).json()
     assert me["scope"] == "me"
+
+
+def test_notifications_split_by_area(client):
+    mgr = _mgr()
+    emp = _real_user("v2.split@visioninfra.co.in", "Sita Split", "employee")
+    client.post(API, json={"title": "Area split task", "assignee_ids": [emp], "due_at": _iso()}, headers=_hdr(mgr))
+    # a ticket notification for the same person
+    client.post("/api/v1/tickets", headers=_hdr(emp), json={"subject": "Printer jam on floor 2",
+                "description": "Paper stuck in tray 2 since morning", "desk": "it", "category_id": 1})
+    tasks = client.get("/api/v1/notifications", params={"area": "tasks"}, headers=_hdr(emp)).json()["items"]
+    desk = client.get("/api/v1/notifications", params={"area": "desk"}, headers=_hdr(emp)).json()["items"]
+    assert tasks and all(n["area"] == "tasks" and n["event"].startswith("task_") for n in tasks)
+    assert tasks[0]["ticket_number"].startswith("TSK-")
+    assert all(n["area"] == "desk" for n in desk)
+    t = client.get("/api/v1/notifications/unread-count", params={"area": "tasks"}, headers=_hdr(emp)).json()["count"]
+    allc = client.get("/api/v1/notifications/unread-count", headers=_hdr(emp)).json()["count"]
+    assert 1 <= t <= allc
+    client.post("/api/v1/notifications/read-all", params={"area": "tasks"}, headers=_hdr(emp))
+    assert client.get("/api/v1/notifications/unread-count", params={"area": "tasks"}, headers=_hdr(emp)).json()["count"] == 0

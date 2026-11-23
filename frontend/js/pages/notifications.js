@@ -1,6 +1,6 @@
 import { api } from "../api.js";
 import { $, $$, html, mount, icon, fmtRelative, fmtDate, emptyState, errorToast, toast, initials } from "../ui.js";
-import { refreshUnread } from "../app.js";
+import { refreshUnread, notifArea } from "../app.js";
 
 // What each event is called on screen, its icon and its colour
 const EV = {
@@ -14,6 +14,15 @@ const EV = {
   ticket_closed:   ["Closed", "check", "neutral"],
   sla_warning:     ["Deadline near", "clock", "warn"],
   sla_breached:    ["Overdue", "alert", "danger"],
+  // task management
+  task_assigned:   ["New task", "target", "info"],
+  task_update:     ["Task update", "send", "primary"],
+  task_submitted:  ["Ready for review", "flag", "warn"],
+  task_completed:  ["Completed", "checkCircle", "ok"],
+  task_returned:   ["Changes needed", "refresh", "warn"],
+  task_extension:  ["Deadline", "clock", "info"],
+  task_due_soon:   ["Due soon", "clock", "warn"],
+  task_overdue:    ["Overdue", "alert", "danger"],
 };
 const KINDS = [["", "All types"], ["messages", "Messages"], ["updates", "Status updates"], ["alerts", "Alerts"]];
 
@@ -27,10 +36,12 @@ function dayLabel(v) {
   return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
-export async function render(view) {
+export async function render(view, _p, query = {}) {
   let unreadOnly = false, kind = "", page = 1;
-  mount(view, html`<div class="page-head"><div><h1>Notifications</h1>
-      <div class="sub" id="nsub">Updates on tickets you raised or work on.</div></div>
+  const area = query.area === "tasks" ? "tasks" : notifArea();
+  const tasks = area === "tasks";
+  mount(view, html`<div class="page-head"><div><h1>${tasks ? "Task notifications" : "Notifications"}</h1>
+      <div class="sub" id="nsub">${tasks ? "Only Task management: new tasks, updates, approvals and deadline reminders." : "Updates on tickets you raised or work on."}</div></div>
     <button class="btn" id="mark">${icon("check")} Mark all as read</button></div>
     <div class="nf-bar">
       <div class="seg" id="nf"><button class="on" data-v="all">All</button><button data-v="unread">Unread</button></div>
@@ -50,11 +61,11 @@ export async function render(view) {
           ${n.ticket_number ? html`<span class="nf-num">${n.ticket_number}</span>` : ""}
           <span class="nf-time" title="${fmtDate(n.created_at)}">${fmtRelative(n.created_at)}</span></span>
         <span class="nf-title">${n.title}</span>
-        ${n.ticket_subject ? html`<span class="nf-subj">${icon("ticket")} ${n.ticket_subject}</span>` : ""}
+        ${n.ticket_subject ? html`<span class="nf-subj">${icon(n.area === "tasks" ? "target" : "ticket")} ${n.ticket_subject}</span>` : ""}
         ${body ? html`<span class="nf-body">${body}</span>` : ""}
         <span class="nf-meta">
           ${n.ticket_status ? html`<span class="nf-pill">Status: <b>${n.ticket_status}</b></span>` : ""}
-          ${n.ticket_number ? (n.assignee_name
+          ${n.area === "tasks" && n.assignee_name ? html`<span class="nf-pill">${icon("users")} ${n.assignee_name}</span>` : n.ticket_number ? (n.assignee_name
             ? html`<span class="nf-pill"><span class="avatar">${initials(n.assignee_name)}</span>${n.assignee_name}</span>`
             : html`<span class="nf-pill warn">Not yet assigned</span>`) : ""}
           ${n.email_status === "sent" ? html`<span class="nf-pill" title="An email was also sent">${icon("mail")} Emailed</span>` : ""}
@@ -67,8 +78,8 @@ export async function render(view) {
   async function load() {
     try {
       const [r, unread] = await Promise.all([
-        api.get("/notifications", { unread_only: unreadOnly, page, page_size: 20, ...(kind ? { kind } : {}) }),
-        api.get("/notifications/unread-count").catch(() => null),
+        api.get("/notifications", { unread_only: unreadOnly, page, page_size: 20, area, ...(kind ? { kind } : {}) }),
+        api.get("/notifications/unread-count", { area }).catch(() => null),
       ]);
       if (!$("#nl", view)?.isConnected) return;
       if (unread) $("#nsub", view).textContent = unread.count
@@ -106,7 +117,7 @@ export async function render(view) {
     kind = b.dataset.v; page = 1; load();
   });
   $("#mark", view).addEventListener("click", async () => {
-    try { await api.post("/notifications/read-all"); toast("All notifications marked as read."); refreshUnread(); load(); } catch (e) { errorToast(e); }
+    try { await api.post(`/notifications/read-all${area ? `?area=${area}` : ""}`); toast("All notifications marked as read."); refreshUnread(); load(); } catch (e) { errorToast(e); }
   });
   await load();
 }

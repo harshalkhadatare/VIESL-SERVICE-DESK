@@ -31,11 +31,19 @@ class NotificationOut(BaseModel):
     ticket_number: str | None = None
     ticket_subject: str | None = None
     ticket_status: str | None = None
-    assignee_name: str | None = None      # current assigned IT administrator
+    assignee_name: str | None = None      # current assigned IT administrator (tickets) / people on the task
     email_status: str = "none"
+    area: str = "desk"                    # "desk" = IT ticket, "tasks" = Task management
 
 
-def _notif_out(n: Notification, t: Ticket | None) -> NotificationOut:
+def _notif_out(n: Notification, t: Ticket | None, task=None) -> NotificationOut:
+    if task is not None:
+        from app.services.tasks import STATUS_NAME
+        return NotificationOut(
+            id=n.id, event=n.event, title=n.title, body=n.body, link=n.link, is_read=n.is_read,
+            created_at=n.created_at, email_status=n.email_status, area="tasks",
+            ticket_number=task.number, ticket_subject=task.title, ticket_status=STATUS_NAME[task.status],
+            assignee_name=", ".join(u.full_name for u in task.assignees))
     return NotificationOut(
         id=n.id, event=n.event, title=n.title, body=n.body, link=n.link, is_read=n.is_read,
         created_at=n.created_at, email_status=n.email_status,
@@ -45,17 +53,28 @@ def _notif_out(n: Notification, t: Ticket | None) -> NotificationOut:
 
 
 NOTIF_KINDS = {
-    "messages": ("comment_added", "info_requested"),
-    "updates": ("ticket_created", "ticket_assigned", "status_changed", "ticket_resolved", "ticket_reopened", "ticket_closed"),
-    "alerts": ("sla_warning", "sla_breached"),
+    "messages": ("comment_added", "info_requested", "task_update"),
+    "updates": ("ticket_created", "ticket_assigned", "status_changed", "ticket_resolved", "ticket_reopened", "ticket_closed",
+                "task_assigned", "task_submitted", "task_completed", "task_returned", "task_extension"),
+    "alerts": ("sla_warning", "sla_breached", "task_due_soon", "task_overdue"),
 }
+
+
+def _area(stmt, area: str | None):
+    """Task management shows only task notifications; the IT desk shows only ticket ones."""
+    if area == "tasks":
+        return stmt.where(Notification.task_id.isnot(None))
+    if area == "desk":
+        return stmt.where(Notification.task_id.is_(None))
+    return stmt
 
 
 @router.get("/notifications", response_model=Page[NotificationOut], tags=["Notifications"])
 def notifications(unread_only: bool = False, kind: str | None = Query(None, pattern="^(messages|updates|alerts)$"),
+                  area: str | None = Query(None, pattern="^(tasks|desk)$"),
                   page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
                   p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
-    stmt = select(Notification).where(Notification.user_id == p.id)
+    stmt = _area(select(Notification).where(Notification.user_id == p.id), area)
     if unread_only:
         stmt = stmt.where(Notification.is_read.is_(False))
     if kind:
@@ -65,14 +84,19 @@ def notifications(unread_only: bool = False, kind: str | None = Query(None, patt
                       .offset((page - 1) * page_size).limit(page_size)).all()
     tids = {n.ticket_id for n in rows if n.ticket_id}
     tickets = {t.id: t for t in db.scalars(select(Ticket).where(Ticket.id.in_(tids)))} if tids else {}
-    return Page(items=[_notif_out(n, tickets.get(n.ticket_id)) for n in rows],
+    from app.models.task import Task
+    kids = {n.task_id for n in rows if n.task_id}
+    tasks = {t.id: t for t in db.scalars(select(Task).where(Task.id.in_(kids)))} if kids else {}
+    return Page(items=[_notif_out(n, tickets.get(n.ticket_id), tasks.get(n.task_id)) for n in rows],
                 total=total, page=page, page_size=page_size)
 
 
 @router.get("/notifications/unread-count", tags=["Notifications"])
-def unread_count(p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
-    return {"count": db.scalar(select(func.count()).select_from(Notification)
-                               .where(Notification.user_id == p.id, Notification.is_read.is_(False)))}
+def unread_count(area: str | None = Query(None, pattern="^(tasks|desk)$"), p: Principal = Depends(get_principal),
+                 db: Session = Depends(get_db)):
+    stmt = _area(select(func.count()).select_from(Notification)
+                 .where(Notification.user_id == p.id, Notification.is_read.is_(False)), area)
+    return {"count": db.scalar(stmt)}
 
 
 @router.post("/notifications/{nid}/read", status_code=204, tags=["Notifications"])
@@ -86,9 +110,14 @@ def mark_read(nid: int, p: Principal = Depends(get_principal), db: Session = Dep
 
 
 @router.post("/notifications/read-all", status_code=204, tags=["Notifications"])
-def mark_all(p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
-    db.execute(update(Notification).where(Notification.user_id == p.id, Notification.is_read.is_(False))
-               .values(is_read=True))
+def mark_all(area: str | None = Query(None, pattern="^(tasks|desk)$"), p: Principal = Depends(get_principal),
+             db: Session = Depends(get_db)):
+    w = [Notification.user_id == p.id, Notification.is_read.is_(False)]
+    if area == "tasks":
+        w.append(Notification.task_id.isnot(None))
+    elif area == "desk":
+        w.append(Notification.task_id.is_(None))
+    db.execute(update(Notification).where(*w).values(is_read=True))
     db.commit()
     return Response(status_code=204)
 

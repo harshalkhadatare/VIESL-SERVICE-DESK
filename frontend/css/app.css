@@ -1490,36 +1490,45 @@ aside .tk-bar { max-width: none; height: 9px; }
 .tk-card:hover, .tk-card:hover *, .tk-att a:hover, .tk-att a:hover *, .tk-kpi:hover, .tk-kpi:hover * { text-decoration: none; }
 .tk-pick-in[hidden] { display: none; }
 
-/* =================================================================== Task management — sky theme (Tasks area only) */
-.shell[data-mode="tasks"] .main {
+/* =================================================================== Sky theme — whole app (IT Service Desk and Task management) */
+.shell .main {
   background: #1b2a5c url("/static/assets/tasks-bg.jpg") center / cover fixed no-repeat;
   --tk-glass: rgba(18, 28, 66, .42); --tk-glass-2: rgba(255, 255, 255, .14); --tk-line: rgba(255, 255, 255, .22);
   --tk-ink: #fff; --tk-ink-2: rgba(255, 255, 255, .78);
 }
-@media (max-width: 900px) { .shell[data-mode="tasks"] .main { background-image: url("/static/assets/tasks-bg-sm.jpg"); background-attachment: scroll; } }
+@media (max-width: 900px) { .shell .main { background-image: url("/static/assets/tasks-bg-sm.jpg"); background-attachment: scroll; } }
 .shell[data-mode="tasks"] .content { max-width: none; padding: 18px 26px 56px; }
-.shell[data-mode="tasks"] .topbar { background: rgba(14, 22, 52, .55); border-bottom-color: var(--tk-line); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
-.shell[data-mode="tasks"] .topbar .company-title, .shell[data-mode="tasks"] .topbar .icon-btn, .shell[data-mode="tasks"] .topbar .me-name { color: #fff; }
-.shell[data-mode="tasks"] .topbar .me-role { color: rgba(255,255,255,.72); }
-.shell[data-mode="tasks"] .user-chip, .shell[data-mode="tasks"] .user-chip .who, .shell[data-mode="tasks"] .user-chip .who * { color: #fff !important; }
-.shell[data-mode="tasks"] .user-chip .who small, .shell[data-mode="tasks"] .user-chip .who span:last-child { opacity: .78; }
-.shell[data-mode="tasks"] .topbar .global-search input { background: rgba(255,255,255,.14); border-color: var(--tk-line); color: #fff; }
-.shell[data-mode="tasks"] .topbar .global-search input::placeholder { color: rgba(255,255,255,.7); }
-.shell[data-mode="tasks"] .mode-switch { background: rgba(255,255,255,.12); border-color: var(--tk-line); }
-.shell[data-mode="tasks"] .mode-switch a { color: rgba(255,255,255,.85); }
-.shell[data-mode="tasks"] .mode-switch a.on { background: #2fc26b; color: #fff; }
-.shell[data-mode="tasks"] .ann-bar { display: none; }                         /* keep the sky clean: banners stay on the IT desk */
-.shell[data-mode="tasks"] .content h1, .shell[data-mode="tasks"] .content .page-head .sub, .shell[data-mode="tasks"] .crumbs,
-.shell[data-mode="tasks"] .crumbs a, .tk-sub { color: #fff; text-shadow: 0 1px 8px rgba(0,0,0,.35); }
-.shell[data-mode="tasks"] .tk-hello .sub { color: rgba(255,255,255,.85) !important; }
+.shell .topbar { background: rgba(14, 22, 52, .55); border-bottom-color: var(--tk-line); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.shell .topbar .company-title, .shell .topbar .icon-btn, .shell .topbar .menu-btn { color: #fff; }
+.shell .topbar .icon-btn:hover { background: rgba(255,255,255,.12); }
+.shell .user-chip, .shell .user-chip .who, .shell .user-chip .who * { color: #fff !important; }
+.shell .user-chip .who span { opacity: .78; }
+.shell .user-chip:hover { background: rgba(255,255,255,.12); }
+.shell .topbar .global-search input { background: rgba(255,255,255,.14); border-color: var(--tk-line); color: #fff; }
+.shell .topbar .global-search input::placeholder { color: rgba(255,255,255,.7); }
+.shell .topbar .global-search svg { color: rgba(255,255,255,.8); }
+.shell .mode-switch { background: rgba(255,255,255,.12); border-color: var(--tk-line); }
+.shell .mode-switch a { color: rgba(255,255,255,.85); }
+.shell .mode-switch a.on { background: #2fc26b; color: #fff; }
+/* text that sits straight on the sky */
+.shell .content > .page > .page-head h1, .shell .content > .page > .page-head .sub, .shell .content > .page > .page-head .sub b,
+.shell .content .crumbs, .shell .content .crumbs a, .shell .content .crumbs span, .tk-sub,
+.shell .content > .page > .section-label, .shell .content > .page > h2, .shell .content .nf-day h3 {
+  color: #fff !important; text-shadow: 0 1px 8px rgba(0,0,0,.35); }
+.shell .content > .page > .section-label .pill { background: rgba(255,255,255,.2); color: #fff; }
+.shell .tk-hello .sub { color: rgba(255,255,255,.85) !important; }
+/* tabs and chips that sit on the sky */
+.shell .content > .page > .tabs { border-bottom-color: rgba(255,255,255,.3); }
+.shell .content > .page > .tabs button { color: rgba(255,255,255,.8); }
+.shell .content > .page > .tabs button.on { color: #fff; border-bottom-color: #fff; }
 
 /* glass building blocks */
-.tk-panel, .shell[data-mode="tasks"] .content .card, .shell[data-mode="tasks"] .kpi {
+.tk-panel, .shell .content .card, .shell .content .kpi, .shell .content .table-card {
   background: rgba(255, 255, 255, .9); border: 1px solid rgba(255, 255, 255, .55); border-radius: 14px;
   box-shadow: 0 10px 30px rgba(8, 16, 48, .18); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
 }
 .tk-panel { margin-bottom: 16px; overflow: hidden; }
-html[data-mode="dark"] .tk-panel, html[data-mode="dark"] .shell[data-mode="tasks"] .content .card, html[data-mode="dark"] .shell[data-mode="tasks"] .kpi {
+html[data-mode="dark"] .tk-panel, html[data-mode="dark"] .shell .content .card, html[data-mode="dark"] .shell .content .kpi {
   background: rgba(16, 22, 38, .86); border-color: rgba(255, 255, 255, .08); }
 .tk-glass, .tk-glass-sel { background: var(--tk-glass) !important; border: 1px solid var(--tk-line) !important; color: #fff !important; backdrop-filter: blur(10px); }
 .tk-glass:hover { background: rgba(18, 28, 66, .6) !important; }
@@ -1717,9 +1726,9 @@ html[data-mode="dark"] .tk-col2 .tk-card { background: rgba(16,22,38,.94); }
 .tk-hidden svg { width: 13px; height: 13px; }
 .tk-crumbs { margin-bottom: 8px; }
 .tk-head { padding: 18px 20px; }
-.tk-head h1 { color: var(--text) !important; text-shadow: none !important; }
-.tk-head .sub { color: var(--muted) !important; text-shadow: none !important; }
-.shell[data-mode="tasks"] .notice { box-shadow: 0 6px 18px rgba(8,16,48,.15); }
+.shell .content > .page > .tk-head h1, .shell .content .tk-head h1 { color: var(--text) !important; text-shadow: none !important; }
+.shell .content > .page > .tk-head .sub, .shell .content .tk-head .sub { color: var(--muted) !important; text-shadow: none !important; }
+.shell .content .notice { box-shadow: 0 6px 18px rgba(8,16,48,.15); }
 .tk-sub { margin: -4px 0 14px; }
 
 /* ---------- phones & tablets */
@@ -1746,3 +1755,60 @@ html[data-mode="dark"] .tk-col2 .tk-card { background: rgba(16,22,38,.94); }
   .tk-adv-grid { padding: 14px; }
   .tk-layout { gap: 12px; }
 }
+
+/* ---------- advanced search: tidy grid (date ranges get room, no overlap) */
+.tk-adv-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.tk-adv-grid .field { min-width: 0; }
+.tk-adv-grid .f-wide { grid-column: span 2; }
+.tk-range { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; align-items: center; }
+.tk-range input { width: 100%; min-width: 0; }
+.tk-checks { align-content: flex-start; padding-top: 4px; }
+@media (max-width: 1200px) { .tk-adv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .tk-adv-grid { grid-template-columns: minmax(0, 1fr); } .tk-adv-grid .f-wide { grid-column: auto; } }
+
+/* ---------- task conversation (chat) */
+.tk-chat-card { overflow: hidden; }
+.tk-chat { max-height: 620px; overflow-y: auto; padding: 14px 20px 18px; display: flex; flex-direction: column; gap: 12px;
+  background: linear-gradient(180deg, rgba(240,245,252,.6), rgba(240,245,252,.25)); }
+html[data-mode="dark"] .tk-chat { background: transparent; }
+.tk-day { display: flex; align-items: center; gap: 12px; margin: 4px 0; color: var(--muted); font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.tk-day::before, .tk-day::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.tk-day span { padding: 3px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
+.tk-sys { display: flex; justify-content: center; }
+.tk-sys span { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: 92%; text-align: center;
+  font-size: 12.5px; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px; }
+.tk-sys svg { width: 13px; height: 13px; color: var(--primary); flex: none; }
+.tk-msg { display: flex; gap: 10px; align-items: flex-end; max-width: 78%; }
+.tk-msg .avatar { width: 32px; height: 32px; font-size: 11px; flex: none; margin-bottom: 2px; }
+.tk-msg.mine { margin-left: auto; flex-direction: row-reverse; }
+.tk-bubble-wrap { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tk-msg.mine .tk-bubble-wrap { align-items: flex-end; }
+.tk-msg-head { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; padding: 0 4px; flex-wrap: wrap; }
+.tk-msg-head b { font-size: 13px; color: var(--text); }
+.tk-role { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--primary-text); background: var(--primary-soft);
+  padding: 1px 7px; border-radius: 999px; }
+.tk-bubble { background: #fff; border: 1px solid var(--border); border-radius: 4px 16px 16px 16px; padding: 10px 14px; box-shadow: 0 2px 8px rgba(8,16,48,.06);
+  display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.tk-msg.mine .tk-bubble { background: #E2F5E7; border-color: #B3E0C0; border-radius: 16px 4px 16px 16px; align-items: flex-end; }
+html[data-mode="dark"] .tk-bubble { background: var(--surface-2); }
+html[data-mode="dark"] .tk-msg.mine .tk-bubble { background: rgba(74, 222, 128, .13); border-color: rgba(74, 222, 128, .34); }
+.tk-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.55; color: var(--text); text-align: left; align-self: stretch; }
+.tk-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px;
+  background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border); }
+.tk-tag svg { width: 12px; height: 12px; }
+.tk-tag.t-progress { background: var(--info-soft); color: var(--info); border-color: transparent; }
+.tk-tag.t-done { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+.tk-tag.t-submit, .tk-tag.t-time { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.tk-tag.t-back { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
+.tk-compose { border-top: 1px solid var(--border); padding: 14px 20px 16px; display: flex; flex-direction: column; gap: 10px; background: var(--surface); }
+.tk-compose-row { display: flex; gap: 10px; align-items: flex-end; }
+.tk-compose-row textarea { flex: 1; min-height: 46px; resize: vertical; }
+.tk-compose-row .btn { height: 46px; }
+.tk-compose-hint { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tk-compose-hint svg { width: 12px; height: 12px; }
+.tk-compose-hint kbd { font-size: 11px; border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; background: var(--surface-2); }
+@media (max-width: 640px) { .tk-msg { max-width: 94%; } .tk-chat { padding: 12px; max-height: none; } .tk-compose { padding: 12px; } }
+
+/* live-now counters that sit on the sky */
+.shell .content .section-label .queue-line a { color: rgba(255,255,255,.85); }
+.shell .content .section-label .queue-line b { color: #fff; }

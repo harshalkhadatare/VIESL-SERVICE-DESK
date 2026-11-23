@@ -51,7 +51,7 @@ export async function render(view, [number], query = {}) {
     const closed = ["CLOSED", "CANCELLED"].includes(t.status.code);
     mount(view, html`
       <div class="crumbs"><a href="#/tickets">Tickets</a> / <span class="mono">${t.number}</span></div>
-      <div class="page-head" style="align-items:flex-start">
+      <div class="page-head tk-head tk-panel" style="align-items:flex-start">
         <div style="min-width:0;flex:1">
           <div class="ticket-title"><span class="t-id" style="font-size:13.5px">${t.number}</span>${deskBadge(t.desk)}${statusBadge(t.status)}${prioBadge(t.priority)}
             ${t.is_demo ? html`<span class="pill demo">Demo data</span>` : ""}

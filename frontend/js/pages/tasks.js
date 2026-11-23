@@ -330,14 +330,14 @@ export async function renderList(view, _p, query = {}) {
       <label class="field"><span class="lbl">Words in the title, number, category or person${acc.can_assign ? "" : ""}</span><input type="search" name="q" value="${f.q || ""}" placeholder="e.g. MIS, TSK-26-000012, Pune"></label>
       <label class="field"><span class="lbl">Role</span><select name="view">${[["mine", "Mine (assigned by or to me)"], ["to_me", "Assigned to me"],
         acc.can_assign && ["by_me", "Assigned by me"], acc.sees_all && ["all", "Whole company"]].filter(Boolean).map(([v, l]) => html`<option value="${v}" ${f.view === v ? "selected" : ""}>${l}</option>`)}</select></label>
-      <div class="field"><span class="lbl">Status</span><div class="tk-checks">${Object.entries(STATUS_LABEL).filter(([k]) => k !== "all").map(([k, l]) => html`<label><input type="checkbox" name="st" value="${k}" ${st.has(k) ? "checked" : ""}> ${l}</label>`)}</div></div>
+      <div class="field f-wide"><span class="lbl">Status</span><div class="tk-checks">${Object.entries(STATUS_LABEL).filter(([k]) => k !== "all").map(([k, l]) => html`<label><input type="checkbox" name="st" value="${k}" ${st.has(k) ? "checked" : ""}> ${l}</label>`)}</div></div>
       <div class="field"><span class="lbl">Priority</span><div class="tk-checks">${Object.entries(PRIO).map(([k, [l]]) => html`<label><input type="checkbox" name="pr" value="${k}" ${pr.has(k) ? "checked" : ""}> ${l}</label>`)}</div></div>
       ${acc.can_assign ? html`<div class="field"><span class="lbl">Person on the task</span><div id="adv-person"></div></div>` : ""}
       ${acc.can_assign ? html`<div class="field"><span class="lbl">Assigned by</span><div id="adv-assigner"></div></div>` : ""}
       <label class="field"><span class="lbl">Category</span><input type="text" name="category" value="${f.category || ""}" placeholder="e.g. Finance"></label>
-      <div class="field"><span class="lbl">Deadline between</span><div class="tk-range"><input type="date" name="due_from" value="${d10(f.due_from)}"><span>and</span><input type="date" name="due_to" value="${d10(f.due_to)}"></div></div>
-      <div class="field"><span class="lbl">Created between</span><div class="tk-range"><input type="date" name="created_from" value="${d10(f.created_from)}"><span>and</span><input type="date" name="created_to" value="${d10(f.created_to)}"></div></div>
-      <div class="field"><span class="lbl">Only</span><div class="tk-checks">
+      <div class="field f-wide"><span class="lbl">Deadline between</span><div class="tk-range"><input type="date" name="due_from" value="${d10(f.due_from)}"><span>and</span><input type="date" name="due_to" value="${d10(f.due_to)}"></div></div>
+      <div class="field f-wide"><span class="lbl">Created between</span><div class="tk-range"><input type="date" name="created_from" value="${d10(f.created_from)}"><span>and</span><input type="date" name="created_to" value="${d10(f.created_to)}"></div></div>
+      <div class="field f-wide"><span class="lbl">Only</span><div class="tk-checks">
         <label><input type="checkbox" name="overdue" ${f.overdue ? "checked" : ""}> Overdue</label>
         <label><input type="checkbox" name="unread" ${f.unread ? "checked" : ""}> With new comments</label>
         <label><input type="checkbox" name="no_deadline" ${f.no_deadline ? "checked" : ""}> No deadline</label>
@@ -756,6 +756,63 @@ export async function renderNew(view) {
 }
 
 // ======================================================================= task page
+// ---------- task conversation (chat style)
+const TAGS = { progress: (e) => html`<span class="tk-tag t-progress">${icon("activity")} Progress ${e.progress}%</span>`,
+  submitted: () => html`<span class="tk-tag t-submit">${icon("flag")} Marked complete</span>`,
+  completed: () => html`<span class="tk-tag t-done">${icon("checkCircle")} Completed</span>`,
+  approved: (e) => html`<span class="tk-tag t-done">${icon("checkCircle")} Approved${e.new_value ? ` · ${e.new_value}` : ""}</span>`,
+  returned: () => html`<span class="tk-tag t-back">${icon("refresh")} Changes needed</span>`,
+  cancelled: () => html`<span class="tk-tag t-back">${icon("x")} Cancelled</span>`,
+  extension_requested: (e) => html`<span class="tk-tag t-time">${icon("clock")} Asks for more time · until ${fmtDate(e.new_value)}</span>`,
+  extension_approved: (e) => html`<span class="tk-tag t-done">${icon("clock")} More time approved · ${fmtDate(e.new_value)}</span>`,
+  extension_declined: () => html`<span class="tk-tag t-back">${icon("clock")} Deadline kept</span>`,
+  description: () => html`<span class="tk-tag">${icon("edit")} Changed the details</span>`,
+  status: () => html`<span class="tk-tag t-progress">${icon("zap")} Started working</span>`,
+  deadline: (e) => html`<span class="tk-tag t-time">${icon("calendar")} ${e.new_value === "none" ? "Deadline removed" : `New deadline · ${fmtDate(e.new_value)}`}</span>`,
+  reassigned: () => html`<span class="tk-tag">${icon("users")} Changed the people</span>` };
+const timeOnly = (v) => new Date(v).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+function dayName(v) {
+  const d = new Date(v), t = new Date(), y = new Date(Date.now() - 86400000);
+  const same = (a, b) => a.toDateString() === b.toDateString();
+  return same(d, t) ? "Today" : same(d, y) ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+
+function chatCard(t) {
+  const c = t.can;
+  const memberIds = new Set((t.assignees || [t.assignee]).map((u) => u.id));
+  const roleOf = (u) => !u ? "" : u.id === t.assigner.id ? "Assigned by" : memberIds.has(u.id) ? "Assignee" : "";
+  let lastDay = "";
+  const rows = t.events.map((e) => {
+    const day = dayName(e.created_at);
+    const sep = day !== lastDay ? html`<div class="tk-day"><span>${day}</span></div>` : "";
+    lastDay = day;
+    const hasText = !!e.body || e.private;
+    const isMsg = hasText || ["submitted", "approved", "returned", "extension_requested"].includes(e.kind);
+    if (!isMsg) {   // a step, not a message: one small centred line
+      return html`${sep}<div class="tk-sys"><span>${icon(EV_ICON[e.kind] || "dot")} ${eventLine(e)} · ${timeOnly(e.created_at)}</span></div>`;
+    }
+    const mine = e.author && e.author.id === state.me.id;
+    const tag = TAGS[e.kind] ? TAGS[e.kind](e) : "";
+    return html`${sep}<div class="tk-msg ${mine ? "mine" : ""}">
+      ${mine ? "" : html`<span class="avatar">${initials(e.author?.name || "S")}</span>`}
+      <div class="tk-bubble-wrap">
+        <div class="tk-msg-head"><b>${mine ? "You" : (e.author?.name || "System")}</b>${roleOf(e.author) ? html`<span class="tk-role">${roleOf(e.author)}</span>` : ""}
+          <span class="muted" title="${fmtDate(e.created_at)}">${timeOnly(e.created_at)}</span></div>
+        <div class="tk-bubble k-${e.kind}">${tag}${e.body ? html`<div class="tk-text">${e.body}</div>` : e.private
+          ? html`<div class="tk-text tk-hidden">${icon("lock")} Message hidden — private to the people on this task</div>` : ""}</div>
+      </div></div>`;
+  });
+  const composer = c.update || c.comment ? html`<form class="tk-compose" id="up">
+      ${c.update ? html`<div class="tk-slider"><label for="up-p" class="lbl">Progress</label>
+        <input type="range" id="up-p" name="progress" min="0" max="100" step="5" value="${t.progress}"><b id="up-pv">${t.progress}%</b></div>` : ""}
+      <div class="tk-compose-row"><textarea name="body" rows="2" maxlength="4000" placeholder="${c.update ? "Write an update — what did you do? any problems?" : "Write a message…"}"></textarea>
+        <button class="btn primary" type="submit" data-busy aria-label="Send">${icon("send")}<span class="hide-sm"> Send</span></button></div>
+      <div class="tk-compose-hint">${icon("lock")} Only the people on this task can read this. They'll also get it by email. <span class="hide-sm"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> to send.</span></div>
+    </form>` : "";
+  return html`<div class="card tk-chat-card"><div class="card-head"><h2>${icon("send")} Conversation</h2><span class="hint">${t.events.length} entries</span></div>
+    <div class="tk-chat" id="tk-chat">${rows}</div>${composer}</div>`;
+}
+
 export async function renderDetail(view, [number]) {
   let t;
   async function reload(msg) {
@@ -796,19 +853,7 @@ export async function renderDetail(view, [number]) {
       <div class="tk-layout">
         <div class="stack" style="gap:16px">
           ${t.description ? html`<div class="card"><div class="card-head"><h2>Details</h2></div><div class="card-body tk-desc">${t.description}</div></div>` : ""}
-          ${c.update || c.comment ? html`<div class="card"><div class="card-head"><h2>${c.update ? "Post an update" : "Write a message"}</h2>
-              <span class="hint">${icon("lock")} only people on this task see it · they'll get an email</span></div>
-            <form class="card-body stack" id="up" style="gap:12px">
-              ${c.update ? html`<div class="tk-slider"><label for="up-p" class="lbl">Progress</label>
-                <input type="range" id="up-p" name="progress" min="0" max="100" step="5" value="${t.progress}"><b id="up-pv">${t.progress}%</b></div>` : ""}
-              <textarea name="body" rows="3" maxlength="4000" placeholder="${c.update ? "What did you do? Any problems?" : "Write a message…"}"></textarea>
-              <div class="row" style="justify-content:flex-end"><button class="btn primary" type="submit" data-busy>${icon("send")} ${c.update ? "Post update" : "Send"}</button></div>
-            </form></div>` : ""}
-          <div class="card"><div class="card-head"><h2>${icon("activity")} Timeline</h2><span class="hint">${t.events.length}</span></div>
-            <div class="card-body"><ol class="tk-tl">${[...t.events].reverse().map((e) => html`<li class="k-${e.kind}">
-              <span class="tk-tl-ic">${icon(EV_ICON[e.kind] || "dot")}</span>
-              <div><div>${eventLine(e)}</div>${e.body ? html`<div class="tk-tl-body">${e.body}</div>` : e.private ? html`<div class="tk-tl-body tk-hidden">${icon("lock")} Message hidden — private to the people on this task</div>` : ""}
-                <span class="muted small" title="${fmtDate(e.created_at)}">${fmtRelative(e.created_at)}</span></div></li>`)}</ol></div></div>
+          ${chatCard(t)}
         </div>
         <aside class="stack" style="gap:16px">
           <div class="card"><div class="card-body">
@@ -830,6 +875,9 @@ export async function renderDetail(view, [number]) {
   }
 
   function wire() {
+    const chat = $("#tk-chat", view);
+    if (chat) chat.scrollTop = chat.scrollHeight;
+    $("#up textarea", view)?.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("#up", view).requestSubmit(); } });
     const slider = $("#up-p", view);
     slider?.addEventListener("input", () => { $("#up-pv", view).textContent = `${slider.value}%`; });
     $("#up", view)?.addEventListener("submit", async (e) => {
