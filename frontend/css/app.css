@@ -1812,3 +1812,15 @@ html[data-mode="dark"] .tk-msg.mine .tk-bubble { background: rgba(74, 222, 128, 
 /* live-now counters that sit on the sky */
 .shell .content .section-label .queue-line a { color: rgba(255,255,255,.85); }
 .shell .content .section-label .queue-line b { color: #fff; }
+
+/* overview tiles: coloured top edge so each figure is easy to spot */
+.tk-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.tk-kpi { border-top: 4px solid var(--primary) !important; }
+.tk-kpi .value { font-size: 30px; }
+.tk-kpi.t-open { border-top-color: #2f80ed !important; }
+.tk-kpi.warn { border-top-color: #f2994a !important; }
+.tk-kpi.alert { border-top-color: #eb5757 !important; }
+.tk-kpi.t-done { border-top-color: #27ae60 !important; }
+.tk-kpi.t-total { border-top-color: #6c5ce7 !important; }
+@media (max-width: 1100px) { .tk-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .tk-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tk-kpis .tk-kpi:first-child { grid-column: span 2; } }

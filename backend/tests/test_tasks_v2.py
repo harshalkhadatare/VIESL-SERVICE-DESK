@@ -50,17 +50,16 @@ def test_messages_are_private_even_from_admins_and_md(client, mail):  # noqa: F8
     n = t["number"]
     client.post(f"{API}/{n}/updates", json={"body": "Secret figures look fine", "progress": 50}, headers=_hdr(emp))
     for outsider in (auth("admin"), _hdr(md)):
-        d = client.get(f"{API}/{n}", headers=outsider).json()
-        assert d["title"] == "Confidential salary file" and d["private"] is True      # sees the task exists …
-        assert d["description"] is None                                               # … but not what was written
-        assert all(e["body"] is None for e in d["events"])
-        assert any(e["private"] for e in d["events"])
-        assert client.post(f"{API}/{n}/updates", json={"body": "hi"}, headers=outsider).status_code == 403
-        # searching the description finds nothing for outsiders
-        found = client.get(API, params={"view": "all", "status": "all", "q": "locked sheet"}, headers=outsider).json()
-        assert n not in [i["number"] for i in found["items"]]
+        # outsiders — even the IT admin and the MD — cannot open, find or count the task at all
+        assert client.get(f"{API}/{n}", headers=outsider).status_code == 404
+        assert client.post(f"{API}/{n}/updates", json={"body": "hi"}, headers=outsider).status_code == 404
+        for view in ("all", "mine"):
+            found = client.get(API, params={"view": view, "status": "all"}, headers=outsider).json()
+            assert n not in [i["number"] for i in found["items"]]
         ov = client.get(f"{API}/overview", params={"scope": "all"}, headers=outsider).json()
-        assert all(f["body"] is None for f in ov["feed"] if f["task"]["number"] == n)
+        assert ov["scope"] == "mine" and all(f["task"]["number"] != n for f in ov["feed"])
+        an = client.get(f"{API}/analytics", params={"scope": "all"}, headers=outsider).json()
+        assert an["scope"] != "all"
     # participants read everything
     d = client.get(f"{API}/{n}", headers=_hdr(mgr)).json()
     assert d["description"] == "Use the locked sheet in HR drive" and d["private"] is False

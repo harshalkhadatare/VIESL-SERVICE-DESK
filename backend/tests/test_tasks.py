@@ -44,9 +44,9 @@ def test_roles_and_visibility(client):
     assert client.get(f"{API}/{t['number']}", headers=auth("employee")).status_code == 200
     assert client.get(f"{API}/{t['number']}", headers=_hdr(mgr2)).status_code == 404
     assert client.get(f"{API}/{t['number']}", headers=auth("employee2")).status_code == 404
-    # top management (MD) and task admins (IT administrators) see every task
-    assert client.get(f"{API}/{t['number']}", headers=_hdr(md)).status_code == 200
-    assert client.get(f"{API}/{t['number']}", headers=auth("admin")).status_code == 200
+    # nobody else sees it — not even top management (MD) or IT administrators
+    assert client.get(f"{API}/{t['number']}", headers=_hdr(md)).status_code == 404
+    assert client.get(f"{API}/{t['number']}", headers=auth("admin")).status_code == 404
     # the MD can assign to anyone, including other managers
     t2 = _new(client, _hdr(md), mgr, title="Budget review for Q4")
     assert t2["assignee"]["name"] == "Operations Head"

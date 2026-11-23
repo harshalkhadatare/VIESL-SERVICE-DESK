@@ -36,12 +36,10 @@ export async function renderOverview(view, _p, query = {}) {
   const acc = state.tasks || {};
   if (!acc.can_assign) return navigate("/tasks/list?view=to_me");
   try { localStorage.setItem("sd-mode", "tasks"); } catch { /* storage blocked */ }
-  let scope = query.scope === "all" && acc.sees_all ? "all" : "mine";
+  const scope = "mine";
   mount(view, html`${taskTabs("overview")}<div class="page-head tk-hello"><div><h1>${greet()}, ${state.me.full_name.split(" ")[0]}</h1>
       <div class="sub" id="ov-sub">Your team's tasks at a glance.</div></div>
-    <div class="row">${acc.sees_all ? html`<div class="seg" id="ov-scope"><button data-v="mine" class="${scope === "mine" ? "on" : ""}">Assigned by me</button>
-      <button data-v="all" class="${scope === "all" ? "on" : ""}">Whole company</button></div>` : ""}
-      <a class="btn tk-green" href="#/tasks/new">${icon("plus")} Create</a></div></div>
+    <div class="row"><a class="btn tk-green" href="#/tasks/new">${icon("plus")} Create</a></div></div>
     <div id="ov-body"><div class="card"><div class="card-body">${skeletonRows(4, 4)}</div></div></div>`);
 
   async function load() {
@@ -49,17 +47,17 @@ export async function renderOverview(view, _p, query = {}) {
       const d = await api.get("/tasks/overview", { scope });
       if (!$("#ov-body", view)?.isConnected) return;
       const T = d.tiles;
-      const list = (q) => `#/tasks/list?layout=list&view=${scope === "all" ? "all" : "by_me"}&${q.replace("status=overdue", "status=open&overdue=1")}`;
-      $("#ov-sub", view).textContent = scope === "all" ? "Every task in the company." : "Tasks you assigned, and how your team is doing.";
+      const list = (q, v = "mine") => `#/tasks/list?layout=list&view=${v}&${q.replace("status=overdue", "status=open&overdue=1")}`;
+      $("#ov-sub", view).textContent = "Tasks you assigned and tasks assigned to you. Only the people on a task can see it.";
       const tile = (label, value, foot, href, tone = "") => html`<a class="kpi tk-kpi ${tone}" href="${href}">
         <div class="label">${label}</div><div class="value">${value}</div><div class="foot">${foot}</div></a>`;
       mount($("#ov-body", view), html`
         <div class="tk-kpis">
+          ${tile("Total tasks", T.total, "all tasks you are on", list("status=all"), "t-total")}
+          ${tile("Open tasks", T.open, `${T.in_progress} in progress`, list("status=open"), "t-open")}
+          ${tile("Pending", T.pending, "not started yet", list("status=not_started"), T.pending ? "warn" : "")}
           ${tile("Overdue", T.overdue, "past the deadline", list("status=overdue"), T.overdue ? "alert" : "")}
-          ${tile("Due this week", T.due_this_week, "next 7 days", list("status=open&sort=due"))}
-          ${tile("Waiting for your approval", T.waiting_approval, "marked complete by the assignee", list("status=waiting_approval"), T.waiting_approval ? "warn" : "")}
-          ${tile("On-time completion", T.on_time_percent === null ? "—" : html`${T.on_time_percent}<small>%</small>`, `${T.completed_30} completed · last 30 days`, list("status=completed"))}
-          ${tile("Open tasks", T.open, "not started, in progress or waiting", list("status=open"))}
+          ${tile("Completed", T.completed, "finished and approved", list("status=completed"), "t-done")}
         </div>
         <div class="tk-grid">
           <div class="card tk-panel"><div class="card-head"><h2>${icon("alert")} Needs your attention</h2><span class="hint">${d.attention.length}</span></div>
@@ -74,11 +72,11 @@ export async function renderOverview(view, _p, query = {}) {
         </div>
         <div class="card tk-panel"><div class="card-head"><h2>${icon("users")} Team progress</h2><span class="hint">open tasks per person</span></div>
           <div class="card-body flush table-wrap">${d.team.length ? html`<table class="data tk-team"><thead><tr><th>Person</th><th class="num">Open</th>
-            <th class="num">Overdue</th><th class="num hide-sm">Waiting approval</th><th>Average progress</th></tr></thead><tbody>
-            ${d.team.map((r) => html`<tr class="clickable" data-href="${list(`status=open&assignee_id=${r.user.id}`)}">
+            <th class="num">Overdue</th><th>Average progress</th></tr></thead><tbody>
+            ${d.team.map((r) => html`<tr class="clickable" data-href="${list(`status=open&assignee_id=${r.user.id}`, "by_me")}">
               <td>${who(r.user)}${r.user.department ? html`<div class="t-sub2">${r.user.department}</div>` : ""}</td>
               <td class="num">${r.open}</td><td class="num ${r.overdue ? "tk-red" : ""}">${r.overdue}</td>
-              <td class="num hide-sm">${r.waiting_approval}</td><td>${bar(r.avg_progress, r.overdue ? "late" : "")} <span class="small">${r.avg_progress}%</span></td></tr>`)}
+<td>${bar(r.avg_progress, r.overdue ? "late" : "")} <span class="small">${r.avg_progress}%</span></td></tr>`)}
             </tbody></table>` : html`<div class="tk-empty">${icon("users")} No open tasks yet. <a href="#/tasks/new">Assign the first one</a>.</div>`}</div></div>
         <div class="card tk-panel"><div class="card-head"><h2>${icon("activity")} Latest updates</h2></div>
           <div class="card-body flush">${d.feed.length ? html`<ul class="tk-feed">${d.feed.map((e) => html`<li>
@@ -90,13 +88,6 @@ export async function renderOverview(view, _p, query = {}) {
       $$("tr[data-href]", view).forEach((tr) => tr.addEventListener("click", () => { location.hash = tr.dataset.href; }));
     } catch (e) { errorToast(e); }
   }
-  $("#ov-scope", view)?.addEventListener("click", (e) => {
-    const b = e.target.closest("button"); if (!b) return;
-    scope = b.dataset.v;
-    $$("#ov-scope button", view).forEach((x) => x.classList.toggle("on", x === b));
-    history.replaceState(null, "", `#/tasks${scope === "all" ? "?scope=all" : ""}`);
-    load();
-  });
   await load();
 }
 
@@ -157,7 +148,7 @@ function presets() {
 // filter fields → readable chip labels
 const STATUS_LABEL = { open: "Open", not_started: "Not started", in_progress: "In progress", waiting_approval: "Waiting approval",
   completed: "Completed", cancelled: "Cancelled", all: "Any status" };
-const VIEW_LABEL = { mine: "Mine", to_me: "Assigned to me", by_me: "Assigned by me", all: "Whole company" };
+const VIEW_LABEL = { mine: "Mine", to_me: "Assigned to me", by_me: "Assigned by me", all: "All my tasks" };
 const FILTER_KEYS = ["view", "status", "q", "assignee_id", "assigner_id", "priority", "category", "due_from", "due_to",
   "created_from", "created_to", "overdue", "no_deadline", "has_request", "unread"];
 
@@ -329,7 +320,7 @@ export async function renderList(view, _p, query = {}) {
       <div class="tk-adv-h"><b>${icon("sliders")} Advanced search</b><span class="muted small">Combine any of these. Results update when you press “Search”.</span></div>
       <label class="field"><span class="lbl">Words in the title, number, category or person${acc.can_assign ? "" : ""}</span><input type="search" name="q" value="${f.q || ""}" placeholder="e.g. MIS, TSK-26-000012, Pune"></label>
       <label class="field"><span class="lbl">Role</span><select name="view">${[["mine", "Mine (assigned by or to me)"], ["to_me", "Assigned to me"],
-        acc.can_assign && ["by_me", "Assigned by me"], acc.sees_all && ["all", "Whole company"]].filter(Boolean).map(([v, l]) => html`<option value="${v}" ${f.view === v ? "selected" : ""}>${l}</option>`)}</select></label>
+        acc.can_assign && ["by_me", "Assigned by me"]].filter(Boolean).map(([v, l]) => html`<option value="${v}" ${f.view === v ? "selected" : ""}>${l}</option>`)}</select></label>
       <div class="field f-wide"><span class="lbl">Status</span><div class="tk-checks">${Object.entries(STATUS_LABEL).filter(([k]) => k !== "all").map(([k, l]) => html`<label><input type="checkbox" name="st" value="${k}" ${st.has(k) ? "checked" : ""}> ${l}</label>`)}</div></div>
       <div class="field"><span class="lbl">Priority</span><div class="tk-checks">${Object.entries(PRIO).map(([k, [l]]) => html`<label><input type="checkbox" name="pr" value="${k}" ${pr.has(k) ? "checked" : ""}> ${l}</label>`)}</div></div>
       ${acc.can_assign ? html`<div class="field"><span class="lbl">Person on the task</span><div id="adv-person"></div></div>` : ""}

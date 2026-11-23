@@ -8,18 +8,18 @@ same users), in its own area with its own data.
 
 | Person | What they get |
 |---|---|
-| **Top management (MD)** | Starts on **Task overview**. Assigns tasks to anyone. Sees **every** task (switch "Assigned by me / Whole company"). |
+| **Top management (MD)** | Starts on **Task overview**. Assigns tasks to anyone. Sees only the tasks they assigned and the tasks given to them. |
 | **Management** | Starts on **Task overview**. Assigns tasks to anyone. Sees only the tasks **they** assigned (and tasks given to them). |
-| **IT Administrator** | Starts on the IT dashboard as before. Has a **Tasks \| IT Service Desk** switch and can see and fix any task (Task admin). Every action is in the audit log under their own name. |
+| **IT Administrator** | Starts on the IT dashboard as before. Has a **Tasks \| IT Service Desk** switch. Like everyone else, sees only the tasks they are on. |
 | **Employee** | No change — unless someone gives them a task. Then a **My tasks** item appears in their menu. |
 
 ## Privacy (important)
 
-The **description and every message** of a task can be read **only by the people on it** — the person who
-assigned it and the people it is assigned to. IT administrators and top management can see that a task exists
-(title, people, status, deadline, progress) and can fix the deadline or people, but the details and messages show as
-"Message hidden — private to the people on this task". This is enforced by the server (API, search, emails, overview),
-not just hidden on screen. Note: anyone with direct access to the database itself (the Neon owner) can still read it.
+A task is visible **only to the people on it** — the person who assigned it and the people it is assigned to.
+There is no "whole company" view: IT administrators and top management cannot open, search, count or see a task
+they are not on (it simply doesn't exist for them). This is enforced by the server (API, search, overview,
+analytics, notifications, emails), not just hidden on screen. Note: anyone with direct access to the database
+itself (the Neon owner) can still read it.
 
 ## Several people on one task
 

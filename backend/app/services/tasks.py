@@ -2,9 +2,8 @@
 
 Who can do what
 * Management (task.assign) creates tasks for one or more people and manages the tasks they assigned.
-* Top management (task.view_all) and Task admins (task.admin — IT administrators) can see that every task exists
-  (title, people, status, deadline, progress) and fix it (deadline, people, cancel) — but they can NOT read its
-  description or messages unless they are on the task themselves.
+* Nobody — not IT administrators, not top management — can see a task they are not on. There is no
+  "whole company" view: a task exists only for the person who assigned it and the people it is assigned to.
 * PRIVACY: the description and every message are visible only to the participants — the person who assigned the
   task and the people it is assigned to. This is enforced here, on the server, not just on screen.
 * Assignees (any user, employees included) start the task, post progress, ask for more time and submit it.
@@ -39,7 +38,8 @@ def can_assign(p: Principal) -> bool:
 
 
 def sees_all(p: Principal) -> bool:
-    return p.can("task.view_all") or p.can("task.admin")
+    """Company-wide visibility is switched off by policy: everyone sees only the tasks they are on."""
+    return False
 
 
 def member_clause(uid: int):
@@ -80,7 +80,7 @@ def get_task(db: Session, p: Principal, number: str, lock: bool = False) -> Task
 
 def _need_manage(p: Principal, t: Task) -> None:
     if not can_manage(p, t):
-        raise Forbidden("Only the person who assigned this task (or top management) can do this.")
+        raise Forbidden("Only the person who assigned this task can do this.")
 
 
 def _need_owner(p: Principal, t: Task) -> None:
@@ -567,35 +567,30 @@ def search(db: Session, p: Principal, *, view: str, statuses: list[str] | None, 
 
 # ---------------------------------------------------------------- overview (management home)
 def overview(db: Session, p: Principal, scope: str = "mine") -> dict:
-    """scope 'mine' = tasks I assigned; 'all' = every task (top management / task admin)."""
+    """Every task I am on — the ones I assigned and the ones assigned to me."""
     now = utcnow()
-    base = [Task.is_deleted.is_(False)]
-    if not (scope == "all" and sees_all(p)):
-        base.append(Task.assigner_id == p.id)
+    base = [Task.is_deleted.is_(False), participant_clause(p.id)]
     open_q = and_(*base, Task.status.in_(OPEN_TASK_STATUSES))
 
     def n(*w):
         return db.scalar(select(func.count()).select_from(Task).where(*base, *w)) or 0
 
-    month_ago = now - timedelta(days=30)
-    done_30 = db.execute(select(Task.completed_at, Task.due_at).where(*base, Task.status == "completed",
-                                                                       Task.completed_at >= month_ago)).all()
-    on_time = sum(1 for c, d in done_30 if d is None or c <= d)
     tiles = {
+        "total": n(Task.status != "cancelled"),
         "open": n(Task.status.in_(OPEN_TASK_STATUSES)),
-        "overdue": n(Task.status.in_(["not_started", "in_progress"]), Task.due_at < now),
+        "pending": n(Task.status == "not_started"),
+        "in_progress": n(Task.status == "in_progress"),
+        "overdue": n(Task.status.in_(["not_started", "in_progress"]), Task.due_at.isnot(None), Task.due_at < now),
+        "completed": n(Task.status == "completed"),
         "due_this_week": n(Task.status.in_(["not_started", "in_progress"]), Task.due_at >= now,
                            Task.due_at < now + timedelta(days=7)),
-        "waiting_approval": n(Task.status == "waiting_approval"),
-        "completed_30": len(done_30),
-        "on_time_percent": round(on_time * 100 / len(done_30)) if done_30 else None,
     }
     open_tasks = db.scalars(select(Task).where(open_q).order_by(Task.due_at.is_(None), Task.due_at)).all()
     attention = []
     for t in open_tasks:
-        if t.status == "waiting_approval":
-            attention.append(("approval", t, "Waiting for your approval"))
-        elif t.requested_due_at:
+        if t.status == "waiting_approval" and t.assigner_id == p.id:
+            attention.append(("approval", t, "Marked complete — please review"))
+        elif t.requested_due_at and t.assigner_id == p.id:
             attention.append(("extension", t, "Asks for more time"))
         elif t.is_overdue(now):
             attention.append(("overdue", t, "Overdue"))
@@ -607,13 +602,13 @@ def overview(db: Session, p: Principal, scope: str = "mine") -> dict:
 
     team: dict[int, dict] = {}
     for t in open_tasks:
+        if t.assigner_id != p.id:          # team = people I gave work to
+            continue
         for u in t.assignees:
-            r = team.setdefault(u.id, {"user": person(u), "open": 0, "overdue": 0, "progress_sum": 0,
-                                       "waiting_approval": 0})
+            r = team.setdefault(u.id, {"user": person(u), "open": 0, "overdue": 0, "progress_sum": 0})
             r["open"] += 1
             r["progress_sum"] += t.progress
             r["overdue"] += int(t.is_overdue(now))
-            r["waiting_approval"] += int(t.status == "waiting_approval")
     for r in team.values():
         r["avg_progress"] = round(r.pop("progress_sum") / r["open"]) if r["open"] else 0
     team_rows = sorted(team.values(), key=lambda r: (-r["overdue"], -r["open"], r["user"]["name"]))
@@ -623,8 +618,7 @@ def overview(db: Session, p: Principal, scope: str = "mine") -> dict:
                         .order_by(TaskEvent.id.desc()).limit(15)).all()
     upcoming = [t for t in open_tasks if t.status != "waiting_approval" and t.due_at and now <= t.due_at < now + timedelta(days=7)]
     return {
-        "scope": "all" if (scope == "all" and sees_all(p)) else "mine",
-        "can_see_all": sees_all(p), "tiles": tiles,
+        "scope": "mine", "can_see_all": False, "tiles": tiles,
         "attention": [{"kind": k, "label": lbl, "task": task_brief(t, now)} for k, t, lbl in attention[:12]],
         "team": team_rows,
         "feed": [{"task": task_brief(e.task, now), **event_out(e, is_participant(p, e.task))} for e in events],
