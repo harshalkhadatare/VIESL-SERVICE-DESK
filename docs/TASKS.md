@@ -13,6 +13,19 @@ same users), in its own area with its own data.
 | **IT Administrator** | Starts on the IT dashboard as before. Has a **Tasks \| IT Service Desk** switch and can see and fix any task (Task admin). Every action is in the audit log under their own name. |
 | **Employee** | No change — unless someone gives them a task. Then a **My tasks** item appears in their menu. |
 
+## Privacy (important)
+
+The **description and every message** of a task can be read **only by the people on it** — the person who
+assigned it and the people it is assigned to. IT administrators and top management can see that a task exists
+(title, people, status, deadline, progress) and can fix the deadline or people, but the details and messages show as
+"Message hidden — private to the people on this task". This is enforced by the server (API, search, emails, overview),
+not just hidden on screen. Note: anyone with direct access to the database itself (the Neon owner) can still read it.
+
+## Several people on one task
+
+Pick one or more people when you assign (or later with **Edit**). Everyone on the task gets the email, sees it under
+**My tasks**, can post updates and can mark it complete. The first person is shown first; all are equal.
+
 ## Making someone management (admins)
 
 Users & roles → find the person → **Roles** → tick **Management** or **Top management (MD)** *next to* their
@@ -30,9 +43,23 @@ Tasks are numbered `TSK-26-000001`. Every step is kept in the task's **Timeline*
 
 ## Emails and reminders
 
+Every email shows the exact words the person wrote ("Message from …") and the task description.
 Emails go out when a task is assigned, updated, submitted, approved, sent back, cancelled, when more time is asked
 for or decided, **24 hours before the deadline**, and **once when it becomes overdue** (to both people).
 Same mailbox and design as the ticket emails.
+
+## Screens
+
+* **Tasks** — green **+ Create** (or a quick task), a preset menu (Ongoing, Assigned by me, Assigned to me, Waiting for
+  my approval, Overdue, With new comments, Completed, All tasks), filter chips with search, and **Advanced search**
+  (words, role, status, priority, person, assigned by, category, deadline and created dates, overdue / new comments /
+  no deadline / more time asked). Views: **List · Deadline · Planner · Calendar · Gantt**. Counters: **Overdue**,
+  **Comments** (unread), **Mark all as read**. The ⚙ button sets the view Tasks opens in and hides/shows "Completed".
+* **Deadline** columns: Overdue · Due today · Due this week · Due next week · Due over two weeks · No deadline · Completed,
+  each with **+** to add a quick task with that deadline.
+* **Performance** — efficiency (on time ÷ completed + overdue), per person for management.
+* **Analytics** — created vs completed by week, by status, priority and category.
+* The Tasks area uses the sky background; the IT desk keeps its normal look.
 
 ## Overview screen
 
@@ -47,5 +74,4 @@ tasks and their history are kept.
 
 ## Planned next
 
-Attachments on tasks, "View as" for admins (read-only), customisable start page and tiles, linking tickets to tasks,
-recurring tasks, subtasks/checklists and Excel reports.
+Attachments on tasks, linking tickets to tasks, recurring tasks, subtasks/checklists and Excel reports.

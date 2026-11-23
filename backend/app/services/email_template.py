@@ -49,24 +49,29 @@ TASK_HEADLINE = {
 
 
 def task_rows(t, due_text: str) -> str:
-    """Details table for a task email."""
+    """Details table for a task email (only ever sent to people on the task)."""
     from app.services.tasks import PRIORITY_NAME, STATUS_NAME
     e = html.escape
     pfg, pbg = {"high": PRIO_COLORS["P1"], "medium": PRIO_COLORS["P2"], "low": PRIO_COLORS["P3"]}[t.priority]
     bar = (f'<div style="background:#e8edf4;border-radius:999px;height:8px;width:160px;display:inline-block;'
            f'vertical-align:middle"><div style="background:#157a52;height:8px;border-radius:999px;width:{t.progress}%">'
            f'</div></div> <span style="font-size:13px">{t.progress}%</span>')
+    who = lambda u: (f'{e(u.full_name)} <span style="color:#74859b;font-weight:500">'  # noqa: E731
+                     f'({e(u.employee_code or "")})</span>')
+    desc = ""
+    if t.description:
+        text = t.description if len(t.description) <= 900 else t.description[:900] + "…"
+        desc = _row("Description", f'<div style="white-space:pre-wrap;font-weight:500;color:#34465e">{e(text)}</div>')
     return ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 0">'
             + _row("Task number", f'<span style="font-family:Consolas,monospace;color:#1d5fc4">{e(t.number)}</span>')
             + _row("Task", e(t.title))
+            + desc
             + _row("Status", _pill(STATUS_NAME[t.status], "#1550ad", "#e4eefb"))
             + _row("Priority", _pill(PRIORITY_NAME[t.priority], pfg, pbg))
             + _row("Deadline", e(due_text))
             + _row("Progress", bar)
-            + _row("Assigned by", f'{e(t.assigner.full_name)} <span style="color:#74859b;font-weight:500">'
-                                  f'({e(t.assigner.employee_code or "")})</span>')
-            + _row("Assigned to", f'{e(t.assignee.full_name)} <span style="color:#74859b;font-weight:500">'
-                                  f'({e(t.assignee.employee_code or "")})</span>')
+            + _row("Assigned by", who(t.assigner))
+            + _row("Assigned to", "<br>".join(who(u) for u in t.assignees))
             + '</table>')
 
 
@@ -190,7 +195,7 @@ def _progress(ticket) -> str:
 
 def build(*, company: str, base_url: str, url: str, recipient_name: str, event: str, title: str, body: str | None,
           ticket, is_staff_recipient: bool, task_rows_html: str | None = None,
-          button_label: str | None = None) -> tuple[str, dict[str, bytes]]:
+          button_label: str | None = None, body_label: str | None = None) -> tuple[str, dict[str, bytes]]:
     """Returns (html, inline images {content-id: gif bytes}). Task emails pass task_rows_html instead of a ticket."""
     kind = pick_art(event, title, ticket, is_staff_recipient)
     accent = ACCENT.get(kind, "#1d5fc4")
@@ -235,10 +240,12 @@ def build(*, company: str, base_url: str, url: str, recipient_name: str, event: 
 
     body_box = ""
     if body:
+        label = (f'<div style="font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;'
+                 f'color:{accent};margin:0 0 6px;white-space:normal">&#128172; {e(body_label)}</div>') if body_label else ""
         body_box = (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 0">'
                     f'<tr><td style="background:#f7f9fc;border-left:4px solid {accent};border-radius:0 10px 10px 0;'
                     f'padding:14px 16px;color:#34465e;font-size:14px;line-height:1.6;white-space:pre-wrap">'
-                    f'{e(body)}</td></tr></table>')
+                    f'{label}{e(body)}</td></tr></table>')
     tip_box = (f'<p style="margin:16px 0 0;font-size:13px;color:#4a5c74;line-height:1.5">'
                f'<span style="color:{accent};font-weight:700">What happens next?</span> {e(tip)}</p>') if tip else ""
     btn_label = button_label or ("Open ticket" if is_staff_recipient else "View your ticket")

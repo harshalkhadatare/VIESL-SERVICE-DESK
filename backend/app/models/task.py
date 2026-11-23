@@ -33,8 +33,9 @@ class Task(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(Unicode(20), nullable=False, default="not_started", index=True)
     progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     assigner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)       # owner (management)
+    # first / responsible person; everyone on the task (including this person) is in `members`
     assignee_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    due_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    due_at: Mapped[datetime | None] = mapped_column(UTCDateTime)                            # None = no deadline
     requires_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
     started_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     submitted_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
@@ -51,13 +52,45 @@ class Task(Base, TimestampMixin):
     assignee: Mapped[User] = relationship(foreign_keys=[assignee_id], lazy="joined")
     events: Mapped[list["TaskEvent"]] = relationship(back_populates="task", order_by="TaskEvent.id",
                                                      cascade="all, delete-orphan")
+    members: Mapped[list["TaskAssignee"]] = relationship(cascade="all, delete-orphan", lazy="selectin",
+                                                         order_by="TaskAssignee.position")
+
+    @property
+    def member_ids(self) -> list[int]:
+        return [m.user_id for m in self.members] or [self.assignee_id]
+
+    @property
+    def assignees(self) -> list[User]:
+        return [m.user for m in self.members] or [self.assignee]
+
+    @property
+    def participant_ids(self) -> set[int]:
+        """The only people who may read the description and messages."""
+        return {self.assigner_id, *self.member_ids}
 
     @property
     def is_open(self) -> bool:
         return self.status in OPEN_TASK_STATUSES
 
     def is_overdue(self, now: datetime | None = None) -> bool:
-        return self.is_open and self.due_at < (now or utcnow())
+        return self.status in ("not_started", "in_progress") and self.due_at is not None and self.due_at < (now or utcnow())
+
+
+class TaskAssignee(Base):
+    """Everyone a task is assigned to (one or more people)."""
+    __tablename__ = "task_assignees"
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True, index=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    user: Mapped[User] = relationship(lazy="joined")
+
+
+class TaskRead(Base):
+    """What each participant has already seen (drives the Comments counter)."""
+    __tablename__ = "task_reads"
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    last_event_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class TaskEvent(Base):

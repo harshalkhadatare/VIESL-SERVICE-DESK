@@ -33,6 +33,8 @@ const ROUTES = [
   [/^\/tasks$/, tasksPage.renderOverview, "tasks-home"],
   [/^\/tasks\/list$/, tasksPage.renderList, "tasks-list"],
   [/^\/tasks\/new$/, tasksPage.renderNew, "tasks-new"],
+  [/^\/tasks\/performance$/, tasksPage.renderPerformance, "tasks-performance"],
+  [/^\/tasks\/analytics$/, tasksPage.renderAnalytics, "tasks-analytics"],
   [/^\/tasks\/(TSK-[\w-]+)$/, tasksPage.renderDetail, "tasks-list"],
   [/^\/admin\/users$/, adminPage.renderUsers, "users", "user.manage"],
   [/^\/admin\/audit$/, adminPage.renderAudit, "audit", "audit.view"],
@@ -63,10 +65,13 @@ function tasksNav() {
   return html`<nav class="nav nav-tasks">
     <div class="nav-section">Tasks</div>
     ${t.can_assign ? navLink("/tasks", "tasks-home", "home", "Overview") : ""}
-    ${t.can_assign ? navLink("/tasks/list?view=by_me", "tasks-by_me", "send", "Assigned by me") : ""}
-    ${navLink("/tasks/list?view=to_me", "tasks-to_me", "target", "My tasks", html`<span class="count" id="nav-mytasks2" hidden></span>`)}
-    ${t.sees_all ? navLink("/tasks/list?view=all", "tasks-all", "list", "All tasks") : ""}
+    ${navLink("/tasks/list?preset=ongoing", "tasks-ongoing", "columns", "Tasks")}
+    ${t.can_assign ? navLink("/tasks/list?preset=by_me", "tasks-by_me", "send", "Assigned by me") : ""}
+    ${navLink("/tasks/list?preset=to_me", "tasks-to_me", "target", "My tasks", html`<span class="count" id="nav-mytasks2" hidden></span>`)}
+    ${t.sees_all ? navLink("/tasks/list?preset=all", "tasks-all", "list", "All tasks") : ""}
     ${t.can_assign ? navLink("/tasks/new", "tasks-new", "plus", "Assign a task") : ""}
+    ${navLink("/tasks/performance", "tasks-performance", "target", "Performance")}
+    ${navLink("/tasks/analytics", "tasks-analytics", "activity", "Analytics")}
     ${navLink("/notifications", "notifications", "bell", "Notifications")}
     <div class="nav-section">Switch</div>
     <a href="#/" data-mode-go="desk">${icon("ticket")}<span>IT Service Desk</span></a>
@@ -102,7 +107,7 @@ function renderShell() {
         ${navLink("/tickets", "tickets", "ticket", isStaff() || can("ticket.view_all") ? "Tickets" : "My tickets")}
         ${navLink("/tickets/new", "new", "plus", "Raise a ticket")}
         ${navLink("/notifications", "notifications", "bell", "Notifications", html`<span class="count" id="nav-unread" hidden></span>`)}
-        ${!switchable() && state.tasks?.has_tasks ? navLink("/tasks/list?view=to_me", "tasks-to_me", "target", "My tasks", html`<span class="count" id="nav-mytasks" hidden></span>`) : ""}
+        ${!switchable() && state.tasks?.has_tasks ? navLink("/tasks/list?preset=to_me", "tasks-to_me", "target", "My tasks", html`<span class="count" id="nav-mytasks" hidden></span>`) : ""}
         <div class="nav-section">Self-service</div>
         ${navLink("/kb", "kb", "book", "Knowledge base")}
         ${navLink("/kb/guide", "guide", "info", "How to use")}
@@ -312,7 +317,7 @@ async function route() {
   for (const [re, fn, key, perm] of ROUTES) {
     const m = path.match(re);
     if (!m) continue;
-    const navKey = key === "tasks-list" && path === "/tasks/list" ? `tasks-${query.view || (state.tasks?.can_assign ? "by_me" : "to_me")}` : key;
+    const navKey = key === "tasks-list" && path === "/tasks/list" ? `tasks-${query.preset || "ongoing"}` : key;
     $$(".nav a, .bottom-nav a").forEach((a) => a.classList.toggle("active", a.dataset.nav === navKey || (key === "tasks-list" && a.dataset.nav === "tasks-list")));
     $("#shell")?.classList.remove("nav-open", "search-open");
     if (perm && !can(perm)) {

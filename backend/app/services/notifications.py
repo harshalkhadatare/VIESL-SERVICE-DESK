@@ -126,27 +126,38 @@ def render_email(n: Notification, user: User, ticket: Ticket | None) -> tuple[st
 
 
 def _render_task_email(n: Notification, user: User, url: str, base: str) -> tuple[str, str, str, dict[str, bytes]]:
-    from zoneinfo import ZoneInfo
+    """Task emails show the exact words the person wrote ("Message from …") and the task description.
+    They only ever go to people on the task (the assigner and the assignees), so nothing private leaks."""
+    from sqlalchemy import select as _select
 
-    from app.models.task import Task
+    from app.models.task import Task, TaskEvent
     from app.services.email_template import build, task_rows
-    from app.services.tasks import PRIORITY_NAME, STATUS_NAME
+    from app.services.tasks import PRIORITY_NAME, STATUS_NAME, fmt_due
     s = get_settings()
-    t = Session.object_session(n).get(Task, n.task_id)
-    due = t.due_at.astimezone(ZoneInfo(user.timezone)).strftime("%d %b %Y, %I:%M %p")
+    db = Session.object_session(n)
+    t = db.get(Task, n.task_id)
+    due = fmt_due(t.due_at, user.timezone)
+    author = None
+    if n.body:   # who wrote this message: the latest event on the task with the same text
+        ev = db.scalar(_select(TaskEvent).where(TaskEvent.task_id == t.id, TaskEvent.body == n.body,
+                                                TaskEvent.created_at <= n.created_at)
+                       .order_by(TaskEvent.id.desc()).limit(1))
+        author = ev.author.full_name if ev and ev.author else None
     subject = f"[{t.number}] {n.title}"
     lines = [f"Hello {user.full_name},", "", n.title]
     if n.body:
-        lines += ["", n.body]
+        lines += ["", f"Message from {author}:" if author else "Details:", n.body]
     lines += ["", f"Task:         {t.number}", f"Title:        {t.title}", f"Status:       {STATUS_NAME[t.status]}",
               f"Priority:     {PRIORITY_NAME[t.priority]}", f"Deadline:     {due}", f"Progress:     {t.progress}%",
-              f"Assigned by:  {t.assigner.label}", f"Assigned to:  {t.assignee.label}",
-              "", f"Open the task: {url}", "", f"— {s.smtp_from_name}",
+              f"Assigned by:  {t.assigner.label}", f"Assigned to:  {', '.join(u.label for u in t.assignees)}"]
+    if t.description:
+        lines += ["", "Task description:", t.description]
+    lines += ["", f"Open the task: {url}", "", f"— {s.smtp_from_name}",
               "This is an automated message. Reply in the portal, not to this email."]
     page, images = build(company=s.company_name, base_url=base, url=url, recipient_name=user.full_name,
                          event=n.event, title=n.title, body=n.body, ticket=None,
                          is_staff_recipient=user.id == t.assigner_id, task_rows_html=task_rows(t, due),
-                         button_label="Open task")
+                         button_label="Open task", body_label=(f"Message from {author}" if author else None))
     return subject[:200], "\n".join(lines), page, images
 
 
