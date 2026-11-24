@@ -4,8 +4,8 @@ export const brand = { name: "Vision Infra Equipment Solutions Ltd.", short: "Vi
   help_contacts: [
     { name: "Mr. Sandeep Patil", email: "pnm_audit@visioninfraindia.com" },
     { name: "Mr. Harshal Khadatare", email: "itsupport@visioninfraindia.com" },
-    { name: "Mr. Aniket", email: "it@visioninfraindia.com" },
-    { name: "Mr. Vishal", email: "it@visioninfraindia.com" },
+    { name: "Mr. Aniket Ghadge", email: "it@visioninfraindia.com" },
+    { name: "Mr. Vishal Borade", email: "it@visioninfraindia.com" },
   ] };
 
 export async function loadBrand() {
