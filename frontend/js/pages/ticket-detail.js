@@ -3,7 +3,7 @@ import { openViewer, downloadFile, loadThumbs, isPdf } from "../viewer.js";
 import { readClipboardFiles, onPasteFiles } from "../paste.js";
 import { slaCard } from "../sla-ui.js";
 import { state, catalog, supportGroups, can } from "../state.js";
-import { $, $$, html, mount, icon, fmtDate, fmtRelative, statusBadge, prioBadge, initials, toast, errorToast,
+import { $, $$, html, mount, icon, fmtDate, fmtRelative, fmtAgo, statusBadge, prioBadge, initials, toast, errorToast,
   openModal, busy, emptyState, fileSize, showFieldErrors, realEmail, confirmDialog, deskBadge, nameId, nameIdText, empId } from "../ui.js";
 import { refreshUnread } from "../app.js";
 
@@ -57,7 +57,7 @@ export async function render(view, [number], query = {}) {
             ${t.is_demo ? html`<span class="pill demo">Demo data</span>` : ""}
             <button class="ticket-star ${t.starred ? "on" : ""}" id="star-btn" aria-pressed="${t.starred}" title="Star tickets to find them quickly in the ★ Starred tab">${icon("star")} ${t.starred ? "Starred" : "Star"}</button></div>
           <h1 style="margin-top:8px">${t.subject}</h1>
-          <div class="meta-line"><span>${icon("user")} ${t.can_work && t.requester.employee_code ? html`<a href="#/tickets?scope=all&requester=${encodeURIComponent(t.requester.employee_code)}" title="All tickets raised by ${t.requester.full_name}">${nameId(t.requester)}</a>` : nameId(t.requester)}</span><span>${icon("clock")} Raised ${fmtRelative(t.created_at)}</span>
+          <div class="meta-line"><span>${icon("user")} ${t.can_work && t.requester.employee_code ? html`<a href="#/tickets?scope=all&requester=${encodeURIComponent(t.requester.employee_code)}" title="All tickets raised by ${t.requester.full_name}">${nameId(t.requester)}</a>` : nameId(t.requester)}</span><span title="Raised on ${fmtDate(t.created_at)}">${icon("clock")} Raised ${fmtDate(t.created_at)} <span class="muted">(${fmtAgo(t.created_at)})</span></span>
             <span>${icon("layers")} ${t.category.name}${t.subcategory ? ` › ${t.subcategory.name}` : ""}</span>
             <span>${t.ticket_type === "incident" ? "Incident" : "Service request"}</span></div>
         </div>

@@ -120,6 +120,12 @@ export function fmtRelative(v) {
   if (txt === "just now") return txt;
   return s >= 0 ? `${txt} ago` : `in ${txt}`;
 }
+// Always relative ("8 days ago", "45 days ago") — fmtRelative switches to a date after 30 days.
+export function fmtAgo(v) {
+  if (!v) return "—";
+  const days = (Date.now() - new Date(v).getTime()) / 86400000;
+  return days >= 30 ? `${Math.round(days)} days ago` : fmtRelative(v);
+}
 export function fmtMinutes(m) {
   if (m === null || m === undefined) return "—";
   const neg = m < 0; m = Math.abs(Math.round(m));
