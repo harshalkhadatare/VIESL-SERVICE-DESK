@@ -1858,3 +1858,4 @@ html[data-mode="dark"] .tk-msg.mine .tk-bubble { background: rgba(74, 222, 128, 
   border-radius: 999px; background: var(--surface-2); }
 .tk-pend svg { width: 13px; height: 13px; }
 .tk-pend button { border: 0; background: none; cursor: pointer; display: grid; place-items: center; color: var(--muted); padding: 2px; }
+.sidebar-copy { text-align: center; letter-spacing: .02em; }

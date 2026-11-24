@@ -118,7 +118,7 @@ function renderShell() {
         ${can("audit.view") ? navLink("/admin/audit", "audit", "shield", "Audit log") : ""}
         <button type="button" class="side-theme" id="side-theme">${icon("palette")}<span>Colours & dark mode</span></button>
       </nav>
-      <div class="sidebar-foot only-desk-block">Need urgent help? Call the IT Service Desk<br>for urgent (High) problems after raising a ticket.</div>
+      <div class="sidebar-foot sidebar-copy">© 2026 Service Desk.<br>All rights reserved.</div>
     </aside>
     <div class="main">
       <header class="topbar">

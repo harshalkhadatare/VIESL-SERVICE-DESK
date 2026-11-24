@@ -1,0 +1,49 @@
+Proprietary Software Licence — All Rights Reserved
+
+Copyright (c) 2026 Harshal Khadatare. All rights reserved.
+
+This repository contains the "Service Desk" software (IT Service Desk and Task
+Management), including its source code, database migrations, documentation,
+designs, images and other files (together, the "Software").
+
+1. Ownership
+   The Software is the confidential and proprietary property of the copyright
+   holder. It is licensed, not sold. No ownership rights are transferred.
+
+2. No permission without written consent
+   Unless the copyright holder has given you prior written permission, you may
+   NOT, in whole or in part:
+     a) copy, download, clone, fork or mirror the Software;
+     b) modify, adapt, translate or create derivative works from it;
+     c) publish, upload, distribute, share, sell, rent, lease or sublicense it,
+        including re-uploading it to GitHub or any other code-hosting service;
+     d) deploy, host or run it for anyone, or offer it as a service;
+     e) reverse engineer it, or remove or change any copyright notice in it.
+
+3. Viewing is not permission
+   Being able to see or access this repository (for example, if it is or was
+   public) does not grant any licence or right to use the Software.
+
+4. Authorised use
+   Use of the Software is limited to the copyright holder and to persons or
+   organisations expressly authorised by the copyright holder in writing, and
+   only within the scope of that written authorisation.
+
+5. Termination
+   Any use outside this licence is unauthorised and automatically ends any
+   permission you may have had. On termination you must stop using the
+   Software and delete all copies in your possession.
+
+6. No warranty
+   The Software is provided "as is", without warranty of any kind, express or
+   implied, including warranties of merchantability, fitness for a particular
+   purpose and non-infringement. In no event shall the copyright holder be
+   liable for any claim, damages or other liability arising from, out of or in
+   connection with the Software or its use.
+
+7. Third-party components
+   Third-party libraries included or used by the Software (for example PDF.js)
+   remain under their own licences; this licence does not change those terms.
+
+For permission requests, contact the copyright holder:
+itsupport@visioninfraindia.com

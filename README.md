@@ -70,3 +70,8 @@ Not yet built (clearly scoped in [docs/ROADMAP.md](docs/ROADMAP.md)): approval w
 | [SECURITY](docs/SECURITY.md) | Security checklist |
 | [ROADMAP](docs/ROADMAP.md) | Known limitations, improvements added, roadmap |
 | `docs/sqlserver_schema.sql` | SQL Server DDL generated from the migration (for DBA review) |
+
+## Licence
+
+Proprietary — © 2026 Harshal Khadatare. All rights reserved. No copying, modification, redistribution or
+re-uploading without written permission. See [LICENSE](LICENSE).
