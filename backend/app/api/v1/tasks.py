@@ -1,16 +1,18 @@
 """Task management API (management assigns, assignees report progress)."""
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from typing import Literal
+
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import Principal, get_principal
 from app.core.database import get_db
-from app.core.errors import BusinessRuleError, Forbidden
+from app.core.errors import BusinessRuleError, Forbidden, NotFound
 from app.models import User, utcnow
-from app.models.task import OPEN_TASK_STATUSES, TASK_STATUSES, Task
+from app.models.task import OPEN_TASK_STATUSES, TASK_STATUSES, Task, TaskAttachment, TaskAttachmentBlob
 from app.models.identity import UserRole, Role
 from app.services import tasks as svc
 
@@ -135,29 +137,69 @@ def _csv(v: str | None, allowed: set[str]) -> list[str] | None:
     return vals
 
 
-@router.get("")
-def list_tasks(view: str = Query("auto", pattern="^(auto|to_me|by_me|mine|all)$"),
-               status: str | None = Query("open", max_length=120), q: str | None = Query(None, max_length=80),
-               assignee_id: int | None = None, assigner_id: int | None = None,
-               priority: str | None = Query(None, max_length=40), category: str | None = Query(None, max_length=60),
-               due_from: datetime | None = None, due_to: datetime | None = None,
-               created_from: datetime | None = None, created_to: datetime | None = None,
-               overdue: bool = False, no_deadline: bool = False, has_request: bool = False, unread: bool = False,
-               sort: str = Query("due", pattern="^(due|updated|created|priority)$"),
-               page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=500),
-               p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
-    """Advanced search. status: comma list of open|not_started|in_progress|waiting_approval|completed|cancelled|all;
-    'overdue' is accepted as a status too (older links)."""
+def _filters(view: str = Query("auto", pattern="^(auto|to_me|by_me|mine|all)$"),
+             status: str | None = Query("open", max_length=120), q: str | None = Query(None, max_length=80),
+             assignee_id: int | None = None, assigner_id: int | None = None,
+             priority: str | None = Query(None, max_length=40), category: str | None = Query(None, max_length=60),
+             due_from: datetime | None = None, due_to: datetime | None = None,
+             created_from: datetime | None = None, created_to: datetime | None = None,
+             overdue: bool = False, no_deadline: bool = False, has_request: bool = False, unread: bool = False,
+             sort: str = Query("due", pattern="^(due|updated|created|priority)$"),
+             p: Principal = Depends(get_principal)) -> dict:
     if view == "auto":
         view = "by_me" if svc.can_assign(p) else "to_me"
     if status == "overdue":
         status, overdue = "open", True
     statuses = None if (not status or status == "all") else _csv(status, {"open", *TASK_STATUSES})
-    return svc.search(db, p, view=view, statuses=statuses, q=q, assignee_id=assignee_id, assigner_id=assigner_id,
-                      priorities=_csv(priority, {"high", "medium", "low"}), category=category,
-                      due_from=due_from, due_to=due_to, created_from=created_from, created_to=created_to,
-                      overdue=overdue, no_deadline=no_deadline, has_request=has_request, unread=unread,
-                      sort=sort, page=page, page_size=page_size)
+    return dict(view=view, statuses=statuses, q=q, assignee_id=assignee_id, assigner_id=assigner_id,
+                priorities=_csv(priority, {"high", "medium", "low"}), category=category,
+                due_from=due_from, due_to=due_to, created_from=created_from, created_to=created_to,
+                overdue=overdue, no_deadline=no_deadline, has_request=has_request, unread=unread, sort=sort)
+
+
+@router.get("")
+def list_tasks(f: dict = Depends(_filters), page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=500),
+               p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Advanced search. status: comma list of open|not_started|in_progress|waiting_approval|completed|cancelled|all;
+    'overdue' is accepted as a status too (older links)."""
+    return svc.search(db, p, **f, page=page, page_size=page_size)
+
+
+_VIEW_TITLE = {"to_me": "Tasks assigned to me", "by_me": "Tasks assigned by me", "mine": "My tasks", "all": "My tasks"}
+
+
+@router.get("/export.xlsx")
+def export_xlsx(f: dict = Depends(_filters), p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    """Excel workbook of the tasks in the current list (only tasks you are on): details, every update, and
+    every attachment with a link that opens it in the portal."""
+    from zoneinfo import ZoneInfo
+
+    from fastapi import Response
+
+    from app.core.config import get_settings
+    from app.services.audit import audit_p
+    from app.services.task_export import build_task_workbook
+    rows = svc.search(db, p, **f, page=1, page_size=1, rows_only=True)
+    files = svc.attachments_of(db, [t.id for t in rows])
+    shown = []
+    if f["statuses"]:
+        shown.append("Status: " + ", ".join(svc.STATUS_NAME.get(x, "Open") for x in f["statuses"]))
+    for k, label in (("q", "Search"), ("category", "Category")):
+        if f.get(k):
+            shown.append(f"{label}: {f[k]}")
+    if f["priorities"]:
+        shown.append("Priority: " + ", ".join(x.title() for x in f["priorities"]))
+    if f["overdue"]:
+        shown.append("Overdue only")
+    title = _VIEW_TITLE.get(f["view"], "Tasks")
+    s = get_settings()
+    data = build_task_workbook(rows, files=files, tz=p.user.timezone, company=s.company_name, title=title,
+                               filters_text=", ".join(shown), base_url=s.app_base_url)
+    audit_p(db, p, "task.export", entity_type="task", detail={"rows": len(rows), "view": f["view"]})
+    db.commit()
+    fname = f"{title.replace(' ', '_')}_{datetime.now(ZoneInfo(p.user.timezone)):%Y%m%d_%H%M}.xlsx"
+    return Response(content=data, headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 @router.post("", status_code=201)
@@ -228,3 +270,83 @@ def extension_decision(number: str, data: DecisionIn, p: Principal = Depends(get
                        db: Session = Depends(get_db)):
     t = svc.get_task(db, p, number, lock=True)
     return svc.task_detail(db, p, svc.decide_extension(db, p, t, approve=data.approve, body=data.body))
+
+
+# ------------------------------------------------------------------ attachments (people on the task only)
+@router.get("/{number}/attachments")
+def list_attachments(number: str, p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    t = svc.get_task(db, p, number)
+    return [svc.attachment_out(a) for a in svc.attachments_of(db, [t.id]).get(t.id, [])]
+
+
+@router.post("/{number}/attachments", status_code=201)
+async def upload_attachment(number: str, file: UploadFile = File(...), p: Principal = Depends(get_principal),
+                            db: Session = Depends(get_db)):
+    from app.services.attachments import MAX_FILES_PER_TASK, TASK_ALLOWED, store_upload
+    from app.services.audit import audit_p
+    t = svc.get_task(db, p, number)
+    if not svc.can_attach(p, t):
+        raise Forbidden("Files can't be added to this task.")
+    n = db.scalar(select(func.count()).select_from(TaskAttachment).where(TaskAttachment.task_id == t.id))
+    if n >= MAX_FILES_PER_TASK:
+        raise BusinessRuleError(f"A task can have at most {MAX_FILES_PER_TASK} files.")
+    meta = await store_upload(file, TASK_ALLOWED)
+    data = meta.pop("data", None)
+    a = svc.add_attachment(db, p, t, meta, data)
+    audit_p(db, p, "task.attachment_upload", entity_type="task", entity_id=t.number,
+            detail={"name": meta["original_name"], "size": meta["size_bytes"], "sha256": meta["sha256"]})
+    db.commit()
+    db.refresh(a)
+    return svc.attachment_out(a)
+
+
+@router.get("/{number}/attachments/{attachment_id}")
+def download_attachment(number: str, attachment_id: int, mode: Literal["view", "download"] = Query("download"),
+                        p: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+    from urllib.parse import quote
+
+    from fastapi import Response
+    from fastapi.responses import FileResponse
+
+    from app.services.attachments import path_for
+    from app.services.audit import audit_p
+    t = svc.get_task(db, p, number)          # not on the task → "Task not found"
+    a = db.scalar(select(TaskAttachment).where(TaskAttachment.id == attachment_id, TaskAttachment.task_id == t.id))
+    if not a:
+        raise NotFound("File not found.")
+    path = path_for(a.stored_name)
+    blob = None
+    if not path.exists():
+        blob = db.get(TaskAttachmentBlob, a.id)
+        if blob is None:
+            raise NotFound("The file is missing from storage.")
+    audit_p(db, p, "task.attachment_view" if mode == "view" else "task.attachment_download",
+            entity_type="task", entity_id=t.number, detail={"attachment_id": a.id, "file": a.original_name})
+    db.commit()
+    headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"}
+    disposition = "inline" if mode == "view" else "attachment"
+    if blob is not None:
+        headers["Content-Disposition"] = f"{disposition}; filename*=UTF-8''{quote(a.original_name)}"
+        return Response(content=blob.data, media_type=a.content_type, headers=headers)
+    return FileResponse(path, media_type=a.content_type, filename=a.original_name,
+                        content_disposition_type=disposition, headers=headers)
+
+
+@router.delete("/{number}/attachments/{attachment_id}", status_code=204)
+def delete_attachment(number: str, attachment_id: int, p: Principal = Depends(get_principal),
+                      db: Session = Depends(get_db)):
+    from fastapi import Response
+
+    from app.services.audit import audit_p
+    from app.services.ticket_delete import remove_files
+    t = svc.get_task(db, p, number)
+    a = db.scalar(select(TaskAttachment).where(TaskAttachment.id == attachment_id, TaskAttachment.task_id == t.id))
+    if not a:
+        raise NotFound("File not found.")
+    name = a.original_name
+    stored = svc.remove_attachment(db, p, t, a)
+    audit_p(db, p, "task.attachment_delete", entity_type="task", entity_id=t.number,
+            detail={"attachment_id": attachment_id, "file": name})
+    db.commit()
+    remove_files([stored])
+    return Response(status_code=204)

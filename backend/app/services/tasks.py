@@ -20,7 +20,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import Principal
 from app.core.errors import BusinessRuleError, Conflict, Forbidden, NotFound
 from app.models import TicketSequence, User, utcnow
-from app.models.task import OPEN_TASK_STATUSES, TASK_PRIORITIES, Task, TaskAssignee, TaskEvent, TaskRead
+from app.models.task import (OPEN_TASK_STATUSES, TASK_PRIORITIES, Task, TaskAssignee, TaskAttachment,
+                             TaskAttachmentBlob, TaskEvent, TaskRead)
 from app.services.audit import audit_p
 from app.services.notifications import notify
 
@@ -131,12 +132,18 @@ def _event(db: Session, t: Task, kind: str, actor_id: int | None, body: str | No
     return ev
 
 
+# Email only for what matters: a new task, a task completed, and the deadline moving (changed, more time asked
+# for, more time approved or refused). Everything else (messages, progress, reminders…) is in-app only.
+EMAIL_EVENTS = {"task_assigned", "task_submitted", "task_completed", "task_extension"}
+
+
 def _tell(db: Session, user_ids, actor_id: int, event: str, title: str, body: str | None, t: Task,
-          key: str | None = None) -> None:
-    """Notify (and email) people on the task — never yourself."""
+          key: str | None = None, email: bool | None = None) -> None:
+    """Notify people on the task — never yourself. Emails only for EMAIL_EVENTS (or email=True)."""
+    send = (event in EMAIL_EVENTS) if email is None else email
     for uid in ([user_ids] if isinstance(user_ids, int) else user_ids):
         if uid and uid != actor_id:
-            notify(db, uid, event, title, body, task=t, dedupe_key=f"{key}:{uid}" if key else None)
+            notify(db, uid, event, title, body, task=t, dedupe_key=f"{key}:{uid}" if key else None, email=send)
 
 
 def _members_except(t: Task, uid: int) -> list[int]:
@@ -297,7 +304,8 @@ def edit_task(db: Session, p: Principal, t: Task, changes: dict) -> Task:
         t.due_at = new_due
         t.requested_due_at = t.request_reason = None
         for u in t.assignees:
-            _tell(db, u.id, p.id, "task_update", f"Deadline changed: {t.title}", f"New deadline: {fmt_due(new_due, u.timezone)}", t)
+            _tell(db, u.id, p.id, "task_update", f"Deadline changed: {t.title}", f"New deadline: {fmt_due(new_due, u.timezone)}", t,
+                  email=True)
     if changes.get("assignee_ids"):
         people = _people(db, changes["assignee_ids"])
         old_ids, new_ids = t.member_ids, [u.id for u in people]
@@ -483,7 +491,7 @@ def run_task_reminders(db: Session, now: datetime | None = None) -> dict:
     for t in db.scalars(select(Task).where(*live, Task.due_at > now, Task.due_at <= now + timedelta(hours=24))).all():
         for u in t.assignees:
             if notify(db, u.id, "task_due_soon", f"Due soon: “{t.title}”",
-                      f"Deadline: {fmt_due(t.due_at, u.timezone)} — {t.progress}% done so far.", task=t,
+                      f"Deadline: {fmt_due(t.due_at, u.timezone)} — {t.progress}% done so far.", task=t, email=False,
                       dedupe_key=f"task-due:{t.id}:{t.due_at.isoformat()}:{u.id}"):
                 stats["due_soon"] += 1
     for t in db.scalars(select(Task).where(*live, Task.due_at <= now)).all():
@@ -491,11 +499,11 @@ def run_task_reminders(db: Session, now: datetime | None = None) -> dict:
         for u in t.assignees:
             if notify(db, u.id, "task_overdue", f"Overdue: “{t.title}”",
                       f"The deadline was {fmt_due(t.due_at, u.timezone)}. Please update your progress or ask "
-                      "for more time.", task=t, dedupe_key=f"{key}:{u.id}"):
+                      "for more time.", task=t, email=False, dedupe_key=f"{key}:{u.id}"):
                 stats["overdue"] += 1
         notify(db, t.assigner_id, "task_overdue", f"Overdue: “{t.title}” ({_names(t.assignees)})",
                f"Deadline was {fmt_due(t.due_at, t.assigner.timezone)} · {t.progress}% done.", task=t,
-               dedupe_key=key + ":owner")
+               email=False, dedupe_key=key + ":owner")
     db.commit()
     return stats
 
@@ -505,7 +513,7 @@ def search(db: Session, p: Principal, *, view: str, statuses: list[str] | None, 
            assignee_id: int | None, assigner_id: int | None, priorities: list[str] | None, category: str | None,
            due_from: datetime | None, due_to: datetime | None, created_from: datetime | None,
            created_to: datetime | None, overdue: bool, no_deadline: bool, has_request: bool, unread: bool,
-           sort: str, page: int, page_size: int) -> dict:
+           sort: str, page: int, page_size: int, rows_only: bool = False):
     now = utcnow()
     w = [Task.is_deleted.is_(False), scope_clause(p)]
     if view == "to_me":
@@ -557,6 +565,10 @@ def search(db: Session, p: Principal, *, view: str, statuses: list[str] | None, 
     order = {"due": [nulls_last, Task.due_at, Task.id], "updated": [Task.last_activity_at.desc()],
              "created": [Task.id.desc()],
              "priority": [Task.priority == "low", Task.priority == "medium", nulls_last, Task.due_at]}[sort]
+    if rows_only:   # Excel export: every matching task (max 5 000)
+        from sqlalchemy.orm import selectinload
+        return db.scalars(select(Task).where(*w).order_by(*order).limit(5000)
+                          .options(selectinload(Task.events))).unique().all()
     total = db.scalar(select(func.count()).select_from(Task).where(*w)) or 0
     rows = db.scalars(select(Task).where(*w).order_by(*order).offset((page - 1) * page_size).limit(page_size)).all()
     unread_map = unread_counts(db, p.id, [t.id for t in rows])
@@ -693,6 +705,56 @@ def analytics(db: Session, p: Principal, scope: str = "me", days: int = 90) -> d
             "weeks": weeks, "people": rows}
 
 
+# ---------------------------------------------------------------- attachments
+def attachments_of(db: Session, task_ids: list[int]) -> dict[int, list[TaskAttachment]]:
+    out: dict[int, list[TaskAttachment]] = {}
+    for i in range(0, len(task_ids), 900):
+        for a in db.scalars(select(TaskAttachment).where(TaskAttachment.task_id.in_(task_ids[i:i + 900]))
+                            .order_by(TaskAttachment.created_at, TaskAttachment.id)):
+            out.setdefault(a.task_id, []).append(a)
+    return out
+
+
+def can_attach(p: Principal, t: Task) -> bool:
+    return is_participant(p, t) and t.status != "cancelled"
+
+
+def add_attachment(db: Session, p: Principal, t: Task, meta: dict, data: bytes | None) -> TaskAttachment:
+    """Store the file, put a 'file' entry in the conversation, tell the others in-app (no email)."""
+    if not can_attach(p, t):
+        raise Forbidden("Only the people on this task can add files." if t.status != "cancelled"
+                        else "Files can't be added to a cancelled task.")
+    ev = _event(db, t, "file", p.id, new=meta["original_name"])
+    a = TaskAttachment(task_id=t.id, event_id=ev.id, uploaded_by=p.id, **meta)
+    db.add(a)
+    db.flush()
+    if data is not None:
+        db.add(TaskAttachmentBlob(attachment_id=a.id, data=data))
+    _tell(db, [i for i in t.participant_ids if i != p.id], p.id, "task_update",
+          f"{p.user.full_name} added a file to “{t.title}”", f"File: {meta['original_name']}", t)
+    return a
+
+
+def remove_attachment(db: Session, p: Principal, t: Task, a: TaskAttachment) -> str:
+    """The person who added the file, or the person who assigned the task, can remove it."""
+    if not is_participant(p, t) or (a.uploaded_by != p.id and t.assigner_id != p.id):
+        raise Forbidden("Only the person who added this file (or who assigned the task) can remove it.")
+    stored, name = a.stored_name, a.original_name
+    blob = db.get(TaskAttachmentBlob, a.id)
+    if blob is not None:
+        db.delete(blob)
+    db.delete(a)
+    _event(db, t, "file_removed", p.id, new=name)
+    return stored
+
+
+def attachment_out(a: TaskAttachment) -> dict:
+    u = a.uploader
+    return {"id": a.id, "event_id": a.event_id, "original_name": a.original_name, "content_type": a.content_type,
+            "size_bytes": a.size_bytes, "created_at": a.created_at, "is_internal": False,
+            "uploader": {"id": u.id, "full_name": u.full_name, "employee_code": u.employee_code} if u else None}
+
+
 # ---------------------------------------------------------------- output
 def person(u: User | None) -> dict | None:
     if u is None:
@@ -736,6 +798,7 @@ def task_detail(db: Session, p: Principal, t: Task) -> dict:
         "rating": t.rating, "requested_due_at": t.requested_due_at,
         "request_reason": t.request_reason if part else None,
         "events": [event_out(e, part) for e in t.events],
+        "attachments": [attachment_out(a) for a in attachments_of(db, [t.id]).get(t.id, [])] if part else [],
         "can": {
             "manage": manage, "is_assignee": member, "is_participant": part, "is_owner": owner,
             "start": member and t.status == "not_started",
@@ -743,6 +806,7 @@ def task_detail(db: Session, p: Principal, t: Task) -> dict:
             "submit": member and t.status in ("not_started", "in_progress"),
             "request_extension": member and t.is_open and not t.requested_due_at and t.due_at is not None,
             "comment": part and t.is_open,
+            "attach": can_attach(p, t),
             "edit": manage and t.is_open, "edit_text": part and manage and t.is_open,
             "approve": owner and t.status == "waiting_approval",
             "send_back": owner and t.status in ("waiting_approval", "completed"),

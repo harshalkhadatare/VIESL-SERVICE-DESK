@@ -2,8 +2,10 @@
 import { api } from "../api.js";
 import { state } from "../state.js";
 import { $, $$, html, mount, icon, fmtDate, fmtRelative, toast, errorToast, emptyState, skeletonRows, debounce,
-  initials, empId, openModal, busy, showFieldErrors } from "../ui.js";
+  initials, empId, openModal, busy, showFieldErrors, confirmDialog, fileSize } from "../ui.js";
 import { navigate, refreshTaskAccess } from "../app.js";
+import { openViewer, downloadFile, loadThumbs, isPdf, isImage } from "../viewer.js";
+import { readClipboardFiles, onPasteFiles } from "../paste.js";
 
 export const PRIO = { high: ["High", "danger"], medium: ["Medium", "warn"], low: ["Low", "info"] };
 const STATUS = {
@@ -111,12 +113,14 @@ function eventLine(e) {
     case "extension_requested": return html`${n} asked for more time, until <b>${fmtDate(e.new_value)}</b>`;
     case "extension_approved": return html`${n} approved more time — new deadline <b>${fmtDate(e.new_value)}</b>`;
     case "extension_declined": return html`${n} kept the deadline (more time not approved)`;
+    case "file": return html`${n} added a file <b>${e.new_value || ""}</b>`;
+    case "file_removed": return html`${n} removed the file <b>${e.new_value || ""}</b>`;
     default: return html`${n} updated the task`;
   }
 }
 const EV_ICON = { title: "edit", description: "edit", created: "plus", progress: "activity", comment: "send", status: "zap", submitted: "flag", completed: "checkCircle",
   approved: "checkCircle", returned: "refresh", cancelled: "x", deadline: "calendar", priority: "alert", reassigned: "user",
-  extension_requested: "clock", extension_approved: "clock", extension_declined: "clock" };
+  extension_requested: "clock", extension_approved: "clock", extension_declined: "clock", file: "clip", file_removed: "trash" };
 
 // ======================================================================= top bar shared by the Tasks pages
 export function taskTabs(active) {
@@ -222,6 +226,7 @@ export async function renderList(view, _p, query = {}) {
         <button class="tk-icon" id="tl-adv" title="Advanced search" aria-label="Advanced search">${icon("sliders")}</button>
         <button class="tk-icon" id="tl-clear" title="Clear filters" aria-label="Clear filters">${icon("x")}</button>
       </div>
+      <button class="btn tk-export" id="tl-export" title="Download the tasks in this list — details, every update and file links">${icon("download")}<span class="hide-sm"> Export to Excel</span></button>
       <div class="tk-gear"><button class="tk-icon tk-glass" id="tl-gear" title="Settings" aria-label="Settings">${icon("settings")}</button>
         <div class="tk-menu right" id="tl-gear-menu" hidden>
           <div class="tk-menu-h">Open Tasks in</div>${VIEWS.map(([v, l]) => html`<button type="button" data-def="${v}">${l} view</button>`)}
@@ -395,6 +400,15 @@ export async function renderList(view, _p, query = {}) {
     }
     return { ...q, sort: layout === "list" ? (f._sort || "due") : "due", page_size: layout === "list" ? 100 : 500 };
   }
+
+  $("#tl-export", view).addEventListener("click", async (e) => {
+    const btn = e.currentTarget, q = params();
+    delete q.page_size;
+    busy(btn);
+    try { await api.download("/tasks/export.xlsx", q, "tasks.xlsx"); toast("Excel file downloaded."); }
+    catch (ex) { errorToast(ex); }
+    finally { busy(btn, false); }
+  });
 
   async function load() {
     const url = new URLSearchParams(Object.entries({ ...f, layout, preset }).filter(([k, v]) => v && !k.startsWith("_")));
@@ -716,9 +730,24 @@ export async function renderNew(view) {
       <label class="field"><span class="lbl">Category <span class="muted" style="font-weight:400">(optional)</span></span>
         <input type="text" name="category" maxlength="60" list="tf-cats" placeholder="e.g. MIS, Site visit, Compliance">
         <datalist id="tf-cats"><option value="MIS / Reports"><option value="Site visit"><option value="Compliance"><option value="Finance"><option value="Purchase"><option value="HR"><option value="Follow-up"></datalist></label>
+      <div class="field"><span class="lbl">Attachments <span class="muted" style="font-weight:400">(optional — images, PDF, Word, Excel, PowerPoint)</span></span>
+        <div class="drop-row"><div class="dropzone" id="tf-drop" tabindex="0" role="button">${icon("clip")} Add files</div>
+          <button type="button" class="btn paste-btn" id="tf-paste" title="Paste a screenshot or copied image (or press Ctrl+V)">${icon("clipboard")} Paste</button></div>
+        <input type="file" id="tf-files" hidden multiple accept="${FILE_ACCEPT}"><div class="tk-pending" id="tf-list"></div></div>
       <label class="check"><input type="checkbox" name="requires_approval" checked> I want to approve the work before it's marked complete</label>
     </div><div class="modal-foot"><a class="btn" href="#/tasks">Cancel</a><button class="btn primary" type="submit" data-busy>${icon("send")} Assign task</button></div></form>`);
   multiPicker($("#tf-person", view), [], (list) => { people = list; });
+  let pending = [];
+  const showPending = () => mount($("#tf-list", view), html`${pending.map((f, k) => html`<span class="tk-pend">${icon("file")} ${f.name}
+    <span class="muted">${fileSize(f.size)}</span><button type="button" data-rm="${k}" aria-label="Remove ${f.name}">${icon("x")}</button></span>`)}`);
+  const addFiles = (list) => { pending = [...pending, ...list].slice(0, 30); showPending(); };
+  $("#tf-list", view).addEventListener("click", (e) => { const b = e.target.closest("[data-rm]"); if (b) { pending.splice(Number(b.dataset.rm), 1); showPending(); } });
+  const pick = $("#tf-files", view);
+  $("#tf-drop", view).addEventListener("click", () => pick.click());
+  $("#tf-drop", view).addEventListener("keydown", (e) => { if (e.key === "Enter") pick.click(); });
+  pick.addEventListener("change", () => { addFiles([...pick.files]); pick.value = ""; });
+  $("#tf-paste", view).addEventListener("click", async () => { try { addFiles(await readClipboardFiles()); } catch (ex) { toast(ex.message, "info"); } });
+  onPasteFiles(view, (got) => { if (!document.querySelector(".modal-backdrop")) addFiles(got); });
   $("#tf-nodl", view).addEventListener("change", (e) => { $("#tf-due", view).hidden = e.target.checked; });
   $("#tf-prio", view).addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
@@ -740,7 +769,13 @@ export async function renderNew(view) {
     try {
       const t = await api.post("/tasks", { title: v.title.trim(), description: v.description || null, assignee_ids: people.map((u) => u.id),
         due_at: noDl ? null : toIso(v.due_date, v.due_time), priority, category: v.category || null, requires_approval: !!v.requires_approval });
-      toast(`Task ${t.number} assigned to ${people.length > 1 ? `${people.length} people` : people[0].name}.`);
+      let failed = 0;
+      for (const file of pending) {
+        const fd = new FormData(); fd.append("file", file);
+        try { await api.upload(`/tasks/${t.number}/attachments`, fd); } catch (ex) { failed++; errorToast(ex); }
+      }
+      toast(`Task ${t.number} assigned to ${people.length > 1 ? `${people.length} people` : people[0].name}.`
+        + (pending.length ? ` ${pending.length - failed} file${pending.length - failed === 1 ? "" : "s"} attached.` : ""));
       navigate(`/tasks/${t.number}`);
     } catch (ex) { busy(btn, false); showFieldErrors(f, ex.fieldErrors?.() || {}); errorToast(ex); }
   });
@@ -768,6 +803,39 @@ function dayName(v) {
   return same(d, t) ? "Today" : same(d, y) ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 }
 
+const FILE_ACCEPT = "image/*,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
+const fileIcon = (a) => (isImage(a) ? "image" : "file");
+const extOf = (a) => (a.original_name.split(".").pop() || "").toUpperCase();
+
+function fileChip(t, e) {
+  const k = (t.attachments || []).findIndex((a) => a.event_id === e.id);
+  if (k < 0) return html`<span class="tk-file gone">${icon("file")} <s>${e.new_value || "file"}</s> <span class="muted small">removed</span></span>`;
+  const a = t.attachments[k];
+  return html`<button type="button" class="tk-file" data-fv="${k}" title="Open ${a.original_name}">
+    <span class="tk-file-thumb ${isPdf(a) ? "pdf" : ""}" data-thumb="${a.id}">${icon(fileIcon(a))}</span>
+    <span class="tk-file-meta"><b>${a.original_name}</b><span>${extOf(a)} · ${fileSize(a.size_bytes)}</span></span>
+    <span class="tk-file-open">${icon("eye")}</span></button>`;
+}
+
+function filesCard(t) {
+  const files = t.attachments || [], c = t.can;
+  const mayDelete = (a) => a.uploader?.id === state.me.id || t.assigner.id === state.me.id;
+  if (!files.length && !c.attach) return "";
+  return html`<div class="card" id="tk-files"><div class="card-head"><h2>${icon("clip")} Files</h2><span class="hint">${files.length}</span></div>
+    <div class="card-body">${files.length ? html`<div class="tk-files">${files.map((a, k) => html`<div class="tk-frow">
+        <button type="button" class="tk-file-thumb ${isPdf(a) ? "pdf" : ""}" data-thumb="${a.id}" data-fv="${k}" title="View">${icon(fileIcon(a))}</button>
+        <div class="tk-finfo"><button type="button" class="linklike" data-fv="${k}" title="${a.original_name}">${a.original_name}</button>
+          <span>${fileSize(a.size_bytes)} · ${a.uploader?.full_name || ""} · ${fmtRelative(a.created_at)}</span></div>
+        <div class="tk-facts"><button type="button" class="tk-icon" data-fv="${k}" title="View">${icon("eye")}</button>
+          <button type="button" class="tk-icon" data-fdl="${k}" title="Download">${icon("download")}</button>
+          ${mayDelete(a) ? html`<button type="button" class="tk-icon danger" data-fdel="${k}" title="Remove">${icon("trash")}</button>` : ""}</div></div>`)}</div>`
+      : html`<p class="muted small" style="margin:0">No files yet.</p>`}
+      ${c.attach ? html`<div class="drop-row" style="margin-top:12px"><div class="dropzone" data-attach tabindex="0" role="button">${icon("clip")} Add a file</div>
+        <button type="button" class="btn paste-btn" id="tk-paste" title="Paste a screenshot or copied image (or press Ctrl+V)">${icon("clipboard")} Paste</button></div>
+        <p class="muted small" style="margin:8px 0 0">Images, PDF, Word, Excel or PowerPoint · only the people on this task can open them.</p>` : ""}
+    </div></div>`;
+}
+
 function chatCard(t) {
   const c = t.can;
   const memberIds = new Set((t.assignees || [t.assignee]).map((u) => u.id));
@@ -778,7 +846,7 @@ function chatCard(t) {
     const sep = day !== lastDay ? html`<div class="tk-day"><span>${day}</span></div>` : "";
     lastDay = day;
     const hasText = !!e.body || e.private;
-    const isMsg = hasText || ["submitted", "approved", "returned", "extension_requested"].includes(e.kind);
+    const isMsg = hasText || ["submitted", "approved", "returned", "extension_requested", "file"].includes(e.kind);
     if (!isMsg) {   // a step, not a message: one small centred line
       return html`${sep}<div class="tk-sys"><span>${icon(EV_ICON[e.kind] || "dot")} ${eventLine(e)} · ${timeOnly(e.created_at)}</span></div>`;
     }
@@ -789,7 +857,7 @@ function chatCard(t) {
       <div class="tk-bubble-wrap">
         <div class="tk-msg-head"><b>${mine ? "You" : (e.author?.name || "System")}</b>${roleOf(e.author) ? html`<span class="tk-role">${roleOf(e.author)}</span>` : ""}
           <span class="muted" title="${fmtDate(e.created_at)}">${timeOnly(e.created_at)}</span></div>
-        <div class="tk-bubble k-${e.kind}">${tag}${e.body ? html`<div class="tk-text">${e.body}</div>` : e.private
+        <div class="tk-bubble k-${e.kind}">${tag}${e.kind === "file" ? fileChip(t, e) : ""}${e.body ? html`<div class="tk-text">${e.body}</div>` : e.private
           ? html`<div class="tk-text tk-hidden">${icon("lock")} Message hidden — private to the people on this task</div>` : ""}</div>
       </div></div>`;
   });
@@ -797,15 +865,16 @@ function chatCard(t) {
       ${c.update ? html`<div class="tk-slider"><label for="up-p" class="lbl">Progress</label>
         <input type="range" id="up-p" name="progress" min="0" max="100" step="5" value="${t.progress}"><b id="up-pv">${t.progress}%</b></div>` : ""}
       <div class="tk-compose-row"><textarea name="body" rows="2" maxlength="4000" placeholder="${c.update ? "Write an update — what did you do? any problems?" : "Write a message…"}"></textarea>
+        ${c.attach ? html`<button class="btn tk-clip" type="button" data-attach title="Attach a file (image, PDF, Word, Excel, PowerPoint)" aria-label="Attach a file">${icon("clip")}</button>` : ""}
         <button class="btn primary" type="submit" data-busy aria-label="Send">${icon("send")}<span class="hide-sm"> Send</span></button></div>
-      <div class="tk-compose-hint">${icon("lock")} Only the people on this task can read this. They'll also get it by email. <span class="hide-sm"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> to send.</span></div>
+      <div class="tk-compose-hint">${icon("lock")} Only the people on this task can read this. They'll see it in their notifications. <span class="hide-sm">Paste a screenshot with <kbd>Ctrl</kbd>+<kbd>V</kbd> · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to send.</span></div>
     </form>` : "";
   return html`<div class="card tk-chat-card"><div class="card-head"><h2>${icon("send")} Conversation</h2><span class="hint">${t.events.length} entries</span></div>
     <div class="tk-chat" id="tk-chat">${rows}</div>${composer}</div>`;
 }
 
-export async function renderDetail(view, [number]) {
-  let t;
+export async function renderDetail(view, [number], query = {}) {
+  let t, fileToOpen = query.file ? Number(query.file) : null;
   async function reload(msg) {
     t = await api.get(`/tasks/${number}`);
     if (msg) toast(msg);
@@ -860,14 +929,55 @@ export async function renderDetail(view, [number]) {
               ${t.rating ? html`<dt>Rating</dt><dd class="tk-stars">${"★".repeat(t.rating)}<span>${"★".repeat(5 - t.rating)}</span></dd>` : ""}
               <dt>Approval</dt><dd>${t.requires_approval ? `${t.assigner.name} approves the work` : "Not needed"}</dd>
             </dl></div></div>
+          ${filesCard(t)}
         </aside>
-      </div>`);
+      </div><input type="file" id="tk-upf" hidden multiple accept="${FILE_ACCEPT}">`);
     wire();
+  }
+
+  const openFile = (k) => openViewer({ number, files: t.attachments.slice(), index: k,
+    canDelete: (a) => a.uploader?.id === state.me.id || t.assigner.id === state.me.id, onDeleted: () => reload() });
+  async function sendFiles(list, msg) {
+    if (!t.can.attach) return toast("Files can't be added to this task.", "info");
+    let ok = 0;
+    for (const f of list) {
+      const fd = new FormData(); fd.append("file", f);
+      try { await api.upload(`/tasks/${number}/attachments`, fd); ok++; } catch (ex) { errorToast(ex); }
+    }
+    if (ok) await reload(msg || (ok > 1 ? `${ok} files added.` : "File added."));
   }
 
   function wire() {
     const chat = $("#tk-chat", view);
     if (chat) chat.scrollTop = chat.scrollHeight;
+    loadThumbs(view, number, t.attachments || []);
+    $$("[data-fv]", view).forEach((b) => b.addEventListener("click", () => openFile(Number(b.dataset.fv))));
+    $$("[data-fdl]", view).forEach((b) => b.addEventListener("click", () => downloadFile(number, t.attachments[Number(b.dataset.fdl)])));
+    $$("[data-fdel]", view).forEach((b) => b.addEventListener("click", async () => {
+      const a = t.attachments[Number(b.dataset.fdel)];
+      const ok = await confirmDialog({ title: "Remove this file?", danger: true, confirmText: "Remove file",
+        message: `“${a.original_name}” will be removed from ${number} for everyone.` });
+      if (!ok) return;
+      try { await api.del(`/tasks/${number}/attachments/${a.id}`); await reload("File removed."); } catch (ex) { errorToast(ex); }
+    }));
+    const upf = $("#tk-upf", view);
+    $$("[data-attach]", view).forEach((b) => {
+      b.addEventListener("click", () => upf.click());
+      b.addEventListener("keydown", (e) => { if (e.key === "Enter") upf.click(); });
+    });
+    upf?.addEventListener("change", () => { const list = [...upf.files]; upf.value = ""; if (list.length) sendFiles(list); });
+    $("#tk-paste", view)?.addEventListener("click", async () => {
+      try { const got = await readClipboardFiles(); sendFiles(got, "Pasted image added."); } catch (ex) { toast(ex.message, "info"); }
+    });
+    if (!view._pasteBound) {   // one Ctrl+V listener per page visit
+      view._pasteBound = true;
+      onPasteFiles(view, (got) => { if (!document.querySelector(".viewer, .modal-backdrop")) sendFiles(got, "Pasted image added."); });
+    }
+    if (fileToOpen) {          // link from the Excel export: open that file straight away
+      const k = (t.attachments || []).findIndex((a) => a.id === fileToOpen);
+      fileToOpen = null;
+      if (k >= 0) openFile(k); else toast("That file is no longer on this task.", "info");
+    }
     $("#up textarea", view)?.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("#up", view).requestSubmit(); } });
     const slider = $("#up-p", view);
     slider?.addEventListener("input", () => { $("#up-pv", view).textContent = `${slider.value}%`; });

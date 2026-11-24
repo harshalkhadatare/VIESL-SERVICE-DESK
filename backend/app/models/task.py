@@ -1,7 +1,8 @@
 """Task management: management assigns tasks, the assignee reports progress, the assigner approves."""
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Integer, Unicode, false, true
+from sqlalchemy import BigInteger, Boolean, LargeBinary, CheckConstraint, ForeignKey, Index, Integer, Unicode, false, true
+from sqlalchemy.dialects import mssql
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, LongText, TimestampMixin, UTCDateTime, utcnow
@@ -110,3 +111,26 @@ class TaskEvent(Base):
 
     task: Mapped[Task] = relationship(back_populates="events")
     author: Mapped[User | None] = relationship(lazy="joined")
+
+
+class TaskAttachment(Base):
+    """A file on a task (image, PDF or Office file). Only the people on the task can see or download it."""
+    __tablename__ = "task_attachments"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_id: Mapped[int | None] = mapped_column(ForeignKey("task_events.id", ondelete="SET NULL"))
+    original_name: Mapped[str] = mapped_column(Unicode(255), nullable=False)
+    stored_name: Mapped[str] = mapped_column(Unicode(64), unique=True, nullable=False)
+    content_type: Mapped[str] = mapped_column(Unicode(100), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    sha256: Mapped[str] = mapped_column(Unicode(64), nullable=False)
+    uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
+    uploader: Mapped[User] = relationship(lazy="joined")
+
+
+class TaskAttachmentBlob(Base):
+    """File bytes when ATTACHMENT_STORAGE=database (Vercel has no persistent disk)."""
+    __tablename__ = "task_attachment_blobs"
+    attachment_id: Mapped[int] = mapped_column(ForeignKey("task_attachments.id", ondelete="CASCADE"), primary_key=True)
+    data: Mapped[bytes] = mapped_column(LargeBinary().with_variant(mssql.VARBINARY("max"), "mssql"), nullable=False)

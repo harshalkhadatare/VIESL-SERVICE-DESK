@@ -33,6 +33,20 @@ ALLOWED: dict[str, tuple[str, tuple[bytes, ...]]] = {
 }
 MAX_FILES_PER_TICKET = 20
 
+# Tasks also take everyday office files (reports, sheets, presentations). Macro-enabled formats (.xlsm, .docm…)
+# are not allowed. Office files can't be previewed in the browser — they are downloaded.
+_ZIP, _OLE = (b"PK\x03\x04",), (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1",)
+TASK_ALLOWED: dict[str, tuple[str, tuple[bytes, ...]]] = {
+    **ALLOWED,
+    ".xlsx": ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", _ZIP),
+    ".docx": ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", _ZIP),
+    ".pptx": ("application/vnd.openxmlformats-officedocument.presentationml.presentation", _ZIP),
+    ".xls": ("application/vnd.ms-excel", _OLE),
+    ".doc": ("application/msword", _OLE),
+    ".ppt": ("application/vnd.ms-powerpoint", _OLE),
+}
+MAX_FILES_PER_TASK = 30
+
 
 def safe_display_name(name: str) -> str:
     base = os.path.basename(name or "file").strip().replace("\x00", "")
@@ -40,26 +54,29 @@ def safe_display_name(name: str) -> str:
     return base or "file"
 
 
-def _verify_magic(ext: str, head: bytes) -> None:
+def _verify_magic(ext: str, head: bytes, table=ALLOWED) -> None:
     ok = False
     if ext in (".heic", ".heif"):  # ISO-BMFF: bytes 4..12 = 'ftyp' + brand
         ok = head[4:8] == b"ftyp" and head[8:12] in (b"heic", b"heix", b"hevc", b"heim", b"heis", b"mif1", b"msf1")
     elif ext == ".webp":
         ok = head.startswith(b"RIFF") and head[8:12] == b"WEBP"
     else:
-        ok = any(head.startswith(sig) for sig in ALLOWED[ext][1])
+        ok = any(head.startswith(sig) for sig in table[ext][1])
     if not ok:
-        raise BusinessRuleError("File content does not match its extension. Only images and PDF files are allowed.")
+        raise BusinessRuleError("File content does not match its extension.")
 
 
-async def store_upload(file: UploadFile) -> dict:
+async def store_upload(file: UploadFile, allowed: dict | None = None) -> dict:
     """Validate and store an upload. Returns metadata; with ATTACHMENT_STORAGE=database the
     bytes are returned under "data" for the caller to save in ticket_attachment_blobs."""
     s = get_settings()
     name = safe_display_name(file.filename or "")
     ext = Path(name).suffix.lower()
-    if ext not in ALLOWED:
-        raise BusinessRuleError("Only images (PNG, JPG, GIF, WEBP, BMP, TIFF, HEIC) and PDF files can be attached.")
+    table = allowed or ALLOWED
+    if ext not in table:
+        if table is ALLOWED:
+            raise BusinessRuleError("Only images (PNG, JPG, GIF, WEBP, BMP, TIFF, HEIC) and PDF files can be attached.")
+        raise BusinessRuleError("Only images, PDF and Office files (Word, Excel, PowerPoint) can be attached.")
     limit = s.max_upload_mb * 1024 * 1024
     stored = f"{uuid.uuid4().hex}{ext}"
     in_db = s.attachment_storage == "database"
@@ -76,7 +93,7 @@ async def store_upload(file: UploadFile) -> dict:
             while chunk := await file.read(64 * 1024):
                 if not head:
                     head = chunk[:512]
-                    _verify_magic(ext, head)
+                    _verify_magic(ext, head, table)
                 size += len(chunk)
                 if size > limit:
                     raise BusinessRuleError(f"File exceeds the {s.max_upload_mb} MB limit.")
@@ -91,7 +108,7 @@ async def store_upload(file: UploadFile) -> dict:
         if dest is not None:
             dest.unlink(missing_ok=True)
         raise
-    meta = {"original_name": name, "stored_name": stored, "content_type": ALLOWED[ext][0],
+    meta = {"original_name": name, "stored_name": stored, "content_type": table[ext][0],
             "size_bytes": size, "sha256": sha.hexdigest()}
     if in_db:
         meta["data"] = buf.getvalue()

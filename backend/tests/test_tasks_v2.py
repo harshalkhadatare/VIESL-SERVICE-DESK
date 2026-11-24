@@ -64,9 +64,11 @@ def test_messages_are_private_even_from_admins_and_md(client, mail):  # noqa: F8
     d = client.get(f"{API}/{n}", headers=_hdr(mgr)).json()
     assert d["description"] == "Use the locked sheet in HR drive" and d["private"] is False
     assert any(e["body"] == "Secret figures look fine" for e in d["events"])
-    # the email to the manager carries the employee's own words, labelled with their name
+    # progress messages are not emailed any more; marking it complete is — with the employee's own words
+    assert not [x for x in mail.sent if "Secret figures look fine" in x["text"]]
+    client.post(f"{API}/{n}/submit", json={"body": "Final sheet uploaded"}, headers=_hdr(emp))
     m = [x for x in mail.sent if x["to"] == "v2.manager@visioninfra.co.in" and n in x["subject"]][-1]
-    assert "Secret figures look fine" in m["text"] and "Message from Priya Private" in m["text"]
+    assert "Final sheet uploaded" in m["text"] and "Message from Priya Private" in m["text"]
     assert "Message from Priya Private" in m["html"] and "Use the locked sheet in HR drive" in m["html"]
 
 

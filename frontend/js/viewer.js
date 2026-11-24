@@ -3,6 +3,9 @@
 import { api } from "./api.js";
 import { $, $$, html, mount, icon, fileSize, fmtDate, toast, errorToast, confirmDialog, nameIdText } from "./ui.js";
 
+// Tickets (IT-…/ERP-…) and tasks (TSK-…) share this viewer; only the address differs.
+const isTask = (n) => /^TSK-/i.test(n);
+const base = (n) => (isTask(n) ? `/tasks/${n}` : `/tickets/${n}`);
 const blobs = new Map();   // "IT-26-000001:15" → Promise<Blob>, so thumbnails and the viewer share one download
 
 export const isImage = (a) => /^image\//.test(a.content_type) && !/hei[cf]/i.test(a.content_type);
@@ -22,7 +25,7 @@ function pdfjs() {
 export function fileBlob(number, a) {
   const key = `${number}:${a.id}`;
   if (!blobs.has(key)) {
-    const p = api.blob(`/tickets/${number}/attachments/${a.id}`, { mode: "view" });
+    const p = api.blob(`${base(number)}/attachments/${a.id}`, { mode: "view" });
     p.catch(() => blobs.delete(key));
     blobs.set(key, p);
   }
@@ -65,7 +68,7 @@ export function loadThumbs(root, number, files) {
 
 export async function downloadFile(number, a) {
   try {
-    const b = await api.blob(`/tickets/${number}/attachments/${a.id}`, { mode: "download" });
+    const b = await api.blob(`${base(number)}/attachments/${a.id}`, { mode: "download" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(b);
     link.download = a.original_name;
@@ -94,9 +97,9 @@ export function openViewer({ number, files, index = 0, canDelete = false, onDele
         <span class="vw-group">
           <button class="vw-btn" data-a="tab" title="Open in a new tab">${icon("external")}<span>Open</span></button>
           <button class="vw-btn" data-a="print" title="Print">${icon("printer")}<span>Print</span></button>
-          <button class="vw-btn" data-a="link" title="Copy a link to this ticket's files (sign-in required)">${icon("link")}<span>Copy link</span></button>
+          <button class="vw-btn" data-a="link" title="Copy a link to these files (sign-in required)">${icon("link")}<span>Copy link</span></button>
           <button class="vw-btn primary" data-a="dl" title="Download">${icon("download")}<span>Download</span></button>
-          ${canDelete ? html`<button class="vw-btn danger" data-a="del" title="Delete this file (IT only)">${icon("trash")}</button>` : ""}</span>
+          ${canDelete ? html`<button class="vw-btn danger" data-a="del" title="Delete this file">${icon("trash")}</button>` : ""}</span>
         <button class="vw-btn" data-a="close" title="Close (Esc)" aria-label="Close">${icon("x")}</button>
       </div>
     </div>
@@ -127,7 +130,7 @@ export function openViewer({ number, files, index = 0, canDelete = false, onDele
     const s = $("#vw-strip", wrap);
     s.hidden = files.length < 2;
     mount(s, html`${files.map((a, k) => html`<button class="vw-thumb ${k === i ? "on" : ""}" data-k="${k}" title="${a.original_name}">
-      <span class="vw-thumb-box" data-thumb="${a.id}">${icon(isPdf(a) ? "file" : "image")}</span>
+      <span class="vw-thumb-box" data-thumb="${a.id}">${icon(isImage(a) ? "image" : "file")}</span>
       <span class="vw-thumb-name">${a.original_name}</span></button>`)}`);
     loadThumbs(s, number, files);
     $$(".vw-thumb", s).forEach((b) => b.addEventListener("click", () => show(Number(b.dataset.k))));
@@ -162,10 +165,12 @@ export function openViewer({ number, files, index = 0, canDelete = false, onDele
     $("#vw-name", wrap).textContent = cur.original_name;
     $("#vw-meta", wrap).textContent = [fileSize(cur.size_bytes), nameIdText(cur.uploader), fmtDate(cur.created_at),
       cur.is_internal ? "Internal (IT only)" : "", files.length > 1 ? `${i + 1} of ${files.length}` : ""].filter(Boolean).join("  ·  ");
-    mount($("#vw-ic", wrap), html`${icon(isPdf(cur) ? "file" : "image")}`);
+    mount($("#vw-ic", wrap), html`${icon(isImage(cur) ? "image" : "file")}`);
     $("#vw-zoom", wrap).hidden = !(isImage(cur) || isPdf(cur));
     $$(".vw-nav", wrap).forEach((b) => { b.hidden = files.length < 2; });
     $("[data-a=print]", wrap).hidden = !(isImage(cur) || isPdf(cur));
+    const del = $("[data-a=del]", wrap);
+    if (del) del.hidden = typeof canDelete === "function" ? !canDelete(cur) : !canDelete;
     mount(stage, html`<div class="vw-loading"><span class="spinner"></span>Opening ${cur.original_name}…</div>`);
     strip();
     const want = cur;
@@ -291,8 +296,8 @@ export function openViewer({ number, files, index = 0, canDelete = false, onDele
       return;
     }
     if (a === "link") {
-      const link = `${location.origin}${location.pathname}#/tickets/${number}/files`;
-      try { await navigator.clipboard.writeText(link); toast("Link copied. It opens this ticket's files after signing in."); }
+      const link = `${location.origin}${location.pathname}#${isTask(number) ? `/tasks/${number}` : `/tickets/${number}/files`}`;
+      try { await navigator.clipboard.writeText(link); toast(`Link copied. It opens this ${isTask(number) ? "task" : "ticket"}'s files after signing in.`); }
       catch { toast(link); }
       return;
     }
@@ -301,7 +306,7 @@ export function openViewer({ number, files, index = 0, canDelete = false, onDele
         message: `“${cur.original_name}” will be removed from ${number} for everyone. This cannot be undone.` });
       if (!ok) return;
       try {
-        await api.del(`/tickets/${number}/attachments/${cur.id}`);
+        await api.del(`${base(number)}/attachments/${cur.id}`);
         blobs.delete(`${number}:${cur.id}`);
         files = files.filter((x) => x !== cur);
         toast("File deleted.");

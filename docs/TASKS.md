@@ -75,3 +75,25 @@ tasks and their history are kept.
 ## Planned next
 
 Attachments on tasks, linking tickets to tasks, recurring tasks, subtasks/checklists and Excel reports.
+
+## Files on a task
+
+Anyone on the task can attach files — on the **Assign a task** form, with the 📎 button next to *Send*, the
+**Files** card on the task page, or by pasting a screenshot (Ctrl+V). Allowed: images, PDF, Word, Excel and
+PowerPoint (macro files such as .xlsm are refused), up to 30 files per task. Images and PDFs open in the built-in
+viewer; Office files are downloaded. Only the people on the task can see or open the files. The person who added a
+file, or the person who assigned the task, can remove it.
+
+## Export to Excel
+
+**Tasks → Export to Excel** downloads the tasks in the current list (same filters) as one workbook:
+*Tasks* (all details, latest update, link to open the task), *Updates* (every message and change) and
+*Attachments* (one row per file with a link that opens that file — sign-in required). Only tasks you are on are
+included.
+
+## Emails
+
+To keep inboxes quiet, task emails are sent only for: **a new task assigned**, **a task completed** (marked
+complete / approved), and **deadline changes** (deadline changed, more time asked for, more time approved or
+refused). Everything else — messages, progress updates, files, reminders, overdue alerts — appears only in the
+app's **Notifications**.

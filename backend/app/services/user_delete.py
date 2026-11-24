@@ -51,10 +51,10 @@ def delete_user(db: Session, p: Principal, uid: int) -> dict:
         raise BusinessRuleError("You can't delete your own account.")
     if _last_admin(db, u):
         raise BusinessRuleError("This is the last active IT Administrator — make someone else an administrator first.")
-    from app.models.task import Task
-    n_tasks = db.scalar(select(func.count()).select_from(Task).where(or_(Task.assigner_id == u.id,
-                                                                          Task.assignee_id == u.id,
-                                                                          Task.members.any(user_id=u.id)))) or 0
+    from app.models.task import Task, TaskAttachment
+    n_tasks = db.scalar(select(func.count()).select_from(Task).where(or_(
+        Task.assigner_id == u.id, Task.assignee_id == u.id, Task.members.any(user_id=u.id),
+        Task.id.in_(select(TaskAttachment.task_id).where(TaskAttachment.uploaded_by == u.id))))) or 0
     if n_tasks:
         raise BusinessRuleError(f"{u.label} has {n_tasks} task(s) in Task management (assigned by or to them). "
                                 "Deactivate this user instead, so the tasks and their history are kept.")
