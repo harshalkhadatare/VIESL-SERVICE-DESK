@@ -1859,3 +1859,16 @@ html[data-mode="dark"] .tk-msg.mine .tk-bubble { background: rgba(74, 222, 128, 
 .tk-pend svg { width: 13px; height: 13px; }
 .tk-pend button { border: 0; background: none; cursor: pointer; display: grid; place-items: center; color: var(--muted); padding: 2px; }
 .sidebar-copy { text-align: center; letter-spacing: .02em; }
+
+/* ---------- sign-in page: large logo on the left, bigger product name, admin mobiles */
+.login-art .login-brand { gap: 14px; }
+.login-art .login-brand .brand-mark { width: 58px; height: 58px; border-radius: 14px; }
+.login-art .login-brand .brand-name { font-size: 21px; font-weight: 700; letter-spacing: -.01em; }
+.login-art .login-brand .brand-sub { font-size: 14px; color: #9fb6d6; margin-top: 3px; letter-spacing: .03em; }
+.login-hero-logo { margin: auto 0 26px; align-self: flex-start; background: #fff; border-radius: 22px; padding: 18px 26px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .35); }
+.login-hero-logo img { display: block; height: 230px; width: auto; }
+.login-art .login-hero-logo + .company-big { margin-top: 0; }
+@media (min-width: 981px) { .login-company .logo-full { display: none; } }
+@media (max-height: 820px) { .login-hero-logo img { height: 170px; } .login-hero-logo { margin-bottom: 18px; } }
+.pw-who { gap: 1px; }

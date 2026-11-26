@@ -6,8 +6,9 @@ import { brand } from "../brand.js";
 export async function render(root, { onLogin }) {
   mount(root, html`<div class="login">
     <section class="login-art">
-      <div class="brand" style="padding:0"><div class="brand-mark">${brandMark()}</div>
-        <div><div class="brand-name">IT Service Desk</div><div class="brand-sub">Internal support portal</div></div></div>
+      <div class="brand login-brand" style="padding:0"><div class="brand-mark">${brandMark()}</div>
+        <div><div class="brand-name">IT Service Desk</div><div class="brand-sub">${brand.short}</div></div></div>
+      <div class="login-hero-logo"><img src="/static/assets/logo-full.png" alt="Vision — #NewBharat #NewVision" width="640" height="599"></div>
       <div class="company-big">${brand.name}</div>
       <p class="lead">One place for every IT request, issue and idea — raise tickets, follow progress and find answers
         without chasing emails or calls.</p>
@@ -41,7 +42,8 @@ export async function render(root, { onLogin }) {
             const n = typeof c === "string" ? { name: c } : c;
             const ini = n.name.replace(/^(mr|mrs|ms|dr)\.?\s+/i, "").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
             return html`<li><span class="avatar">${ini}</span><div class="pw-who"><b>${n.name}</b>
-              ${n.email ? html`<a href="mailto:${n.email}?subject=${encodeURIComponent("Password reset request — IT Service Desk")}">${icon("mail")}${n.email}</a>` : ""}</div></li>`;
+              ${n.email ? html`<a href="mailto:${n.email}?subject=${encodeURIComponent("Password reset request — IT Service Desk")}">${icon("mail")}${n.email}</a>` : ""}
+              ${n.phone ? html`<a href="tel:${n.phone.replace(/[^\d+]/g, "")}">${icon("phone")}${n.phone}</a>` : ""}</div></li>`;
           })}</ol>
         </div>
       </form>

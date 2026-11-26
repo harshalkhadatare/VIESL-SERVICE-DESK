@@ -2,10 +2,10 @@
 // another company needs no code changes — only those two environment variables.
 export const brand = { name: "Vision Infra Equipment Solutions Ltd.", short: "Vision Infra · VIESL",
   help_contacts: [
-    { name: "Mr. Sandeep Patil", email: "pnm_audit@visioninfraindia.com" },
-    { name: "Mr. Harshal Khadatare", email: "itsupport@visioninfraindia.com" },
-    { name: "Mr. Aniket Ghadge", email: "it@visioninfraindia.com" },
-    { name: "Mr. Vishal Borade", email: "it@visioninfraindia.com" },
+    { name: "Mr. Sandeep Patil", email: "pnm_audit@visioninfraindia.com", phone: "+91 89566 67459" },
+    { name: "Mr. Harshal Khadatare", email: "itsupport@visioninfraindia.com", phone: "+91 70282 17817" },
+    { name: "Mr. Aniket Ghadge", email: "it@visioninfraindia.com", phone: "+91 70284 52170" },
+    { name: "Mr. Vishal Borade", email: "it@visioninfraindia.com", phone: "+91 89563 73233" },
   ] };
 
 export async function loadBrand() {
