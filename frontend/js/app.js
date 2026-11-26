@@ -98,8 +98,8 @@ function renderShell() {
   mount(app, html`
   <div class="shell" id="shell">
     <aside class="sidebar" aria-label="Main navigation">
-      <div class="brand"><div class="brand-mark">${brandMark()}</div>
-        <div><div class="brand-name"><span class="only-desk">IT Service Desk</span><span class="only-tasks">Task Management</span></div><div class="brand-sub">${brand.short}</div></div></div>
+      <div class="brand brand-full"><div class="brand-logo"><img src="/static/assets/logo-full.png" alt="Vision — #NewBharat #NewVision" width="640" height="599"></div>
+        <div class="brand-name"><span class="only-desk">IT Service Desk</span><span class="only-tasks">Task Management</span></div><div class="brand-sub">${brand.short}</div></div>
       ${tasksNav()}
       <nav class="nav nav-desk">
         <div class="nav-section">Workspace</div>

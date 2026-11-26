@@ -1,12 +1,31 @@
 import { api } from "../api.js";
-import { $, html, mount, icon, brandMark, busy } from "../ui.js";
+import { $, html, mount, icon, busy } from "../ui.js";
 
 import { brand } from "../brand.js";
+
+// Contacts are grouped by team (one column per team), keeping the order they are listed in.
+function teams(list) {
+  const groups = new Map();
+  for (const c of list) {
+    const n = typeof c === "string" ? { name: c } : c;
+    const k = n.team || "";
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(n);
+  }
+  return [...groups.entries()];
+}
+
+function contactRow(n) {
+  const ini = n.name.replace(/^(mr|mrs|ms|dr)\.?\s+/i, "").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  return html`<li><span class="avatar">${ini}</span><div class="pw-who"><b>${n.name}</b>
+    ${n.email ? html`<a href="mailto:${n.email}?subject=${encodeURIComponent("Password reset request — IT Service Desk")}" title="${n.email}">${icon("mail")}<span>${n.email}</span></a>` : ""}
+    ${n.phone ? html`<a href="tel:${n.phone.replace(/[^\d+]/g, "")}">${icon("phone")}<span>${n.phone}</span></a>` : ""}</div></li>`;
+}
 
 export async function render(root, { onLogin }) {
   mount(root, html`<div class="login">
     <section class="login-art">
-      <div class="brand login-brand" style="padding:0"><div class="brand-mark">${brandMark()}</div>
+      <div class="brand login-brand" style="padding:0">
         <div><div class="brand-name">IT Service Desk</div><div class="brand-sub">${brand.short}</div></div></div>
       <div class="login-hero-logo"><img src="/static/assets/logo-full.png" alt="Vision — #NewBharat #NewVision" width="640" height="599"></div>
       <div class="company-big">${brand.name}</div>
@@ -38,13 +57,9 @@ export async function render(root, { onLogin }) {
         </div>
         <div class="pw-help">
           <div class="pw-help-head">${icon("key")}<span><b>Forgot your password?</b> Please contact any of the following IT administrators to have it reset:</span></div>
-          <ol class="pw-list">${brand.help_contacts.map((c) => {
-            const n = typeof c === "string" ? { name: c } : c;
-            const ini = n.name.replace(/^(mr|mrs|ms|dr)\.?\s+/i, "").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-            return html`<li><span class="avatar">${ini}</span><div class="pw-who"><b>${n.name}</b>
-              ${n.email ? html`<a href="mailto:${n.email}?subject=${encodeURIComponent("Password reset request — IT Service Desk")}">${icon("mail")}${n.email}</a>` : ""}
-              ${n.phone ? html`<a href="tel:${n.phone.replace(/[^\d+]/g, "")}">${icon("phone")}${n.phone}</a>` : ""}</div></li>`;
-          })}</ol>
+          <div class="pw-teams">${teams(brand.help_contacts).map(([team, people]) => html`<div class="pw-team">
+            ${team ? html`<div class="pw-team-name">${team}</div>` : ""}
+            <ol class="pw-list">${people.map(contactRow)}</ol></div>`)}</div>
         </div>
       </form>
     </section></div>`);

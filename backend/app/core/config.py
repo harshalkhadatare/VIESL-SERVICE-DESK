@@ -72,11 +72,11 @@ class Settings(BaseSettings):
     company_name: str = "Vision Infra Equipment Solutions Ltd."
     company_short: str = "Vision Infra · VIESL"        # small line under "IT Service Desk" in the menu
     # Shown on the sign-in page under "Forgot your password?" — the IT administrators to contact, in this order.
-    # Format: "Name | email | mobile; Name | email | mobile; …" (email and mobile optional)
-    password_help_contacts: str = ("Mr. Sandeep Patil | pnm_audit@visioninfraindia.com | +91 89566 67459; "
-                                   "Mr. Harshal Khadatare | itsupport@visioninfraindia.com | +91 70282 17817; "
-                                   "Mr. Aniket Ghadge | it@visioninfraindia.com | +91 70284 52170; "
-                                   "Mr. Vishal Borade | it@visioninfraindia.com | +91 89563 73233")
+    # Format: "Name | email | mobile | team; …" (email, mobile and team optional). Each team is one column.
+    password_help_contacts: str = ("Mr. Sandeep Patil | pnm_audit@visioninfraindia.com | +91 89566 67459 | ERP-IT team; "
+                                   "Mr. Harshal Khadatare | itsupport@visioninfraindia.com | +91 70282 17817 | ERP-IT team; "
+                                   "Mr. Vishal Borade | it@visioninfraindia.com | +91 89563 73233 | IT team; "
+                                   "Mr. Aniket Ghadge | it@visioninfraindia.com | +91 70284 52170 | IT team")
 
     @field_validator("database_url")
     @classmethod
