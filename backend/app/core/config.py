@@ -78,6 +78,15 @@ class Settings(BaseSettings):
                                    "Mr. Vishal Borade | it@visioninfraindia.com | +91 89563 73233 | IT team; "
                                    "Mr. Aniket Ghadge | it@visioninfraindia.com | +91 70284 52170 | IT team")
 
+    @field_validator("app_base_url")
+    @classmethod
+    def _clean_base_url(cls, v: str) -> str:
+        """Typos like 'https://helpdesk.example.com.' or a trailing '/' would break every link in emails."""
+        v = (v or "").strip().rstrip("/").rstrip(".").rstrip("/")
+        if v and "://" not in v:
+            v = "https://" + v
+        return v
+
     @field_validator("database_url")
     @classmethod
     def _normalise_db_url(cls, v: str) -> str:
