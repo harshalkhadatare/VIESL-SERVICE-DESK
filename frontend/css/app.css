@@ -1873,12 +1873,14 @@ html[data-mode="dark"] .tk-msg.mine .tk-bubble { background: rgba(74, 222, 128, 
 @media (max-height: 820px) { .login-hero-logo img { height: 170px; } .login-hero-logo { margin-bottom: 18px; } }
 .pw-who { gap: 1px; }
 
-/* ---------- sidebar: full Vision logo (with #NewBharat #NewVision) */
-.brand.brand-full { flex-direction: column; align-items: stretch; gap: 0; padding: 2px 4px 18px; text-align: center; }
-.brand-full .brand-logo { background: #fff; border-radius: 14px; padding: 10px 14px; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
-.brand-full .brand-logo img { display: block; width: 100%; max-width: 170px; height: auto; margin: 0 auto; }
-.brand-full .brand-name { margin-top: 12px; font-size: 15px; }
-.brand-full .brand-sub { margin-top: 2px; }
+/* ---------- sidebar: compact Vision logo (with #NewBharat #NewVision) beside the product name */
+.brand.brand-full { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 11px;
+  align-items: center; padding: 4px 8px 22px; }
+.brand-full .brand-logo { grid-row: 1 / span 2; width: 52px; height: 48px; background: #fff; border-radius: 10px; padding: 3px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.25); display: grid; place-items: center; }
+.brand-full .brand-logo img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.brand-full .brand-name { align-self: end; }
+.brand-full .brand-sub { align-self: start; margin-top: 2px; }
 
 /* ---------- sign-in: no small mark; admins in one column per team */
 .login-art .login-brand .brand-name { font-size: 22px; }
