@@ -25,7 +25,6 @@ export function roleLabel() {
   const r = state.me?.roles || [];
   const base = r.includes("it_admin") ? "IT Administrator" : "Employee";
   if (r.includes("top_management")) return r.includes("it_admin") ? "Top management · IT Admin" : "Top management";
-  if (r.includes("task_manager")) return r.includes("it_admin") ? "Management · IT Admin" : "Management";
   return base;
 }
 

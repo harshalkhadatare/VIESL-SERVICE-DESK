@@ -78,7 +78,7 @@ def my_task_access(p: Principal = Depends(get_principal), db: Session = Depends(
         svc.member_clause(p.id), Task.is_deleted.is_(False))) or 0
     return {"can_assign": svc.can_assign(p), "sees_all": svc.sees_all(p),
             # management by ROLE (IT administrators hold every permission but start on the IT desk)
-            "is_management": bool({"task_manager", "top_management"} & set(p.roles)),
+            "is_management": "top_management" in p.roles,
             "is_top_management": "top_management" in p.roles,
             "has_tasks": any_mine > 0, "open_assigned_to_me": open_mine}
 
@@ -103,7 +103,7 @@ def people(q: str | None = Query(None, max_length=60), p: Principal = Depends(ge
         stmt = stmt.where(or_(User.full_name.ilike(like), User.employee_code.ilike(like), User.email.ilike(like)))
     users = db.scalars(stmt.order_by(User.full_name).limit(30)).all()
     mgmt = set(db.scalars(select(UserRole.user_id).join(Role, Role.id == UserRole.role_id)
-                          .where(Role.code.in_(["task_manager", "top_management"]),
+                          .where(Role.code == "top_management",
                                  UserRole.user_id.in_([u.id for u in users]))))
     return [{"id": u.id, "name": u.full_name, "employee_code": u.employee_code, "job_title": u.job_title,
              "department": u.department.name if u.department else None, "is_management": u.id in mgmt}

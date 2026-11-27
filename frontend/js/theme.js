@@ -12,7 +12,12 @@ export const ACCENTS = [
 ];
 const MODES = [["light", "Light", "sun"], ["dark", "Dark", "moon"], ["system", "Auto", "refresh"]];
 
-const read = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
+const read = (k, d) => {
+  try {
+    const v = localStorage.getItem(k) || d;
+    return k === "sd-mode" && !MODES.some((m) => m[0] === v) ? d : v;   // older versions stored the area here
+  } catch { return d; }
+};
 const save = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } };
 const media = window.matchMedia ? matchMedia("(prefers-color-scheme: dark)") : null;
 
@@ -39,6 +44,9 @@ export function setupThemeMenu(btn) {
     if (pop) return close();
     pop = document.createElement("div");
     pop.className = "menu theme-menu"; pop.setAttribute("role", "dialog"); pop.setAttribute("aria-label", "Theme");
+    const r = btn.getBoundingClientRect();            // pinned under the button; does not scroll away
+    pop.style.top = `${Math.round(r.bottom + 8)}px`;
+    pop.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
     draw();
     document.body.appendChild(pop);
     btn.setAttribute("aria-expanded", "true");

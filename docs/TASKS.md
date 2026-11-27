@@ -1,6 +1,6 @@
 # Task management
 
-Management assigns tasks to anyone in the company; the person reports progress and submits the work;
+Top management (MD) assigns tasks to anyone in the company; the person reports progress and submits the work;
 the manager approves it or sends it back with feedback. It lives inside the IT Service Desk (same login,
 same users), in its own area with its own data.
 
@@ -9,7 +9,6 @@ same users), in its own area with its own data.
 | Person | What they get |
 |---|---|
 | **Top management (MD)** | Starts on **Task overview**. Assigns tasks to anyone. Sees only the tasks they assigned and the tasks given to them. |
-| **Management** | Starts on **Task overview**. Assigns tasks to anyone. Sees only the tasks **they** assigned (and tasks given to them). |
 | **IT Administrator** | Starts on the IT dashboard as before. Has a **Tasks \| IT Service Desk** switch. Like everyone else, sees only the tasks they are on. |
 | **Employee** | No change — unless someone gives them a task. Then a **My tasks** item appears in their menu. |
 
@@ -19,16 +18,19 @@ A task is visible **only to the people on it** — the person who assigned it an
 There is no "whole company" view: IT administrators and top management cannot open, search, count or see a task
 they are not on (it simply doesn't exist for them). This is enforced by the server (API, search, overview,
 analytics, notifications, emails), not just hidden on screen. Note: anyone with direct access to the database
-itself (the Neon owner) can still read it.
+itself (the database server's administrator) can still read it.
 
 ## Several people on one task
 
 Pick one or more people when you assign (or later with **Edit**). Everyone on the task gets the email, sees it under
 **My tasks**, can post updates and can mark it complete. The first person is shown first; all are equal.
 
-## Making someone management (admins)
+## Making someone Top management (admins)
 
-Users & roles → find the person → **Roles** → tick **Management** or **Top management (MD)** *next to* their
+There are three roles: **Employee**, **IT Administrator** and **Top management (MD)**. (The earlier separate
+"Management" role was merged into Top management — anyone who had it now has Top management.)
+
+Users & roles → find the person → **Roles** → tick **Top management (MD)** *next to* their
 normal role (Employee or IT Administrator) → Save. They see the Tasks area the next time they sign in.
 
 ## The flow

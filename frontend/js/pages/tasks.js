@@ -37,7 +37,7 @@ const greet = () => { const h = new Date().getHours(); return h < 12 ? "Good mor
 export async function renderOverview(view, _p, query = {}) {
   const acc = state.tasks || {};
   if (!acc.can_assign) return navigate("/tasks/list?view=to_me");
-  try { localStorage.setItem("sd-mode", "tasks"); } catch { /* storage blocked */ }
+  try { localStorage.setItem("sd-area", "tasks"); } catch { /* storage blocked */ }
   const scope = "mine";
   mount(view, html`${taskTabs("overview")}<div class="page-head tk-hello"><div><h1>${greet()}, ${state.me.full_name.split(" ")[0]}</h1>
       <div class="sub" id="ov-sub">Your team's tasks at a glance.</div></div>

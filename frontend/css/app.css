@@ -108,7 +108,12 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
   height: 60px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center;
   gap: 14px; padding: 0 28px; position: sticky; top: 0; z-index: 20;
 }
-.menu-btn { display: none; }
+.menu-btn { display: grid; }
+@media (min-width: 981px) {
+  .shell { transition: grid-template-columns .18s ease; }
+  .shell.sb-hidden { grid-template-columns: 0 1fr; }
+  .shell.sb-hidden .sidebar { visibility: hidden; padding-left: 0; padding-right: 0; overflow: hidden; }
+}
 .search { position: relative; flex: 1; max-width: 460px; }
 .search input { padding-left: 36px; background: var(--surface-2); border-color: transparent; height: 38px; }
 .search input:focus { background: var(--surface); border-color: var(--border-strong); }
@@ -140,7 +145,7 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; }
 .user-chip .who { text-align: left; line-height: 1.2; }
 .user-chip .who b { font-weight: 600; font-size: 13px; display: block; }
 .user-chip .who span { font-size: 11.5px; color: var(--muted); }
-.menu { position: absolute; right: 24px; top: 58px; width: 240px; background: var(--surface); border: 1px solid var(--border);
+.menu { position: fixed; right: 24px; top: 58px; width: 240px; background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); box-shadow: var(--shadow); padding: 6px; z-index: 40; }
 .menu button, .menu a { width: 100%; display: flex; gap: 10px; align-items: center; padding: 9px 10px; border: 0;
   background: none; color: var(--text); border-radius: 7px; cursor: pointer; font: inherit; text-align: left; }
@@ -1895,3 +1900,15 @@ html[data-mode="dark"] .tk-msg.mine .tk-bubble { background: rgba(74, 222, 128, 
 .pw-teams .pw-list .avatar { display: none; }        /* the team heading already groups them; gives the email room */
 .pw-teams .pw-list li { padding: 9px 12px; }
 .login-art .login-brand { margin-bottom: 24px; }
+
+/* ---------- dark mode: readable text on the sky background and on glass cards */
+html[data-mode="dark"] { --muted: #9eadc4; --text-2: #c3cede; }
+html[data-mode="dark"] .tk-glass-seg button.on { background: #fff; color: #172554; }
+html[data-mode="dark"] .desk-card.on { background: rgba(37, 99, 235, .28); }
+html[data-mode="dark"] .desk-card .dc-txt span { color: #c3cede; }
+html[data-mode="dark"] .ann { background: rgba(15, 23, 42, .78); }
+html[data-mode="dark"] .ann-txt span { color: #d5deeb; }
+html[data-mode="dark"] .shell .content .card, html[data-mode="dark"] .shell .content .kpi,
+html[data-mode="dark"] .tk-panel { background: rgba(14, 21, 36, .86); }
+html[data-mode="dark"] .tk-day span, html[data-mode="dark"] .tk-sys span { color: #c3cede; }
+html[data-mode="dark"] .kpi .label, html[data-mode="dark"] .kpi .hint, html[data-mode="dark"] .small.muted { color: #a9b7cc; }

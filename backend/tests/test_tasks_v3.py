@@ -27,7 +27,7 @@ def _up(client, hdr, n, name, data):
 
 
 def _setup(client, suffix):
-    mgr = _real_user(f"v3.mgr.{suffix}@visioninfra.co.in", "Meera Manager", "task_manager")
+    mgr = _real_user(f"v3.mgr.{suffix}@visioninfra.co.in", "Meera Manager", "top_management")
     emp = _real_user(f"v3.emp.{suffix}@visioninfra.co.in", "Eshan Worker", "employee")
     t = client.post(API, json={"title": f"Quarterly stock report {suffix}", "description": "Use the new format",
                                "assignee_ids": [emp], "due_at": _iso()}, headers=_hdr(mgr)).json()
@@ -112,3 +112,30 @@ def test_emails_only_for_assigned_completed_and_deadline(client, mail):  # noqa:
     assert len(to_mgr()) == 2                                                   # completed → email
     client.post(f"{API}/{n}/approve", json={"rating": 4}, headers=_hdr(mgr))
     assert len(to_emp()) == 4                                                   # approved / completed → email
+
+
+def test_old_management_role_is_merged_into_top_management(client):
+    """Anyone who had the retired 'Management' (task_manager) role becomes Top management (MD) and keeps assigning."""
+    from sqlalchemy import select
+
+    from app.models import Role, User, UserRole
+    from app.seed import seed_reference
+    uid = _real_user("v3.oldmgr@visioninfra.co.in", "Old Manager", "employee")
+    with SessionLocal() as db:
+        old = Role(code="task_manager", name="Management", description="retired")
+        db.add(old)
+        db.flush()
+        db.add(UserRole(user_id=uid, role_id=old.id))
+        db.commit()
+        seed_reference(db)
+        db.commit()
+        assert db.scalar(select(Role).where(Role.code == "task_manager")) is None
+        assert "top_management" in db.get(User, uid).role_codes
+    roles = [r["code"] for r in client.get("/api/v1/admin/roles", headers=auth("admin")).json()]
+    assert sorted(roles) == ["employee", "it_admin", "top_management"]
+    me = client.get(f"{API}/me", headers=_hdr(uid)).json()
+    assert me["can_assign"] is True and me["is_management"] is True
+    emp = _real_user("v3.worker2@visioninfra.co.in", "Worker Two", "employee")
+    r = client.post(API, json={"title": "Check the merged role", "assignee_ids": [emp], "due_at": _iso()},
+                    headers=_hdr(uid))
+    assert r.status_code == 201, r.text

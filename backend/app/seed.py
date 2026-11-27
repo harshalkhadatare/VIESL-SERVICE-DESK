@@ -51,15 +51,17 @@ ROLES = {
     "employee": ("Employee", "Raise and track own tickets, read the knowledge base", _EMP),
     "it_admin": ("IT Administrator", "Work and assign all tickets, dashboards, users and settings",
                  list(PERMISSIONS)),
-    # Task management roles — added next to a person's normal role (Employee or IT Administrator)
-    "task_manager": ("Management", "Assign tasks to anyone, set deadlines, follow progress and approve work",
-                     _EMP + ["task.assign"]),
-    "top_management": ("Top management (MD)", "Everything Management can do, and see every task in the company",
-                       _EMP + ["task.assign", "task.view_all"]),
+    # Task management role — added next to a person's normal role (Employee or IT Administrator).
+    # Everyone sees only the tasks they are on (assigned by them or to them) — there is no company-wide view.
+    "top_management": ("Top management (MD)",
+                       "Assign tasks to anyone, set deadlines, follow progress and approve work",
+                       _EMP + ["task.assign"]),
 }
-# Roles from earlier releases are folded into the two roles above on the next seed run.
+# Roles from earlier releases are folded into the roles above on the next seed run.
 LEGACY_ROLE_MAP = {"it_engineer": "it_admin", "it_lead": "it_admin", "management": "it_admin",
-                   "dept_viewer": "employee"}
+                   "dept_viewer": "employee",
+                   # the separate "Management" role was merged into Top management (MD)
+                   "task_manager": "top_management"}
 STATUSES = [  # code, name, is_open, pauses_sla
     ("NEW", "New", True, False), ("SUBMITTED", "Submitted", True, False), ("TRIAGED", "Triaged", True, False),
     ("ASSIGNED", "Assigned", True, False), ("IN_PROGRESS", "In Progress", True, False),
@@ -205,7 +207,7 @@ def seed_reference(db: Session) -> None:
         for pc in plist:
             if perms[pc].id not in have:
                 db.add(RolePermission(role_id=role.id, permission_id=perms[pc].id))
-        if code == "employee":  # employees must only ever see their own tickets — drop anything extra
+        if code in ("employee", "top_management"):  # exactly these permissions — drop anything extra
             wanted = {perms[pc].id for pc in plist}
             for pid, rp in have.items():
                 if pid not in wanted:

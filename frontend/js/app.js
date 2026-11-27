@@ -57,7 +57,7 @@ export function navigate(path) { location.hash = path; }
 // ------------------------------------------------------------------ tasks area
 // Management (and IT admins, as Task admins) switch between "Tasks" and "IT Service Desk" at the top.
 const switchable = () => !!(state.tasks?.can_assign);
-const prefersTasks = () => { try { return (localStorage.getItem("sd-mode") || (state.tasks?.is_management ? "tasks" : "desk")) === "tasks"; } catch { return !!state.tasks?.is_management; } };
+const prefersTasks = () => { try { return (localStorage.getItem("sd-area") || (state.tasks?.is_management ? "tasks" : "desk")) === "tasks"; } catch { return !!state.tasks?.is_management; } };
 
 function tasksNav() {
   const t = state.tasks || {};
@@ -164,9 +164,19 @@ function renderShell() {
     </div>
   </div>`);
 
-  $("#menu-btn").addEventListener("click", () => $("#shell").classList.toggle("nav-open"));
+  // ☰: on phones it slides the menu in and out; on computers it hides/shows the left panel (remembered)
+  const wide = () => window.matchMedia("(min-width: 981px)").matches;
+  try { if (localStorage.getItem("sd-sidebar") === "hidden") $("#shell").classList.add("sb-hidden"); } catch { /* private mode */ }
+  $("#menu-btn").addEventListener("click", () => {
+    const shell = $("#shell");
+    if (!wide()) return shell.classList.toggle("nav-open");
+    const hidden = shell.classList.toggle("sb-hidden");
+    try { localStorage.setItem("sd-sidebar", hidden ? "hidden" : "shown"); } catch { /* private mode */ }
+    $("#menu-btn").setAttribute("aria-label", hidden ? "Show the menu" : "Hide the menu");
+    window.dispatchEvent(new Event("resize"));      // charts re-fit the new width
+  });
   $$(".bn-more").forEach((b) => b.addEventListener("click", () => $("#shell").classList.toggle("nav-open")));
-  $$("[data-mode-go]").forEach((a) => a.addEventListener("click", () => { try { localStorage.setItem("sd-mode", a.dataset.modeGo); } catch { /* */ } }));
+  $$("[data-mode-go]").forEach((a) => a.addEventListener("click", () => { try { localStorage.setItem("sd-area", a.dataset.modeGo); } catch { /* */ } }));
   $("#nav-scrim").addEventListener("click", () => $("#shell").classList.remove("nav-open"));
   $$("#side-theme, [data-theme-open]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); $("#shell").classList.remove("nav-open"); setTimeout(() => $("#theme-btn").click(), 50); }));
   $("#search-btn").addEventListener("click", () => {
@@ -183,6 +193,18 @@ function renderShell() {
   pollUnread();
 }
 
+// Drop-down menus stay pinned under their button while the page scrolls (the top bar is sticky).
+export function anchorMenu(menu, btn) {
+  const place = () => {
+    const r = btn.getBoundingClientRect();
+    menu.style.top = `${Math.round(r.bottom + 8)}px`;
+    menu.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
+  };
+  place();
+  requestAnimationFrame(place);
+  window.addEventListener("resize", place, { passive: true });
+}
+
 function setupUserMenu() {
   const btn = $("#user-btn");
   let menu = null;
@@ -192,6 +214,7 @@ function setupUserMenu() {
     if (menu) return close();
     menu = document.createElement("div");
     menu.className = "menu"; menu.setAttribute("role", "menu");
+    anchorMenu(menu, btn);
     const me = state.me;
     mount(menu, html`<div class="meta"><b style="color:var(--text)">${me.full_name}</b><br>${realEmail(me.email) || `Employee ID ${me.employee_code}`}<br>
         ${me.department || ""}${me.location ? html` · ${me.location}` : ""}</div><hr>
@@ -315,7 +338,7 @@ async function route() {
   if (modeChanged) refreshUnread();   // the bell counts this area's notifications only
   $("#bell-link")?.setAttribute("href", mode === "tasks" ? "#/notifications?area=tasks" : "#/notifications");
   $$("[data-mode-go]").forEach((a) => a.classList.toggle("on", a.dataset.modeGo === mode));
-  if (mode === "desk" && path === "/") { try { localStorage.setItem("sd-mode", "desk"); } catch { /* */ } }
+  if (mode === "desk" && path === "/") { try { localStorage.setItem("sd-area", "desk"); } catch { /* */ } }
 
   // Each navigation renders into a fresh container, so a slow page that finishes loading after the
   // user has moved on writes into a detached element instead of over the current page.

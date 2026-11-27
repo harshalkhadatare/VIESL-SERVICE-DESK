@@ -2,6 +2,7 @@
 (function () {
   var a = "ocean", m = "light";
   try { a = localStorage.getItem("sd-accent") || a; m = localStorage.getItem("sd-mode") || m; } catch (e) { /* storage blocked */ }
+  if (m !== "light" && m !== "dark" && m !== "system") m = "light";   // older versions stored the Tasks/Desk area here
   if (m === "system") m = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   var d = document.documentElement;
   d.setAttribute("data-accent", a);

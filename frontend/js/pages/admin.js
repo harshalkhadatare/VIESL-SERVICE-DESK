@@ -10,8 +10,8 @@ export async function renderUsers(view) {
   const roleName = Object.fromEntries(roles.map((r) => [r.code, r.name]));
   mount(view, html`<div class="page-head"><div><h1>Users & roles</h1>
       <div class="sub"><b>Employee</b> raises tickets, <b>IT Administrator</b> works and assigns them.
-      For Task management, add <b>Management</b> (assigns tasks, sees the tasks they assigned) or <b>Top management (MD)</b>
-      (also sees every task) next to the person's normal role — use the <b>Roles</b> button. Changes are recorded in the audit log.</div></div>
+      For Task management, add <b>Top management (MD)</b> (assigns tasks to anyone and follows them up) next to the
+      person's normal role — use the <b>Roles</b> button. Changes are recorded in the audit log.</div></div>
       <div class="row"><button class="btn" id="import-users">${icon("download")} Import from Excel</button>
       <button class="btn primary" id="add-user">${icon("plus")} Add user</button></div></div>
     <div class="card">

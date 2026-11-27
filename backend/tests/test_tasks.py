@@ -18,8 +18,8 @@ def _iso(days=3, hours=0):
 
 def _people():
     md = _real_user("md.top@visioninfra.co.in", "Sandeep MD", "top_management")
-    mgr = _real_user("head.ops@visioninfra.co.in", "Operations Head", "task_manager")
-    mgr2 = _real_user("head.fin@visioninfra.co.in", "Finance Head", "task_manager")
+    mgr = _real_user("head.ops@visioninfra.co.in", "Operations Head", "top_management")
+    mgr2 = _real_user("head.fin@visioninfra.co.in", "Finance Head", "top_management")
     return md, mgr, mgr2
 
 

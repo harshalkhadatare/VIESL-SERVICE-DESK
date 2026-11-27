@@ -30,7 +30,7 @@ def test_invalid_date_range(client):
 
 def test_roles_are_employee_admin_and_task_management(client):
     roles = client.get("/api/v1/admin/roles", headers=auth("admin")).json()
-    assert sorted(r["code"] for r in roles) == ["employee", "it_admin", "task_manager", "top_management"]
+    assert sorted(r["code"] for r in roles) == ["employee", "it_admin", "top_management"]
 
 
 def test_role_change_admin_only_and_audited(client):

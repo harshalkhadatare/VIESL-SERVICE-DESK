@@ -14,7 +14,7 @@ def _iso(days=3):
 
 
 def _mgr():
-    return _real_user("v2.manager@visioninfra.co.in", "Kiran Manager", "task_manager")
+    return _real_user("v2.manager@visioninfra.co.in", "Kiran Manager", "top_management")
 
 
 def test_several_people_on_one_task(client):
