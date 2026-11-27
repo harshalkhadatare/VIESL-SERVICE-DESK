@@ -39,8 +39,14 @@ def can_assign(p: Principal) -> bool:
 
 
 def sees_all(p: Principal) -> bool:
-    """Company-wide visibility is switched off by policy: everyone sees only the tasks they are on."""
-    return False
+    """Top management (MD) sees every task in the company, including its messages and files.
+    Everyone else — IT administrators included — sees only the tasks they are on."""
+    return p.can("task.view_all")
+
+
+def can_read(p: Principal, t: Task) -> bool:
+    """May read the description, messages and files of this task."""
+    return is_participant(p, t) or sees_all(p)
 
 
 def member_clause(uid: int):
@@ -65,8 +71,8 @@ def is_member(p: Principal, t: Task) -> bool:
 
 
 def can_manage(p: Principal, t: Task) -> bool:
-    """Fix the task: deadline, people, priority, cancel."""
-    return t.assigner_id == p.id or sees_all(p)
+    """Fix the task: deadline, people, priority, cancel — only the person who assigned it."""
+    return t.assigner_id == p.id
 
 
 def get_task(db: Session, p: Principal, number: str, lock: bool = False) -> Task:
@@ -539,7 +545,7 @@ def search(db: Session, p: Principal, *, view: str, statuses: list[str] | None, 
         like = f"%{q.strip()}%"
         # the description is searched only on tasks you are part of (it's private)
         w.append(or_(Task.title.ilike(like), Task.number.ilike(like), Task.category.ilike(like),
-                     and_(participant_clause(p.id), Task.description.ilike(like)),
+                     and_(scope_clause(p), Task.description.ilike(like)),
                      exists().where(TaskAssignee.task_id == Task.id, TaskAssignee.user_id == User.id,
                                     or_(User.full_name.ilike(like), User.employee_code.ilike(like)))))
     if assignee_id:
@@ -573,15 +579,16 @@ def search(db: Session, p: Principal, *, view: str, statuses: list[str] | None, 
     rows = db.scalars(select(Task).where(*w).order_by(*order).offset((page - 1) * page_size).limit(page_size)).all()
     unread_map = unread_counts(db, p.id, [t.id for t in rows])
     return {"view": view, "total": total, "page": page, "page_size": page_size,
-            "items": [{**task_brief(t, now), "unread": unread_map.get(t.id, 0), "private": not is_participant(p, t)}
+            "items": [{**task_brief(t, now), "unread": unread_map.get(t.id, 0), "private": not can_read(p, t)}
                       for t in rows]}
 
 
 # ---------------------------------------------------------------- overview (management home)
 def overview(db: Session, p: Principal, scope: str = "mine") -> dict:
-    """Every task I am on — the ones I assigned and the ones assigned to me."""
+    """scope 'mine': every task I am on (assigned by me or to me). 'all': the whole company (Top management)."""
     now = utcnow()
-    base = [Task.is_deleted.is_(False), participant_clause(p.id)]
+    company = scope == "all" and sees_all(p)
+    base = [Task.is_deleted.is_(False), true() if company else participant_clause(p.id)]
     open_q = and_(*base, Task.status.in_(OPEN_TASK_STATUSES))
 
     def n(*w):
@@ -630,10 +637,10 @@ def overview(db: Session, p: Principal, scope: str = "mine") -> dict:
                         .order_by(TaskEvent.id.desc()).limit(15)).all()
     upcoming = [t for t in open_tasks if t.status != "waiting_approval" and t.due_at and now <= t.due_at < now + timedelta(days=7)]
     return {
-        "scope": "mine", "can_see_all": False, "tiles": tiles,
+        "scope": "all" if company else "mine", "can_see_all": sees_all(p), "tiles": tiles,
         "attention": [{"kind": k, "label": lbl, "task": task_brief(t, now)} for k, t, lbl in attention[:12]],
         "team": team_rows,
-        "feed": [{"task": task_brief(e.task, now), **event_out(e, is_participant(p, e.task))} for e in events],
+        "feed": [{"task": task_brief(e.task, now), **event_out(e, can_read(p, e.task))} for e in events],
         "upcoming": [task_brief(t, now) for t in upcoming[:10]],
     }
 
@@ -786,19 +793,20 @@ def task_detail(db: Session, p: Principal, t: Task) -> dict:
     now = utcnow()
     member = is_member(p, t)
     part = is_participant(p, t)
+    read = can_read(p, t)          # participants, or Top management (read-only)
     manage = can_manage(p, t)
     owner = t.assigner_id == p.id
     if part:
         mark_read(db, p.id, t.id)
         db.commit()
     return {
-        **task_brief(t, now), "description": t.description if part else None,
-        "private": not part, "private_note": None if part else PRIVATE,
+        **task_brief(t, now), "description": t.description if read else None,
+        "private": not read, "private_note": None if read else PRIVATE, "viewing_as_md": read and not part,
         "requires_approval": t.requires_approval, "submitted_at": t.submitted_at, "cancelled_at": t.cancelled_at,
         "rating": t.rating, "requested_due_at": t.requested_due_at,
-        "request_reason": t.request_reason if part else None,
-        "events": [event_out(e, part) for e in t.events],
-        "attachments": [attachment_out(a) for a in attachments_of(db, [t.id]).get(t.id, [])] if part else [],
+        "request_reason": t.request_reason if read else None,
+        "events": [event_out(e, read) for e in t.events],
+        "attachments": [attachment_out(a) for a in attachments_of(db, [t.id]).get(t.id, [])] if read else [],
         "can": {
             "manage": manage, "is_assignee": member, "is_participant": part, "is_owner": owner,
             "start": member and t.status == "not_started",

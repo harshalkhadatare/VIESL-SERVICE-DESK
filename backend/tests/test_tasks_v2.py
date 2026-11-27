@@ -41,7 +41,7 @@ def test_several_people_on_one_task(client):
     assert {b, c} <= {row["user"]["id"] for row in ov["team"]}
 
 
-def test_messages_are_private_even_from_admins_and_md(client, mail):  # noqa: F811
+def test_messages_are_private_from_admins_but_md_reads_all(client, mail):  # noqa: F811
     mgr = _mgr()
     md = _real_user("v2.md@visioninfra.co.in", "Top Boss", "top_management")
     emp = _real_user("v2.private@visioninfra.co.in", "Priya Private", "employee")
@@ -49,17 +49,35 @@ def test_messages_are_private_even_from_admins_and_md(client, mail):  # noqa: F8
                                "assignee_ids": [emp], "due_at": _iso()}, headers=_hdr(mgr)).json()
     n = t["number"]
     client.post(f"{API}/{n}/updates", json={"body": "Secret figures look fine", "progress": 50}, headers=_hdr(emp))
-    for outsider in (auth("admin"), _hdr(md)):
-        # outsiders — even the IT admin and the MD — cannot open, find or count the task at all
-        assert client.get(f"{API}/{n}", headers=outsider).status_code == 404
-        assert client.post(f"{API}/{n}/updates", json={"body": "hi"}, headers=outsider).status_code == 404
-        for view in ("all", "mine"):
-            found = client.get(API, params={"view": view, "status": "all"}, headers=outsider).json()
-            assert n not in [i["number"] for i in found["items"]]
-        ov = client.get(f"{API}/overview", params={"scope": "all"}, headers=outsider).json()
-        assert ov["scope"] == "mine" and all(f["task"]["number"] != n for f in ov["feed"])
-        an = client.get(f"{API}/analytics", params={"scope": "all"}, headers=outsider).json()
-        assert an["scope"] != "all"
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+    f = client.post(f"{API}/{n}/attachments", headers=_hdr(emp),
+                    files={"file": ("sheet.png", png, "image/png")}).json()
+    # IT administrators cannot open, find or count the task at all
+    admin = auth("admin")
+    assert client.get(f"{API}/{n}", headers=admin).status_code == 404
+    assert client.post(f"{API}/{n}/updates", json={"body": "hi"}, headers=admin).status_code == 404
+    for view in ("all", "mine"):
+        found = client.get(API, params={"view": view, "status": "all"}, headers=admin).json()
+        assert n not in [i["number"] for i in found["items"]]
+    ov = client.get(f"{API}/overview", params={"scope": "all"}, headers=admin).json()
+    assert ov["scope"] == "mine" and all(x["task"]["number"] != n for x in ov["feed"])
+    assert client.get(f"{API}/analytics", params={"scope": "all"}, headers=admin).json()["scope"] != "all"
+    # Top management (MD) sees every task, with its messages and files — but cannot post or change it
+    d = client.get(f"{API}/{n}", headers=_hdr(md)).json()
+    assert d["description"] == "Use the locked sheet in HR drive" and d["private"] is False and d["viewing_as_md"]
+    assert any(e["body"] == "Secret figures look fine" for e in d["events"])
+    assert [a["id"] for a in d["attachments"]] == [f["id"]]
+    assert client.get(f"{API}/{n}/attachments/{f['id']}", headers=_hdr(md)).status_code == 200
+    assert not any(d["can"][k] for k in ("comment", "update", "manage", "edit", "cancel", "approve", "attach"))
+    assert client.post(f"{API}/{n}/updates", json={"body": "hi"}, headers=_hdr(md)).status_code == 403
+    assert client.patch(f"{API}/{n}", json={"due_at": _iso(9)}, headers=_hdr(md)).status_code == 403
+    found = client.get(API, params={"view": "all", "status": "all"}, headers=_hdr(md)).json()
+    assert n in [i["number"] for i in found["items"]]
+    ov = client.get(f"{API}/overview", params={"scope": "all"}, headers=_hdr(md)).json()
+    assert ov["scope"] == "all" and ov["tiles"]["total"] >= 1
+    assert client.get(f"{API}/analytics", params={"scope": "all"}, headers=_hdr(md)).json()["scope"] == "all"
+    # the MD is not emailed about tasks they are not on
+    assert not [x for x in mail.sent if x["to"] == "v2.md@visioninfra.co.in" and n in x["subject"]]
     # participants read everything
     d = client.get(f"{API}/{n}", headers=_hdr(mgr)).json()
     assert d["description"] == "Use the locked sheet in HR drive" and d["private"] is False

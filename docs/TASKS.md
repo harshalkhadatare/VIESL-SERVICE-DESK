@@ -14,9 +14,10 @@ same users), in its own area with its own data.
 
 ## Privacy (important)
 
-A task is visible **only to the people on it** — the person who assigned it and the people it is assigned to.
-There is no "whole company" view: IT administrators and top management cannot open, search, count or see a task
-they are not on (it simply doesn't exist for them). This is enforced by the server (API, search, overview,
+A task is visible to the people on it — the person who assigned it and the people it is assigned to — and to
+**Top management (MD)**, who can open and read every task in the company (messages and files included) but cannot
+post or change anything on a task they are not on. IT administrators cannot open, search, count or see a task they
+are not on (it simply doesn't exist for them). Emails still go only to the people on the task. This is enforced by the server (API, search, overview,
 analytics, notifications, emails), not just hidden on screen. Note: anyone with direct access to the database
 itself (the database server's administrator) can still read it.
 
@@ -27,7 +28,9 @@ Pick one or more people when you assign (or later with **Edit**). Everyone on th
 
 ## Making someone Top management (admins)
 
-There are three roles: **Employee**, **IT Administrator** and **Top management (MD)**. (The earlier separate
+There are three roles: **Employee**, **IT Administrator** and **Top management (MD)**. Top management assigns tasks
+to anyone, sees every task, and in the IT Service Desk can view all tickets (with internal notes), the dashboard,
+SLA report and Excel exports — read-only: no replies, assignment, status changes, users or settings. (The earlier separate
 "Management" role was merged into Top management — anyone who had it now has Top management.)
 
 Users & roles → find the person → **Roles** → tick **Top management (MD)** *next to* their

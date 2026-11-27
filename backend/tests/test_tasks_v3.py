@@ -139,3 +139,28 @@ def test_old_management_role_is_merged_into_top_management(client):
     r = client.post(API, json={"title": "Check the merged role", "assignee_ids": [emp], "due_at": _iso()},
                     headers=_hdr(uid))
     assert r.status_code == 201, r.text
+
+
+def test_top_management_sees_all_tickets_read_only(client):
+    """The MD sees every ticket, the IT dashboard, SLA report and exports — but cannot change anything."""
+    from tests.conftest import make_ticket
+    md = _real_user("v3.md.tickets@visioninfra.co.in", "Managing Director", "top_management")
+    t = make_ticket(client, subject="Laptop screen flickering for MD view test")
+    n = t["number"]
+    h = _hdr(md)
+    assert n in [i["number"] for i in client.get("/api/v1/tickets", params={"page_size": 100}, headers=h).json()["items"]]
+    assert client.get(f"/api/v1/tickets/{n}", headers=h).status_code == 200
+    assert client.get(f"/api/v1/tickets/{n}/full", headers=h).status_code == 200
+    for path in ("/api/v1/dashboard/admin-home", "/api/v1/dashboard/ops", "/api/v1/dashboard/sla"):
+        assert client.get(path, headers=h).status_code == 200, path
+    assert client.get("/api/v1/tickets/export.xlsx", headers=h).status_code == 200
+    # read-only: no replies, status changes, assignment or admin pages
+    assert client.post(f"/api/v1/tickets/{n}/comments", json={"body": "MD note", "is_internal": False},
+                       headers=h).status_code in (403, 404)
+    r = client.post(f"/api/v1/tickets/{n}/status", json={"to_status": "IN_PROGRESS", "expected_version": t["version"]},
+                    headers=h)
+    assert r.status_code in (403, 422)                       # refused (no IT transitions for a viewer)
+    assert client.get(f"/api/v1/tickets/{n}", headers=h).json()["status"] == t["status"]
+    assert client.post(f"/api/v1/tickets/{n}/assign", json={"assignee_id": md}, headers=h).status_code == 403
+    assert client.get("/api/v1/admin/users", headers=h).status_code == 403
+    assert client.get("/api/v1/admin/audit", headers=h).status_code in (403, 404)

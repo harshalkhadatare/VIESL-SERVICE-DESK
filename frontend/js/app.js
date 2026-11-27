@@ -68,7 +68,7 @@ function tasksNav() {
     ${navLink("/tasks/list?preset=ongoing", "tasks-ongoing", "columns", "Tasks")}
     ${t.can_assign ? navLink("/tasks/list?preset=by_me", "tasks-by_me", "send", "Assigned by me") : ""}
     ${navLink("/tasks/list?preset=to_me", "tasks-to_me", "target", "My tasks", html`<span class="count" id="nav-mytasks2" hidden></span>`)}
-    ${t.sees_all ? navLink("/tasks/list?preset=all", "tasks-all", "list", "All tasks") : ""}
+    ${t.sees_all ? navLink("/tasks/list?preset=all", "tasks-all", "list", "Whole company") : ""}
     ${t.can_assign ? navLink("/tasks/new", "tasks-new", "plus", "Assign a task") : ""}
     ${navLink("/tasks/performance", "tasks-performance", "target", "Performance")}
     ${navLink("/tasks/analytics", "tasks-analytics", "activity", "Analytics")}

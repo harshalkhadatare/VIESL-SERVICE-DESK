@@ -42,20 +42,21 @@ PERMISSIONS = {
     "report.export": "Export reports", "kb.view": "Read knowledge base", "kb.manage": "Author/review articles",
     "user.manage": "Manage users and roles", "audit.view": "View audit log", "settings.manage": "Manage settings",
     # Task management
-    "task.assign": "Assign tasks to anyone and follow them up (Management)",
-    "task.view_all": "See every task in the company (Top management)",
+    "task.assign": "Assign tasks to anyone and follow them up",
+    "task.view_all": "See every task in the company, with its messages and files (Top management only)",
     "task.admin": "Act on any task: fix, reassign, cancel (Task admin — IT administrators)",
 }
 _EMP = ["ticket.create", "ticket.view_own", "kb.view"]
 ROLES = {
     "employee": ("Employee", "Raise and track own tickets, read the knowledge base", _EMP),
     "it_admin": ("IT Administrator", "Work and assign all tickets, dashboards, users and settings",
-                 list(PERMISSIONS)),
-    # Task management role — added next to a person's normal role (Employee or IT Administrator).
-    # Everyone sees only the tasks they are on (assigned by them or to them) — there is no company-wide view.
+                 [c for c in PERMISSIONS if c != "task.view_all"]),
+    # Top management (MD): assigns tasks to anyone and SEES everything — every task (with messages and files),
+    # every ticket, the IT dashboard and reports — but changes nothing in the IT Service Desk (read-only there).
     "top_management": ("Top management (MD)",
-                       "Assign tasks to anyone, set deadlines, follow progress and approve work",
-                       _EMP + ["task.assign"]),
+                       "Assign tasks to anyone and see every task; view all tickets, dashboards and reports (read-only)",
+                       _EMP + ["task.assign", "task.view_all", "ticket.view_all", "ticket.view_internal",
+                               "dashboard.ops", "report.export"]),
 }
 # Roles from earlier releases are folded into the roles above on the next seed run.
 LEGACY_ROLE_MAP = {"it_engineer": "it_admin", "it_lead": "it_admin", "management": "it_admin",
@@ -207,7 +208,7 @@ def seed_reference(db: Session) -> None:
         for pc in plist:
             if perms[pc].id not in have:
                 db.add(RolePermission(role_id=role.id, permission_id=perms[pc].id))
-        if code in ("employee", "top_management"):  # exactly these permissions — drop anything extra
+        if True:  # every role gets exactly its listed permissions — anything extra is removed
             wanted = {perms[pc].id for pc in plist}
             for pid, rp in have.items():
                 if pid not in wanted:
