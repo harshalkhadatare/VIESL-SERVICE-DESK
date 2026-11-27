@@ -338,8 +338,8 @@ def edit_task(db: Session, p: Principal, t: Task, changes: dict) -> Task:
 def post_update(db: Session, p: Principal, t: Task, *, body: str | None, progress: int | None) -> Task:
     """Assignees report progress (with or without a note); every participant may write a message."""
     body = _clean(body)
-    if not is_participant(p, t):
-        raise Forbidden("Only the people on this task can write on it.")
+    if not is_participant(p, t) and not (sees_all(p) and progress is None):
+        raise Forbidden("Only the people on this task can write on it.")     # Top management may write a message
     member = is_member(p, t)
     if progress is not None and not member:
         raise Forbidden("Only the people the task is assigned to report progress.")
@@ -813,7 +813,7 @@ def task_detail(db: Session, p: Principal, t: Task) -> dict:
             "update": member and t.status in ("not_started", "in_progress"),
             "submit": member and t.status in ("not_started", "in_progress"),
             "request_extension": member and t.is_open and not t.requested_due_at and t.due_at is not None,
-            "comment": part and t.is_open,
+            "comment": read and t.is_open,
             "attach": can_attach(p, t),
             "edit": manage and t.is_open, "edit_text": part and manage and t.is_open,
             "approve": owner and t.status == "waiting_approval",

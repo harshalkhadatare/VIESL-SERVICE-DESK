@@ -38,7 +38,8 @@ PERMISSIONS = {
     "ticket.accept": "Self-assign queued tickets", "ticket.assign": "Assign / reassign within led groups",
     "ticket.escalate": "Escalate to another group", "ticket.set_priority": "Change priority",
     "ticket.comment_internal": "Write internal notes", "ticket.link": "Link related/duplicate tickets",
-    "ticket.manage_all": "Act on any ticket (admin)", "dashboard.ops": "IT operations dashboard",
+    "ticket.manage_all": "Act on any ticket (admin)",
+    "ticket.comment_any": "Comment on any ticket (Top management — replies and internal notes, no other changes)", "dashboard.ops": "IT operations dashboard",
     "report.export": "Export reports", "kb.view": "Read knowledge base", "kb.manage": "Author/review articles",
     "user.manage": "Manage users and roles", "audit.view": "View audit log", "settings.manage": "Manage settings",
     # Task management
@@ -52,11 +53,12 @@ ROLES = {
     "it_admin": ("IT Administrator", "Work and assign all tickets, dashboards, users and settings",
                  [c for c in PERMISSIONS if c != "task.view_all"]),
     # Top management (MD): assigns tasks to anyone and SEES everything — every task (with messages and files),
-    # every ticket, the IT dashboard and reports — but changes nothing in the IT Service Desk (read-only there).
+    # every ticket (with attachments), the IT dashboard and reports — and may COMMENT on any ticket or task.
+    # Nothing else changes: no assigning, status, priority, users or settings in the IT Service Desk.
     "top_management": ("Top management (MD)",
-                       "Assign tasks to anyone and see every task; view all tickets, dashboards and reports (read-only)",
+                       "Assign tasks to anyone; see and comment on every task and ticket; view dashboards and reports",
                        _EMP + ["task.assign", "task.view_all", "ticket.view_all", "ticket.view_internal",
-                               "dashboard.ops", "report.export"]),
+                               "ticket.comment_any", "dashboard.ops", "report.export"]),
 }
 # Roles from earlier releases are folded into the roles above on the next seed run.
 LEGACY_ROLE_MAP = {"it_engineer": "it_admin", "it_lead": "it_admin", "management": "it_admin",

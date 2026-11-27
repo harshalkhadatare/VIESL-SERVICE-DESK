@@ -917,7 +917,8 @@ export async function renderDetail(view, [number], query = {}) {
           ${c.cancel ? html`<button class="btn ghost danger" data-a="cancel">${icon("x")} Cancel task</button>` : ""}
         </div></div>
       ${t.viewing_as_md ? html`<div class="notice">${icon("eye")}<div><b>Viewing as Top management.</b> You can read everything on this
-        task, but you're not on it, so you can't post or change anything. The people on the task are not notified that you looked.</div></div>` : ""}
+        task and write messages to the people on it (they'll see them in their notifications). Only the people on the task
+        can change it.</div></div>` : ""}
       ${t.private ? html`<div class="notice tk-private">${icon("lock")}<div><b>Private task.</b> You can see that it exists and fix the deadline or people,
         but only ${t.assigner.name} and ${names} can read the details and messages.</div></div>` : ""}
       ${t.requested_due_at ? html`<div class="notice warn tk-ext">${icon("clock")}<div><b>More time asked</b> — until <b>${fmtDate(t.requested_due_at)}</b>

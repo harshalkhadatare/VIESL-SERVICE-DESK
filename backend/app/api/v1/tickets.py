@@ -94,7 +94,8 @@ def _detail(db: Session, p: Principal, t: Ticket) -> TicketDetail:
         relations=svc.get_relations(db, p, t),
         can_work=staff, can_assign=can_assign_ticket(p, t),
         can_set_priority=p.can("ticket.set_priority") and (can_assign_ticket(p, t) or p.can("ticket.manage_all")),
-        can_comment_internal=p.can("ticket.comment_internal") and (staff or p.can("ticket.manage_all")),
+        can_comment_internal=(p.can("ticket.comment_internal") and (staff or p.can("ticket.manage_all")))
+        or p.can("ticket.comment_any"),
         can_rate=is_requester(p, t) and t.status_code in ("RESOLVED", "CLOSED") and rating is None,
         can_delete=can_delete_ticket(p, t),
         allowed_transitions=[CodeRef(code=s.code, name=s.name) for s in svc.allowed_transitions(db, p, t)],

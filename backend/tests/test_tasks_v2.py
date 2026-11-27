@@ -68,8 +68,15 @@ def test_messages_are_private_from_admins_but_md_reads_all(client, mail):  # noq
     assert any(e["body"] == "Secret figures look fine" for e in d["events"])
     assert [a["id"] for a in d["attachments"]] == [f["id"]]
     assert client.get(f"{API}/{n}/attachments/{f['id']}", headers=_hdr(md)).status_code == 200
-    assert not any(d["can"][k] for k in ("comment", "update", "manage", "edit", "cancel", "approve", "attach"))
-    assert client.post(f"{API}/{n}/updates", json={"body": "hi"}, headers=_hdr(md)).status_code == 403
+    assert d["can"]["comment"] is True
+    assert not any(d["can"][k] for k in ("update", "manage", "edit", "cancel", "approve", "attach"))
+    # the MD may write a message (but not report progress); the people on the task are told in-app
+    assert client.post(f"{API}/{n}/updates", json={"body": "Please finish by Friday"}, headers=_hdr(md)).status_code == 200
+    assert client.post(f"{API}/{n}/updates", json={"progress": 90}, headers=_hdr(md)).status_code == 403
+    d = client.get(f"{API}/{n}", headers=_hdr(mgr)).json()
+    assert any(e["body"] == "Please finish by Friday" and e["author"]["name"] == "Top Boss" for e in d["events"])
+    notes = client.get("/api/v1/notifications", params={"area": "tasks"}, headers=_hdr(emp)).json()["items"]
+    assert any("Please finish by Friday" in (x.get("body") or "") for x in notes)
     assert client.patch(f"{API}/{n}", json={"due_at": _iso(9)}, headers=_hdr(md)).status_code == 403
     found = client.get(API, params={"view": "all", "status": "all"}, headers=_hdr(md)).json()
     assert n in [i["number"] for i in found["items"]]

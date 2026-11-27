@@ -154,9 +154,19 @@ def test_top_management_sees_all_tickets_read_only(client):
     for path in ("/api/v1/dashboard/admin-home", "/api/v1/dashboard/ops", "/api/v1/dashboard/sla"):
         assert client.get(path, headers=h).status_code == 200, path
     assert client.get("/api/v1/tickets/export.xlsx", headers=h).status_code == 200
-    # read-only: no replies, status changes, assignment or admin pages
-    assert client.post(f"/api/v1/tickets/{n}/comments", json={"body": "MD note", "is_internal": False},
-                       headers=h).status_code in (403, 404)
+    # the MD may comment — a reply (requester + IT are told) or an internal note (IT only) — and see every file
+    r = client.post(f"/api/v1/tickets/{n}/comments", json={"body": "Please prioritise this", "is_internal": False},
+                    headers=h)
+    assert r.status_code == 201, r.text
+    assert client.post(f"/api/v1/tickets/{n}/comments", json={"body": "Check vendor warranty", "is_internal": True},
+                       headers=h).status_code == 201
+    bodies = [c["body"] for c in client.get(f"/api/v1/tickets/{n}/comments", headers=auth("admin")).json()]
+    assert "Please prioritise this" in bodies and "Check vendor warranty" in bodies
+    mine = [c["body"] for c in client.get(f"/api/v1/tickets/{n}/comments", headers=auth("employee")).json()]
+    assert "Please prioritise this" in mine and "Check vendor warranty" not in mine     # notes stay internal
+    assert client.get(f"/api/v1/tickets/{n}", headers=h).json()["can_comment_internal"] is True
+    assert client.get(f"/api/v1/tickets/{n}/attachments", headers=h).status_code == 200
+    # but nothing else: no status changes, assignment or admin pages
     r = client.post(f"/api/v1/tickets/{n}/status", json={"to_status": "IN_PROGRESS", "expected_version": t["version"]},
                     headers=h)
     assert r.status_code in (403, 422)                       # refused (no IT transitions for a viewer)

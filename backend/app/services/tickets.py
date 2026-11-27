@@ -470,9 +470,10 @@ def change_priority(db: Session, p: Principal, number: str, data: PriorityChange
 def add_comment(db: Session, p: Principal, number: str, data: CommentIn) -> TicketComment:
     t = get_visible_ticket(db, p, number, for_update=True)
     staff = can_work_ticket(p, t)
-    if data.is_internal and not (p.can("ticket.comment_internal") and (staff or p.can("ticket.manage_all"))):
+    md = p.can("ticket.comment_any")          # Top management: may comment (reply or internal note) on any ticket
+    if data.is_internal and not (md or (p.can("ticket.comment_internal") and (staff or p.can("ticket.manage_all")))):
         raise Forbidden("Internal notes are restricted to IT staff.")
-    if not data.is_internal and not (staff or is_requester(p, t) or p.can("ticket.manage_all")):
+    if not data.is_internal and not (staff or md or is_requester(p, t) or p.can("ticket.manage_all")):
         raise Forbidden("You cannot comment on this ticket.")
     if t.status_code in FINAL_STATUSES and not data.is_internal:
         raise BusinessRuleError("This ticket is closed. Raise a new ticket or ask IT to reopen it.")
@@ -491,6 +492,15 @@ def add_comment(db: Session, p: Principal, number: str, data: CommentIn) -> Tick
             add_history(db, t, "status", old, "IN_PROGRESS", None, "Requester responded")
         for uid in ([t.assignee_id] if t.assignee_id else desk_staff_ids(db, t.desk)):
             notify(db, uid, "comment_added", f"{p.user.full_name} replied on {t.number}", data.body[:300], t)
+    elif md and not staff:
+        # Top management comment: IT always hears about it; the requester only when it's a reply (not a note).
+        # It does not count as IT's first response and does not change the status or SLA.
+        title = f"{p.user.full_name} (Top management) commented on {t.number}"
+        targets = [t.assignee_id] if t.assignee_id else desk_staff_ids(db, t.desk)
+        if not data.is_internal:
+            targets = [t.requester_id, *targets]
+        for uid in dict.fromkeys(u for u in targets if u and u != p.id):
+            notify(db, uid, "comment_added", title, data.body[:300], t)
     db.flush()
     # Touch updated_at without bumping the optimistic-lock version: a comment must not
     # invalidate a colleague's pending status change.
