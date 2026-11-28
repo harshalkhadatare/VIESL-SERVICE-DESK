@@ -1936,3 +1936,7 @@ html[data-mode="dark"] .kpi .label, html[data-mode="dark"] .kpi .hint, html[data
 .rel-link:hover .t-id { text-decoration: underline; }
 html[data-mode="dark"] .hero { background: linear-gradient(120deg, #0a1d4d 0%, #1e3a8a 42%, #4c1d95 78%, #86198f 100%); }
 html[data-mode="dark"] .hero .btn.primary { background: #fff; color: #0b2a6f; border-color: #fff; }
+
+/* Users import preview: list of old → new changes */
+.imp-changes { margin: 0; padding-left: 16px; font-size: 12.5px; line-height: 1.5; }
+.imp-changes li { margin: 0; }

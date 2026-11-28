@@ -42,15 +42,33 @@ def _header(ws, row, cols, fill=BLUE):
     ws.row_dimensions[row].height = 30
 
 
-def build_user_template(db: Session, company: str = "") -> bytes:
+# Extra columns in "Export users" (after the template columns). STATUS can be edited; the others are for checking.
+EXPORT_EXTRA = [
+    ("STATUS", 12, False, "Active or Inactive. Inactive people cannot sign in."),
+    ("ROLES (read only)", 34, False, "Shown for checking only. Change roles with the Roles button in Users & roles."),
+    ("LAST_SIGN_IN (read only)", 20, False, "Shown for checking only."),
+    ("SYSTEM_ID (do not change)", 14, False, "Links this row to the person, so even the Employee ID can be changed. "
+                                             "Leave it as it is. New people: leave it blank."),
+]
+ROLE_NAMES = {"top_management": "Managing Director", "it_admin": "IT Administrator", "manager_l1": "Manager L1",
+              "manager_l2": "Manager L2", "employee": "Employee"}
+
+
+def build_user_template(db: Session, company: str = "", users=None) -> bytes:
+    """The blank upload template, or with `users` the filled-in export that can be edited and uploaded back."""
+    from app.seed import ROLE_ORDER
+    from app.services.user_import import is_placeholder
     depts = db.scalars(select(Department).where(Department.is_active.is_(True))
                        .order_by(Department.category, Department.name)).all()
+    export = users is not None
+    cols = COLUMNS + (EXPORT_EXTRA if export else [])
+    rows_ready = max(ROWS, len(users) + 300) if export else ROWS
     wb = Workbook()
 
     # ---- 1. Users (the only sheet that is imported — keep it first)
     ws = wb.active
     ws.title = "Users"
-    _header(ws, 1, COLUMNS)
+    _header(ws, 1, cols)
     ws.freeze_panes = "C2"
     ws.sheet_view.zoomScale = 100
     n = max(1, len(depts))
@@ -62,15 +80,19 @@ def build_user_template(db: Session, company: str = "") -> bytes:
     dv_desk = DataValidation(type="list", formula1='"IT,ERP-IT"', allow_blank=True,
                              showErrorMessage=True, errorTitle="IT department", error="Choose IT or ERP-IT.")
     lists = {C["DEPARTMENT"]: dv_dept, C["IT_DEPARTMENT"]: dv_desk}
-    for i, (name, _w, _req, help_text) in enumerate(COLUMNS, start=1):
+    if export:
+        lists[get_column_letter(len(COLUMNS) + 1)] = DataValidation(
+            type="list", formula1='"Active,Inactive"', allow_blank=True, showErrorMessage=True,
+            errorTitle="Status", error="Choose Active or Inactive.")
+    for i, (name, _w, _req, help_text) in enumerate(cols, start=1):
         col = get_column_letter(i)
         dv = lists.get(col) or DataValidation(type="custom", formula1="TRUE", allow_blank=True)
         dv.showInputMessage, dv.promptTitle, dv.prompt = True, name, help_text[:250]
-        dv.add(f"{col}2:{col}{ROWS + 1}")
+        dv.add(f"{col}2:{col}{rows_ready + 1}")
         ws.add_data_validation(dv)
     grey = PatternFill("solid", fgColor=GREY)
     dep, cat = C["DEPARTMENT"], C["DEPARTMENT_CATEGORY"]
-    for r in range(2, ROWS + 2):
+    for r in range(2, rows_ready + 2):
         c = ws[f"{cat}{r}"]
         c.value = (f'=IF({dep}{r}="","",IFERROR(INDEX(Departments!$B$2:$B${last},'
                    f'MATCH({dep}{r},Departments!$C$2:$C${last},0)),""))')
@@ -79,6 +101,28 @@ def build_user_template(db: Session, company: str = "") -> bytes:
         for col in (C["EMPLOYEE_ID"], C["PHONE"]):   # IDs and phones stay as text (no lost leading zeros)
             ws[f"{col}{r}"].number_format = "@"
     ws["A1"].comment = Comment("Required. Fill one employee per row from row 2.", "IT Service Desk")
+    if export:
+        rank = {c: i for i, c in enumerate(ROLE_ORDER)}
+        ro = PatternFill("solid", fgColor=GREY)
+        for r, u in enumerate(users, start=2):
+            codes = sorted(u.role_codes, key=lambda c: rank.get(c, 99))
+            vals = {"FULL_NAME": u.full_name, "EMPLOYEE_ID": u.employee_code,
+                    "DEPARTMENT": u.department.name if u.department else None,
+                    "COMPANY_EMAIL": None if is_placeholder(u.email) else u.email, "JOB_TITLE": u.job_title,
+                    "PHONE": u.phone,
+                    "IT_DEPARTMENT": ("ERP-IT" if u.desk == "erp" else "IT") if "it_admin" in codes else None}
+            for name, v in vals.items():
+                ws[f"{C[name]}{r}"] = v
+            extra = ["Active" if u.is_active else "Inactive", ", ".join(ROLE_NAMES.get(c, c) for c in codes),
+                     u.last_login_at.strftime("%d-%b-%Y %H:%M") if u.last_login_at else "Never", u.id]
+            for k, v in enumerate(extra):
+                c = ws.cell(row=r, column=len(COLUMNS) + 1 + k, value=v)
+                if k:
+                    c.fill = ro
+                    c.font = Font(color="4A5C74")
+        ws.auto_filter.ref = f"A1:{get_column_letter(len(cols))}{len(users) + 1}"
+        for k in range(1, 4):   # read-only headers in grey
+            ws.cell(row=1, column=len(COLUMNS) + 1 + k).fill = PatternFill("solid", fgColor="5B6B82")
 
     # ---- 2. Departments (reference + source of the dropdown)
     d = wb.create_sheet("Departments")
@@ -114,6 +158,21 @@ def build_user_template(db: Session, company: str = "") -> bytes:
     ins = wb.create_sheet("Instructions")
     ins.column_dimensions["A"].width = 110
     lines = [
+        ("How to update existing users from this file" + (f" — {company}" if company else ""), "title"),
+        ("", None),
+        ("1. This file lists everyone in the portal. Change any cell in the 'Users' sheet: name, Employee ID, "
+         "department, email, job title, phone, IT department or STATUS (Active / Inactive).", None),
+        ("2. Do NOT change the SYSTEM_ID column — it tells the portal which person each row is, so the Employee ID itself "
+         "can be corrected.", None),
+        ("3. Emptying a cell clears that value (an empty email means the person gets no emails).", None),
+        ("4. Grey columns (ROLES, LAST_SIGN_IN) are only for checking. Change roles with the Roles button.", None),
+        ("5. To add new people, fill a new row and leave SYSTEM_ID empty. They get the starting password from the import screen.", None),
+        ("6. Deleting a row does NOT delete the person — use Deactivate or Delete in the portal.", None),
+        ("7. Save as .xlsx. In the portal: Users & roles → Import from Excel → choose this file → Preview.", None),
+        ("8. The preview lists every change (old → new) and every problem before anything is saved. Then press Import.", None),
+        ("", None),
+        ("Every change is recorded in the audit log. Keep this file private — it has everyone's contact details.", "warn"),
+    ] if export else [
         ("How to add employees to the IT Service Desk" + (f" — {company}" if company else ""), "title"),
         ("", None),
         ("1. Fill the first sheet, 'Users' — one employee per row, starting on row 2. Do not change the header row.", None),

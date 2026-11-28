@@ -79,7 +79,7 @@ Employees sign in with their **Employee ID** and password. Email addresses can't
   - CSV export and a formatted Excel export.
 - **Notifications:** in-app notifications plus email through SMTP. New tickets go to the right desk's admins, and employees hear about every step.
 - **Admin tools:**
-  - users and roles, and bulk user import from Excel;
+  - users and roles; bulk user import from Excel, and **Export users → edit → upload** to update existing people (email, Employee ID, department, phone, status) with an old → new preview;
   - announcements, the knowledge base, and quick replies;
   - an email settings page with a test send;
   - the audit log and permanent user delete.

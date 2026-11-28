@@ -334,6 +334,23 @@ def users_template(p: Principal = Depends(require("user.manage")), db: Session =
                              "Cache-Control": "no-store"})
 
 
+@router.get("/admin/users/export.xlsx", tags=["Administration"])
+def users_export(p: Principal = Depends(require("user.manage")), db: Session = Depends(get_db)):
+    """Every user in the upload-template format, with a SYSTEM_ID column: edit it and import it back to update people."""
+    from datetime import datetime
+
+    from app.core.config import get_settings
+    from app.services.user_template import build_user_template
+    from sqlalchemy.orm import selectinload
+    users = db.scalars(select(User).options(selectinload(User.roles)).order_by(User.full_name, User.id)).all()
+    data = build_user_template(db, get_settings().company_name, users=users)
+    audit_p(db, p, "admin.users_export", detail={"users": len(users)})
+    db.commit()
+    name = f"Users_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+    return Response(content=data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
+
+
 @router.post("/admin/users/import", tags=["Administration"])
 async def import_users(file: UploadFile = File(...), default_password: str = Form(..., min_length=1, max_length=200),
                        default_role: str = Form("employee", pattern="^(employee|it_admin)$"),
@@ -350,15 +367,20 @@ async def import_users(file: UploadFile = File(...), default_password: str = For
         if dry_run:
             db.rollback()
         else:
+            from app.api.deps import forget_access
+            for uid, ch in res.changes:
+                audit_p(db, p, "admin.user_update", entity_type="user", entity_id=uid,
+                        detail={"source": "excel", **{k: {"from": v[0], "to": v[1]} for k, v in ch.items()}})
+                forget_access(uid)
             audit_p(db, p, "admin.users_import", detail={"file": (file.filename or "")[:100], "created": res.created,
-                                                          "updated": res.updated, "skipped": res.skipped_existing,
-                                                          "errors": len(res.errors)})
+                                                          "updated": res.updated, "unchanged": res.unchanged,
+                                                          "skipped": res.skipped_existing, "errors": len(res.errors)})
             db.commit()
     except Exception:
         db.rollback()
         raise
     return {"dry_run": dry_run, "total_rows": res.total_rows, "created": res.created, "updated": res.updated,
-            "skipped_existing": res.skipped_existing, "errors": res.errors[:200], "error_count": len(res.errors),
+            "unchanged": res.unchanged, "round_trip": res.round_trip, "skipped_existing": res.skipped_existing, "errors": res.errors[:200], "error_count": len(res.errors),
             "preview": res.preview, "columns": res.columns}
 
 

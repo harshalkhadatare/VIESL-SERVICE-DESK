@@ -15,7 +15,8 @@ export async function renderUsers(view) {
       Task management: <b>Managing Director</b> (sees and comments on every task and ticket, assigns tasks to anyone),
       <b>Manager L1</b> (assigns tasks to IT admins and L1 / L2, sees and comments on all tickets) and <b>Manager L2</b> (receives and
       completes tasks). Employees use the IT Service Desk only. Use the <b>Roles</b> button. Changes are recorded in the audit log.</div></div>
-      <div class="row"><button class="btn" id="import-users">${icon("download")} Import from Excel</button>
+      <div class="row"><button class="btn" id="export-users" title="Download everyone as Excel — edit it and import it back to update people">${icon("download")} Export users</button>
+      <button class="btn" id="import-users">${icon("upload")} Import from Excel</button>
       <button class="btn primary" id="add-user">${icon("plus")} Add user</button></div></div>
     <div class="card">
       <div class="toolbar"><div class="search-inline">${icon("search")}<input type="search" id="uq" placeholder="Name, email or employee code" aria-label="Search users"></div></div>
@@ -124,6 +125,12 @@ export async function renderUsers(view) {
   $("#uq", view).addEventListener("input", debounce((e) => { q = e.target.value.trim(); page = 1; load(); }, 300));
   $("#add-user", view).addEventListener("click", addUser);
   $("#import-users", view).addEventListener("click", importUsers);
+  $("#export-users", view).addEventListener("click", async (e) => {
+    busy(e.currentTarget);
+    try { await api.download("/admin/users/export.xlsx", null, `Users_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      toast("Users exported. Edit the file and upload it with Import from Excel."); }
+    catch (ex) { errorToast(ex); } finally { busy(e.currentTarget, false); }
+  });
 
   async function editUser(u) {
     const depts = await api.get("/departments").catch(() => []);
@@ -156,12 +163,13 @@ export async function renderUsers(view) {
 
   function importUsers() {
     let file = null;
-    openModal({ title: "Import employees from Excel", wide: true,
-      subtitle: "Upload an .xlsx or .csv file with the same fields as Edit user. Required: FULL_NAME and EMPLOYEE_ID. Optional: DEPARTMENT_CATEGORY, DEPARTMENT, COMPANY_EMAIL, JOB_TITLE, PHONE, IT_DEPARTMENT (fill only for IT Administrators).",
+    openModal({ title: "Import or update users from Excel", wide: true,
+      subtitle: "Upload an .xlsx or .csv file with the same fields as Edit user. Required: FULL_NAME and EMPLOYEE_ID. Optional: DEPARTMENT_CATEGORY, DEPARTMENT, COMPANY_EMAIL, JOB_TITLE, PHONE, IT_DEPARTMENT (fill only for IT Administrators), STATUS.",
       body: html`<form id="imp" class="stack" style="gap:14px" novalidate>
-        <div class="notice">${icon("info")}<div>New to this? <a href="#" id="imp-tpl">Download the Excel template</a>
-          — it has dropdowns for department, role and IT department, the department list, an example and instructions.
-          Fill the first sheet and upload it here.</div></div>
+        <div class="notice">${icon("info")}<div><b>Add new people:</b> <a href="#" id="imp-tpl">download the Excel template</a>,
+          fill the first sheet and upload it here.<br>
+          <b>Update existing people:</b> <a href="#" id="imp-exp">export all users</a>, change anything (email, Employee ID,
+          department, phone, status…) and upload the same file. The preview lists every change before anything is saved.</div></div>
         <div class="field"><span class="lbl">File</span>
           <div class="dropzone" id="imp-drop" tabindex="0" role="button">${icon("file")} <span id="imp-name">Choose or drop your Excel file here</span></div>
           <input type="file" id="imp-file" accept=".xlsx,.csv" hidden></div>
@@ -173,7 +181,8 @@ export async function renderUsers(view) {
             <option value="employee">Employee</option><option value="it_admin">IT Administrator</option></select>
             <div class="help">A ROLE column in the file overrides this.</div></label>
         </div>
-        <label class="check"><input type="checkbox" name="update_existing"> Update names/emails of employees who already exist</label>
+        <label class="check"><input type="checkbox" name="update_existing"> Update people who already exist (matched on Employee ID)</label>
+        <div class="help" style="margin-top:-8px">Not needed for a file from <b>Export users</b> — it always updates the people in it.</div>
         <div id="imp-result"></div></form>`,
       actions: html`<button class="btn" data-close>Close</button><button class="btn" id="imp-preview">Preview</button>
         <button class="btn primary" id="imp-go" disabled>Import</button>`,
@@ -181,6 +190,10 @@ export async function renderUsers(view) {
         $("#imp-tpl", el).addEventListener("click", async (e) => {
           e.preventDefault();
           try { await api.download("/admin/users/template.xlsx", null, "Users_Upload_Template.xlsx"); } catch (ex) { errorToast(ex); }
+        });
+        $("#imp-exp", el).addEventListener("click", async (e) => {
+          e.preventDefault();
+          try { await api.download("/admin/users/export.xlsx", null, `Users_${new Date().toISOString().slice(0, 10)}.xlsx`); } catch (ex) { errorToast(ex); }
         });
         const f = $("#imp", el), drop = $("#imp-drop", el), input = $("#imp-file", el), out = $("#imp-result", el);
         const go = $("#imp-go", el);
@@ -207,16 +220,18 @@ export async function renderUsers(view) {
             const n = r.created + r.updated;
             mount(out, html`<div class="notice ${r.error_count ? "warn" : ""}">${icon(dry ? "info" : "checkCircle")}<div>
               <b>${dry ? "Preview — nothing saved yet" : "Import finished"}</b>
-              ${r.total_rows} rows read · <strong>${r.created}</strong> ${dry ? "will be created" : "created"}${r.updated ? html` · <strong>${r.updated}</strong> ${dry ? "will be updated" : "updated"}` : ""}
-              · ${r.skipped_existing} already exist${r.error_count ? html` · <strong style="color:var(--danger)">${r.error_count} with problems</strong>` : ""}
+              ${r.round_trip ? html`<span class="badge info">Exported file — updates existing people</span> ` : ""}
+              ${r.total_rows} rows read · <strong>${r.created}</strong> ${dry ? "will be created" : "created"}${r.updated || r.round_trip ? html` · <strong>${r.updated}</strong> ${dry ? "will be updated" : "updated"}` : ""}
+              ${r.unchanged ? html` · ${r.unchanged} unchanged` : ""}${r.skipped_existing ? html` · ${r.skipped_existing} already exist` : ""}${r.error_count ? html` · <strong style="color:var(--danger)">${r.error_count} with problems</strong>` : ""}
               <div class="small muted" style="margin-top:4px">Columns used: ${Object.entries(r.columns).map(([k, v]) => `${k} → ${v}`).join(", ")}</div></div></div>
               ${r.errors.length ? html`<div class="table-wrap" style="max-height:180px;overflow:auto;margin-top:10px"><table class="data"><thead><tr><th>Row</th><th>Employee ID</th><th>Problem</th></tr></thead>
                 <tbody>${r.errors.map((x) => html`<tr><td>${x.row}</td><td class="mono">${x.employee_id || "—"}</td><td>${x.message}</td></tr>`)}</tbody></table></div>` : ""}
-              ${dry && r.preview.length ? html`<div class="table-wrap" style="max-height:220px;overflow:auto;margin-top:10px"><table class="data"><thead><tr><th>Row</th><th>Employee ID</th><th>Name</th><th>Action</th></tr></thead>
-                <tbody>${r.preview.map((x) => html`<tr><td>${x.row}</td><td class="mono">${x.employee_id}</td><td>${x.name}</td><td>${x.action}</td></tr>`)}</tbody></table>
-                ${r.total_rows > r.preview.length ? html`<div class="small muted" style="padding:6px 2px">First ${r.preview.length} rows shown.</div>` : ""}</div>` : ""}
+              ${dry && r.preview.length ? html`<div class="table-wrap" style="max-height:220px;overflow:auto;margin-top:10px"><table class="data"><thead><tr><th>Row</th><th>Employee ID</th><th>Name</th><th>What changes</th></tr></thead>
+                <tbody>${r.preview.map((x) => html`<tr><td>${x.row}</td><td class="mono">${x.employee_id}</td><td>${x.name}</td>
+                  <td>${x.changes ? html`<ul class="imp-changes">${x.changes.map((c) => html`<li>${c}</li>`)}</ul>` : x.action === "create" ? html`<span class="badge ok">New user</span>` : x.action}</td></tr>`)}</tbody></table>
+                ${r.created + r.updated > r.preview.length ? html`<div class="small muted" style="padding:6px 2px">First ${r.preview.length} rows shown.</div>` : ""}</div>` : ""}
               ${!dry ? html`<p class="small" style="margin-top:10px">Employees sign in with their <b>Employee ID</b> and the starting password. You can see or change passwords with the <b>Password</b> button.</p>` : ""}`);
-            if (dry) { go.disabled = n === 0; go.textContent = n ? `Import ${n} employee${n === 1 ? "" : "s"}` : "Nothing to import"; }
+            if (dry) { go.disabled = n === 0; go.textContent = n ? (r.updated && !r.created ? `Save ${n} change${n === 1 ? "" : "s"}` : `Import ${n} user${n === 1 ? "" : "s"}`) : "Nothing to change"; }
             else { imported = true; load(); }
           } catch (ex) {
             mount(out, html`<div class="notice danger">${icon("alert")}<div>${ex.message}</div></div>`);
