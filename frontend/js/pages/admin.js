@@ -8,6 +8,8 @@ export async function renderUsers(view) {
   let q = "", page = 1;
   const roles = await api.get("/admin/roles");
   const roleName = Object.fromEntries(roles.map((r) => [r.code, r.name]));
+  const roleRank = Object.fromEntries(roles.map((r, i) => [r.code, i]));     // server sends highest authority first
+  const byRank = (list) => [...list].sort((a, b) => (roleRank[a] ?? 99) - (roleRank[b] ?? 99));
   mount(view, html`<div class="page-head"><div><h1>Users & roles</h1>
       <div class="sub"><b>Employee</b> raises tickets, <b>IT Administrator</b> works and assigns them.
       Task management: <b>Managing Director</b> (sees and comments on every task and ticket, assigns tasks to anyone),
@@ -31,7 +33,7 @@ export async function renderUsers(view) {
         <td class="u-user"><div class="row" style="flex-wrap:nowrap"><span class="avatar sm">${initials(u.full_name)}</span><div style="min-width:0"><b style="font-weight:600">${u.full_name}</b>
           ${u.is_demo ? html` <span class="pill demo">demo</span>` : ""}<div class="t-sub2">${u.has_email ? u.email : html`<span style="color:var(--warn)">No email yet</span>`}</div></div></div></td>
         <td class="hide-sm mono u-code" data-label="Employee ID">${u.employee_code}</td><td class="hide-sm hide-md u-dept">${u.department ? html`${u.department}${u.department_category ? html`<div class="muted small">${u.department_category}</div>` : ""}` : "—"}</td>
-        <td class="u-roles">${u.roles.map((c) => html`<span class="pill" style="margin:1px 3px 1px 0">${roleName[c] || c}</span>`)}${u.roles.includes("it_admin") && u.desk ? html` ${deskBadge(u.desk)}` : ""}</td>
+        <td class="u-roles">${byRank(u.roles).map((c) => html`<span class="pill" style="margin:1px 3px 1px 0">${roleName[c] || c}</span>`)}${u.roles.includes("it_admin") && u.desk ? html` ${deskBadge(u.desk)}` : ""}</td>
         <td class="hide-sm hide-md muted small u-last">${u.last_login_at ? fmtRelative(u.last_login_at) : "Never"}</td>
         <td class="u-status">${!u.is_active ? html`<span class="badge">Inactive</span>` : u.locked ? html`<span class="badge warn">Locked</span>` : html`<span class="badge ok">Active</span>`}</td>
         <td class="u-actions" style="text-align:right;white-space:nowrap"><a class="btn sm ghost" href="#/tickets?scope=all&requester=${encodeURIComponent(u.employee_code)}" title="All tickets raised by ${u.full_name}">${icon("ticket")} Tickets</a>

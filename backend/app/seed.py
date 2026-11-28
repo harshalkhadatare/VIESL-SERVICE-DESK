@@ -70,6 +70,9 @@ ROLES = {
     "manager_l2": ("Manager L2", "Receive and complete tasks (cannot assign); raise and track own tickets",
                    _EMP + ["task.use"]),
 }
+# Display order, highest authority first (Roles dialog, role badges)
+ROLE_ORDER = ["top_management", "it_admin", "manager_l1", "manager_l2", "employee"]
+
 # Who may give a task to whom (by the assigner's role). Nobody but the MD gives tasks to the MD — not even the MD.
 ASSIGN_TARGETS = {
     "top_management": {"it_admin", "manager_l1", "manager_l2"},

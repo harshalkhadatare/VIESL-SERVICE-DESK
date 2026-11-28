@@ -223,9 +223,11 @@ def _user_out(u: User) -> UserAdminOut:
 
 @router.get("/admin/roles", tags=["Administration"])
 def list_roles(p: Principal = Depends(require("user.manage")), db: Session = Depends(get_db)):
+    from app.seed import ROLE_ORDER
+    rank = {c: i for i, c in enumerate(ROLE_ORDER)}
+    rows = sorted(db.scalars(select(Role)), key=lambda r: (rank.get(r.code, 99), r.id))   # highest authority first
     return [{"code": r.code, "name": r.name, "description": r.description,
-             "permissions": sorted(x.code for x in r.permissions)}
-            for r in db.scalars(select(Role).order_by(Role.id))]
+             "permissions": sorted(x.code for x in r.permissions)} for r in rows]
 
 
 @router.get("/admin/users", response_model=Page[UserAdminOut], tags=["Administration"])
