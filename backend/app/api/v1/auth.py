@@ -87,26 +87,13 @@ def login(data: LoginIn, request: Request, response: Response, db: Session = Dep
     if not login_limiter.allow(f"login:{ip}", s.login_rate_limit_per_minute):
         raise TooManyRequests("Too many sign-in attempts. Please wait a minute and try again.")
 
+    # Sign in with the Employee ID only — many people share one company mailbox, so an email can't identify a person.
     login_id = data.email.strip()
-    email = login_id.lower()
     if "@" in login_id:
-        # several accounts may share one email: pick the one whose password matches
-        same = db.scalars(select(User).where(User.email == email).order_by(User.id)).all()
-        if len(same) > 1:
-            matches = [u for u in same if check_user_password(u, data.password)]
-            if len(matches) > 1:
-                audit(db, "auth.login", actor_label=login_id[:100], ip=ip, outcome="failure",
-                      detail={"reason": "shared email, ambiguous"})
-                db.commit()
-                raise Unauthorized("Several accounts use this email and password — please sign in with your Employee ID.",
-                                   code="ambiguous_email")
-            user = matches[0] if matches else same[0]
-        else:
-            user = same[0] if same else None
-    else:  # employee ID, e.g. 12520
-        user = db.scalar(select(User).where(func.upper(User.employee_code) == login_id.upper()))
+        raise Unauthorized("Please sign in with your Employee ID (not your email address).", code="employee_id_required")
+    user = db.scalar(select(User).where(func.upper(User.employee_code) == login_id.upper()))
     now = utcnow()
-    generic = Unauthorized("Incorrect Employee ID / email or password.", code="invalid_credentials")
+    generic = Unauthorized("Incorrect Employee ID or password.", code="invalid_credentials")
 
     if user and user.locked_until and user.locked_until > now:
         verify_password(data.password, None)  # equalise timing

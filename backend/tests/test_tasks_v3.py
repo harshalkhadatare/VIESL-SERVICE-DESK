@@ -12,6 +12,18 @@ from app.services.tasks import run_task_reminders
 from tests.conftest import auth
 from tests.test_email_notifications import _hdr, _real_user, mail  # noqa: F401  (fixture)
 
+
+import pytest  # noqa: E402
+
+from tests.conftest import EMAILS, grant_role  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _task_roles():
+    """The demo employees who receive tasks in these tests are Manager L2 (employees have no Task management)."""
+    for k in ("employee", "employee2", "employee3"):
+        grant_role(EMAILS[k], "manager_l2")
+
 API = "/api/v1/tasks"
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
 XLSX = b"PK\x03\x04" + b"\x00" * 64
@@ -27,8 +39,8 @@ def _up(client, hdr, n, name, data):
 
 
 def _setup(client, suffix):
-    mgr = _real_user(f"v3.mgr.{suffix}@visioninfra.co.in", "Meera Manager", "top_management")
-    emp = _real_user(f"v3.emp.{suffix}@visioninfra.co.in", "Eshan Worker", "employee")
+    mgr = _real_user(f"v3.mgr.{suffix}@visioninfra.co.in", "Meera Manager", "manager_l1")
+    emp = _real_user(f"v3.emp.{suffix}@visioninfra.co.in", "Eshan Worker", "manager_l2")
     t = client.post(API, json={"title": f"Quarterly stock report {suffix}", "description": "Use the new format",
                                "assignee_ids": [emp], "due_at": _iso()}, headers=_hdr(mgr)).json()
     return mgr, emp, t["number"]
@@ -132,10 +144,10 @@ def test_old_management_role_is_merged_into_top_management(client):
         assert db.scalar(select(Role).where(Role.code == "task_manager")) is None
         assert "top_management" in db.get(User, uid).role_codes
     roles = [r["code"] for r in client.get("/api/v1/admin/roles", headers=auth("admin")).json()]
-    assert sorted(roles) == ["employee", "it_admin", "top_management"]
+    assert sorted(roles) == ["employee", "it_admin", "manager_l1", "manager_l2", "top_management"]
     me = client.get(f"{API}/me", headers=_hdr(uid)).json()
     assert me["can_assign"] is True and me["is_management"] is True
-    emp = _real_user("v3.worker2@visioninfra.co.in", "Worker Two", "employee")
+    emp = _real_user("v3.worker2@visioninfra.co.in", "Worker Two", "manager_l2")
     r = client.post(API, json={"title": "Check the merged role", "assignee_ids": [emp], "due_at": _iso()},
                     headers=_hdr(uid))
     assert r.status_code == 201, r.text

@@ -56,12 +56,12 @@ export function navigate(path) { location.hash = path; }
 
 // ------------------------------------------------------------------ tasks area
 // Management (and IT admins, as Task admins) switch between "Tasks" and "IT Service Desk" at the top.
-const switchable = () => !!(state.tasks?.can_assign);
+const switchable = () => !!(state.tasks?.has_access);      // MD, IT admins, Managers L1/L2 — not employees
 const prefersTasks = () => { try { return (localStorage.getItem("sd-area") || (state.tasks?.is_management ? "tasks" : "desk")) === "tasks"; } catch { return !!state.tasks?.is_management; } };
 
 function tasksNav() {
   const t = state.tasks || {};
-  if (!t.can_assign && !t.has_tasks) return "";
+  if (!t.has_access) return "";
   return html`<nav class="nav nav-tasks">
     <div class="nav-section">Tasks</div>
     ${t.can_assign ? navLink("/tasks", "tasks-home", "home", "Overview") : ""}

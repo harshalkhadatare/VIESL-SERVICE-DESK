@@ -39,26 +39,42 @@ PERMISSIONS = {
     "ticket.escalate": "Escalate to another group", "ticket.set_priority": "Change priority",
     "ticket.comment_internal": "Write internal notes", "ticket.link": "Link related/duplicate tickets",
     "ticket.manage_all": "Act on any ticket (admin)",
-    "ticket.comment_any": "Comment on any ticket (Top management — replies and internal notes, no other changes)", "dashboard.ops": "IT operations dashboard",
+    "ticket.comment_any": "Comment on any visible ticket (replies and internal notes, no other changes)",
+    "ticket.view_restricted": "See tickets raised by the Managing Director (MD only)",
+    "dashboard.ops": "IT operations dashboard",
     "report.export": "Export reports", "kb.view": "Read knowledge base", "kb.manage": "Author/review articles",
     "user.manage": "Manage users and roles", "audit.view": "View audit log", "settings.manage": "Manage settings",
     # Task management
-    "task.assign": "Assign tasks to anyone and follow them up",
-    "task.view_all": "See every task in the company, with its messages and files (Top management only)",
-    "task.admin": "Act on any task: fix, reassign, cancel (Task admin — IT administrators)",
+    "task.use": "Use the Task management area (receive and complete tasks)",
+    "task.assign": "Assign tasks (to the roles their own role allows)",
+    "task.view_all": "See every task in the company, with its messages and files (Managing Director only)",
 }
 _EMP = ["ticket.create", "ticket.view_own", "kb.view"]
+_SEE_ALL_TICKETS = ["ticket.view_all", "ticket.view_internal", "ticket.comment_any", "dashboard.ops", "report.export"]
 ROLES = {
-    "employee": ("Employee", "Raise and track own tickets, read the knowledge base", _EMP),
-    "it_admin": ("IT Administrator", "Work and assign all tickets, dashboards, users and settings",
-                 [c for c in PERMISSIONS if c != "task.view_all"]),
-    # Top management (MD): assigns tasks to anyone and SEES everything — every task (with messages and files),
-    # every ticket (with attachments), the IT dashboard and reports — and may COMMENT on any ticket or task.
-    # Nothing else changes: no assigning, status, priority, users or settings in the IT Service Desk.
-    "top_management": ("Top management (MD)",
-                       "Assign tasks to anyone; see and comment on every task and ticket; view dashboards and reports",
-                       _EMP + ["task.assign", "task.view_all", "ticket.view_all", "ticket.view_internal",
-                               "ticket.comment_any", "dashboard.ops", "report.export"]),
+    # Employee: IT Service Desk only — raise and follow their own tickets. No Task management.
+    "employee": ("Employee", "Raise and track own tickets, read the knowledge base (no Task management)", _EMP),
+    # IT Administrator: everything in the IT Service Desk (tickets, users, settings); in Task management assigns to
+    # Manager L1, Manager L2 and other IT administrators. Never sees the MD's private tickets unless assigned to them.
+    "it_admin": ("IT Administrator", "Work and assign all tickets, dashboards, users and settings; assign tasks to managers and IT",
+                 [c for c in PERMISSIONS if c not in ("task.view_all", "ticket.view_restricted", "ticket.comment_any")]),
+    # Managing Director: the highest role. Sees every task and every ticket (incl. other people's), comments on any,
+    # assigns tasks to anyone. Read-only otherwise in the IT Service Desk.
+    "top_management": ("Managing Director",
+                       "Highest role: see and comment on every task and ticket, assign tasks to anyone, dashboards and reports",
+                       _EMP + ["task.use", "task.assign", "task.view_all", "ticket.view_restricted"] + _SEE_ALL_TICKETS),
+    # Manager L1: assigns tasks to Manager L1 / L2; sees (and comments on) all IT / ERP-IT tickets.
+    "manager_l1": ("Manager L1", "Assign tasks to Manager L1 / L2; see and comment on all IT and ERP-IT tickets",
+                   _EMP + ["task.use", "task.assign"] + _SEE_ALL_TICKETS),
+    # Manager L2: receives and completes tasks; cannot assign. Tickets: own tickets only.
+    "manager_l2": ("Manager L2", "Receive and complete tasks (cannot assign); raise and track own tickets",
+                   _EMP + ["task.use"]),
+}
+# Who may give a task to whom (by the assigner's role). Nobody but the MD gives tasks to the MD — not even the MD.
+ASSIGN_TARGETS = {
+    "top_management": {"it_admin", "manager_l1", "manager_l2"},
+    "manager_l1": {"manager_l1", "manager_l2"},
+    "it_admin": {"manager_l1", "manager_l2", "it_admin"},
 }
 # Roles from earlier releases are folded into the roles above on the next seed run.
 LEGACY_ROLE_MAP = {"it_engineer": "it_admin", "it_lead": "it_admin", "management": "it_admin",
@@ -189,6 +205,20 @@ def _fold_legacy_roles(db: Session) -> None:
         db.flush()
 
 
+def _give_task_roles(db: Session) -> None:
+    """Employees no longer use Task management. Anyone who already has tasks given to them but holds no role with
+    Task management access is moved to Manager L2 (receive and complete tasks), so they keep their tasks."""
+    from app.models.task import TaskAssignee
+    db.flush()
+    roles = {r.code: r for r in db.scalars(select(Role))}
+    with_access = {code for code, (_n, _d, perms) in ROLES.items() if "task.use" in perms}
+    access_ids = [roles[c].id for c in with_access if c in roles]
+    have = set(db.scalars(select(UserRole.user_id).where(UserRole.role_id.in_(access_ids))))
+    for uid in set(db.scalars(select(TaskAssignee.user_id))) - have:
+        db.add(UserRole(user_id=uid, role_id=roles["manager_l2"].id))
+    db.flush()
+
+
 def _remove_stray_subcategory(db: Session, cat_code: str, name: str) -> None:
     """Clean-up: 'Pending Work' was once added to ERP Application Issue by mistake (it belongs to
     'ERP Back Date Lock Open'). Removed only if no ticket uses it."""
@@ -204,8 +234,10 @@ def seed_reference(db: Session) -> None:
     perms = {}
     for code, desc in PERMISSIONS.items():
         perms[code], _ = _get_or_create(db, Permission, {"code": code}, description=desc)
+        perms[code].description = desc
     for code, (name, desc, plist) in ROLES.items():
         role, _ = _get_or_create(db, Role, {"code": code}, name=name, description=desc)
+        role.name, role.description = name, desc          # renames (e.g. "Managing Director") apply on deploy
         have = {rp.permission_id: rp for rp in db.scalars(select(RolePermission).where(RolePermission.role_id == role.id))}
         for pc in plist:
             if perms[pc].id not in have:
@@ -216,6 +248,7 @@ def seed_reference(db: Session) -> None:
                 if pid not in wanted:
                     db.delete(rp)
     _fold_legacy_roles(db)
+    _give_task_roles(db)
     for i, (code, name, is_open, pauses) in enumerate(STATUSES):
         _get_or_create(db, TicketStatus, {"code": code}, name=name, is_open=is_open, pauses_sla=pauses,
                        sort_order=i * 10)

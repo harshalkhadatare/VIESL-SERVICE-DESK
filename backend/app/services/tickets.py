@@ -147,6 +147,16 @@ def create_ticket(db: Session, p: Principal, data: TicketCreate, idempotency_key
         priority_id=prio.id, status_code=INITIAL_STATUS, contact_method=data.contact_method,
         created_by=user.id, created_at=now, updated_at=now, desk=desk,
     )
+    md_admin = None
+    if "top_management" in p.roles:
+        # The Managing Director's tickets are private: only the MD and the IT administrator they choose see them.
+        if not data.assign_to_id or not is_it_staff(db, data.assign_to_id):
+            raise BusinessRuleError("Choose the IT administrator who should handle this ticket.",
+                                    details=[{"field": "assign_to_id"}])
+        md_admin = data.assign_to_id
+        t.is_restricted = True
+    elif data.assign_to_id:
+        raise BusinessRuleError("Only the Managing Director chooses the IT administrator when raising a ticket.")
     db.add(t)
     db.flush()
     t.category, t.priority = cat, prio
@@ -159,6 +169,8 @@ def create_ticket(db: Session, p: Principal, data: TicketCreate, idempotency_key
 
     # Routing
     group_id, assignee_id, method = route_ticket(db, t, data.erp.erp_module if data.erp else None)
+    if md_admin:
+        assignee_id, method = md_admin, "manual"
     if group_id:
         t.support_group_id = group_id
         add_history(db, t, "support_group", None, db.get(SupportGroup, group_id).name, None, "Automatic routing")
@@ -190,7 +202,7 @@ def create_ticket(db: Session, p: Principal, data: TicketCreate, idempotency_key
                f"{t.subject}\nRaised by {user.label} · {prio.code}", t,
                dedupe_key=f"assigned:{t.id}:{assignee_id}:{now.timestamp()}")
     # every new ticket is emailed to the administrators of the chosen department (IT / ERP-IT / both)
-    for uid in desk_staff_ids(db, t.desk):
+    for uid in ([] if t.is_restricted else desk_staff_ids(db, t.desk)):
         if uid in (assignee_id, user.id):
             continue
         notify(db, uid, "ticket_created", f"New {DESK_NAME[t.desk]} ticket {t.number} from {user.full_name}",
@@ -364,6 +376,8 @@ def assign(db: Session, p: Principal, number: str, data: AssignIn) -> Ticket:
             raise BusinessRuleError("Select a valid support team.")
     if data.assignee_id is not None and not is_it_staff(db, data.assignee_id):
         raise BusinessRuleError("Tickets can only be assigned to an active IT administrator.")
+    if t.is_restricted and not data.assignee_id:
+        raise BusinessRuleError("The Managing Director's tickets must stay assigned to an IT administrator.")
 
     now = utcnow()
     moving_group = group is not None and group.id != t.support_group_id

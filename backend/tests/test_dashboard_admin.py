@@ -30,7 +30,9 @@ def test_invalid_date_range(client):
 
 def test_roles_are_employee_admin_and_task_management(client):
     roles = client.get("/api/v1/admin/roles", headers=auth("admin")).json()
-    assert sorted(r["code"] for r in roles) == ["employee", "it_admin", "top_management"]
+    assert sorted(r["code"] for r in roles) == ["employee", "it_admin", "manager_l1", "manager_l2", "top_management"]
+    names = {r["code"]: r["name"] for r in roles}
+    assert names["top_management"] == "Managing Director"
 
 
 def test_role_change_admin_only_and_audited(client):
@@ -119,6 +121,6 @@ def test_admin_creates_real_user(client):
     assert client.post("/api/v1/admin/users", json=empty, headers=auth("admin")).status_code == 422
     bad_role = {**body, "email": "y@visioninfra.co.in", "employee_code": "E1044", "role": "it_lead"}
     assert client.post("/api/v1/admin/users", json=bad_role, headers=auth("admin")).status_code == 422
-    login = client.post("/api/v1/auth/login", json={"email": "suresh.patil@visioninfra.co.in", "password": "Welcome@2026x"},
+    login = client.post("/api/v1/auth/login", json={"email": "E1042", "password": "Welcome@2026x"},
                         headers={"X-Requested-With": "fetch"})
     assert login.status_code == 200

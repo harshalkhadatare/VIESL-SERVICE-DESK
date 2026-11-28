@@ -91,3 +91,23 @@ def make_ticket(client, role="employee", code="ERP_APP", impact=2, urgency=2, su
     r = client.post("/api/v1/tickets", json=body, headers=auth(role))
     assert r.status_code == 201, r.text
     return r.json()
+
+
+def grant_role(email: str, role_code: str) -> None:
+    """Give an existing test user an extra role (e.g. Manager L2 so they can receive tasks)."""
+    from app.models import Role, UserRole
+    with SessionLocal() as s:
+        uid = s.scalar(select(User.id).where(User.email == email))
+        rid = s.scalar(select(Role.id).where(Role.code == role_code))
+        if not s.get(UserRole, (uid, rid)):
+            s.add(UserRole(user_id=uid, role_id=rid))
+            s.commit()
+
+
+def code_for(email_or_code: str) -> str:
+    """Sign-in uses the Employee ID only: map a test user's email to their Employee ID."""
+    if "@" not in email_or_code:
+        return email_or_code
+    with SessionLocal() as s:
+        code = s.scalar(select(User.employee_code).where(User.email == email_or_code.lower()))
+        return code or email_or_code

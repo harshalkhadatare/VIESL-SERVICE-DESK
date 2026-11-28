@@ -3,7 +3,7 @@ from datetime import datetime
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -16,7 +16,13 @@ from app.models.task import OPEN_TASK_STATUSES, TASK_STATUSES, Task, TaskAttachm
 from app.models.identity import UserRole, Role
 from app.services import tasks as svc
 
-router = APIRouter(prefix="/tasks", tags=["Tasks"])
+def _task_access(request: Request, p: Principal = Depends(get_principal)) -> None:
+    """Employees have no Task management — every task endpoint except /tasks/me is closed to them."""
+    if not request.url.path.rstrip("/").endswith("/tasks/me") and not svc.can_use(p):
+        raise Forbidden("Task management isn't part of your role.")
+
+
+router = APIRouter(prefix="/tasks", tags=["Tasks"], dependencies=[Depends(_task_access)])
 
 
 class TaskIn(BaseModel):
@@ -76,10 +82,12 @@ def my_task_access(p: Principal = Depends(get_principal), db: Session = Depends(
         svc.member_clause(p.id), Task.is_deleted.is_(False), Task.status.in_(OPEN_TASK_STATUSES))) or 0
     any_mine = db.scalar(select(func.count()).select_from(Task).where(
         svc.member_clause(p.id), Task.is_deleted.is_(False))) or 0
-    return {"can_assign": svc.can_assign(p), "sees_all": svc.sees_all(p),
-            # management by ROLE (IT administrators hold every permission but start on the IT desk)
-            "is_management": "top_management" in p.roles,
+    from app.seed import ROLES
+    return {"has_access": svc.can_use(p), "can_assign": svc.can_assign(p), "sees_all": svc.sees_all(p),
+            # start on Task management by ROLE (IT administrators start on the IT desk)
+            "is_management": bool({"top_management", "manager_l1", "manager_l2"} & set(p.roles)),
             "is_top_management": "top_management" in p.roles,
+            "assign_to": sorted(ROLES[c][0] for c in svc.assign_targets(p) if c in ROLES),
             "has_tasks": any_mine > 0, "open_assigned_to_me": open_mine}
 
 
@@ -94,10 +102,10 @@ def overview(scope: str = Query("mine", pattern="^(mine|all)$"), p: Principal = 
 @router.get("/people")
 def people(q: str | None = Query(None, max_length=60), p: Principal = Depends(get_principal),
            db: Session = Depends(get_db)):
-    """Anyone active can be given a task."""
+    """The people this person's role may give tasks to (see seed.ASSIGN_TARGETS)."""
     if not svc.can_assign(p):
-        raise Forbidden("Only management can assign tasks.")
-    stmt = select(User).where(User.is_active.is_(True))
+        raise Forbidden("Your role can't assign tasks.")
+    stmt = select(User).where(User.is_active.is_(True), svc.assignable_clause(p))
     if q:
         like = f"%{q.strip()}%"
         stmt = stmt.where(or_(User.full_name.ilike(like), User.employee_code.ilike(like), User.email.ilike(like)))

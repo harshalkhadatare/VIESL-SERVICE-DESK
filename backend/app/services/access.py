@@ -2,7 +2,7 @@
 
 Unauthorized tickets are reported as 404 (not 403) to prevent ticket-number enumeration.
 """
-from sqlalchemy import false, or_, select
+from sqlalchemy import and_, false, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import ColumnElement
 
@@ -12,6 +12,14 @@ from app.models import Ticket
 
 
 def ticket_visibility_clause(p: Principal) -> ColumnElement[bool]:
+    base = _base_visibility(p)
+    if p.can("ticket.view_restricted"):
+        return base
+    # Tickets raised by the Managing Director: only the MD, the requester and the assigned IT administrator
+    return and_(base, or_(Ticket.is_restricted.is_(False), Ticket.assignee_id == p.id, Ticket.requester_id == p.id))
+
+
+def _base_visibility(p: Principal) -> ColumnElement[bool]:
     if p.can("ticket.view_all"):
         return Ticket.id.isnot(None)
     clauses = []

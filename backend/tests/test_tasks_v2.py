@@ -6,6 +6,18 @@ from app.models import utcnow
 from tests.conftest import EMAILS, auth, user_id
 from tests.test_email_notifications import _hdr, _real_user, mail  # noqa: F401  (fixture)
 
+
+import pytest  # noqa: E402
+
+from tests.conftest import grant_role  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _task_roles():
+    """The demo employees who receive tasks in these tests are Manager L2 (employees have no Task management)."""
+    for k in ("employee", "employee2", "employee3"):
+        grant_role(EMAILS[k], "manager_l2")
+
 API = "/api/v1/tasks"
 
 
@@ -14,13 +26,13 @@ def _iso(days=3):
 
 
 def _mgr():
-    return _real_user("v2.manager@visioninfra.co.in", "Kiran Manager", "top_management")
+    return _real_user("v2.manager@visioninfra.co.in", "Kiran Manager", "manager_l1")
 
 
 def test_several_people_on_one_task(client):
     mgr = _mgr()
-    a = _real_user("v2.a@visioninfra.co.in", "Asha One", "employee")
-    b = _real_user("v2.b@visioninfra.co.in", "Bala Two", "employee")
+    a = _real_user("v2.a@visioninfra.co.in", "Asha One", "manager_l2")
+    b = _real_user("v2.b@visioninfra.co.in", "Bala Two", "manager_l2")
     r = client.post(API, json={"title": "Stock count at Pune yard", "assignee_ids": [a, b], "due_at": _iso()},
                     headers=_hdr(mgr))
     assert r.status_code == 201, r.text
@@ -44,7 +56,7 @@ def test_several_people_on_one_task(client):
 def test_messages_are_private_from_admins_but_md_reads_all(client, mail):  # noqa: F811
     mgr = _mgr()
     md = _real_user("v2.md@visioninfra.co.in", "Top Boss", "top_management")
-    emp = _real_user("v2.private@visioninfra.co.in", "Priya Private", "employee")
+    emp = _real_user("v2.private@visioninfra.co.in", "Priya Private", "manager_l2")
     t = client.post(API, json={"title": "Confidential salary file", "description": "Use the locked sheet in HR drive",
                                "assignee_ids": [emp], "due_at": _iso()}, headers=_hdr(mgr)).json()
     n = t["number"]
@@ -99,7 +111,7 @@ def test_messages_are_private_from_admins_but_md_reads_all(client, mail):  # noq
 
 def test_counters_and_mark_all_read(client):
     mgr = _mgr()
-    emp = _real_user("v2.counter@visioninfra.co.in", "Chetan Count", "employee")
+    emp = _real_user("v2.counter@visioninfra.co.in", "Chetan Count", "manager_l2")
     t = client.post(API, json={"title": "Counter check", "assignee_ids": [emp], "due_at": _iso()}, headers=_hdr(mgr)).json()
     client.post(f"{API}/{t['number']}/updates", json={"body": "First note"}, headers=_hdr(emp))
     c = client.get(f"{API}/counters", headers=_hdr(mgr)).json()
@@ -137,7 +149,7 @@ def test_advanced_search_and_no_deadline(client):
 
 def test_notifications_split_by_area(client):
     mgr = _mgr()
-    emp = _real_user("v2.split@visioninfra.co.in", "Sita Split", "employee")
+    emp = _real_user("v2.split@visioninfra.co.in", "Sita Split", "manager_l2")
     client.post(API, json={"title": "Area split task", "assignee_ids": [emp], "due_at": _iso()}, headers=_hdr(mgr))
     # a ticket notification for the same person
     client.post("/api/v1/tickets", headers=_hdr(emp), json={"subject": "Printer jam on floor 2",

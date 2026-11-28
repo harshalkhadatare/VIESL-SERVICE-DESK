@@ -9,7 +9,8 @@ H = {"X-Requested-With": "fetch"}
 
 
 def _login(client, email, pw):
-    return client.post("/api/v1/auth/login", json={"email": email, "password": pw}, headers=H)
+    from tests.conftest import code_for
+    return client.post("/api/v1/auth/login", json={"email": code_for(email), "password": pw}, headers=H)
 
 
 def test_created_user_password_is_readable(client):

@@ -1,40 +1,45 @@
 # Task management
 
-Top management (MD) assigns tasks to anyone in the company; the person reports progress and submits the work;
-the manager approves it or sends it back with feedback. It lives inside the IT Service Desk (same login,
-same users), in its own area with its own data.
+The Managing Director, IT administrators and Managers L1 assign tasks; the person reports progress and submits the
+work; whoever assigned it approves it or sends it back with feedback. It lives inside the IT Service Desk (same
+login, same users), in its own area with its own data. **Sign-in is with the Employee ID only** (many people share
+one company mailbox, so an email can't identify a person).
 
-## Who sees what
+## Roles
 
-| Person | What they get |
-|---|---|
-| **Top management (MD)** | Starts on **Task overview**. Assigns tasks to anyone. Sees only the tasks they assigned and the tasks given to them. |
-| **IT Administrator** | Starts on the IT dashboard as before. Has a **Tasks \| IT Service Desk** switch. Like everyone else, sees only the tasks they are on. |
-| **Employee** | No change — unless someone gives them a task. Then a **My tasks** item appears in their menu. |
+| Role | Task management | IT Service Desk |
+|---|---|---|
+| **Managing Director** (highest) | Assigns to anyone (IT admins, Managers L1/L2). Sees **every** task, with messages and files, and can write on any. | Sees **every** ticket (incl. internal notes), the dashboard, SLA report and exports; can comment on any ticket. Doesn't assign tickets or change settings. Their own tickets are **private**: when raising one they choose the IT administrator, and only the MD and that administrator see it. |
+| **IT Administrator** | Assigns to Managers L1/L2 and other IT administrators (never to the MD). Sees only tasks they are on. | Everything as before: works and assigns tickets, manages users (incl. creating MDs and Managers) and settings. Never sees the MD's private tickets unless one is assigned to them. |
+| **Manager L1** | Assigns to Managers L1 and L2 (never to the MD). Sees only tasks they are on. | Sees and comments on all IT and ERP-IT tickets (not the MD's private ones). |
+| **Manager L2** | Receives and completes tasks; cannot assign. | Raises and follows their own tickets. |
+| **Employee** | **No Task management.** | Raises and follows their own tickets. |
+
+Anyone who already had tasks given to them while being a plain Employee was moved to **Manager L2** automatically
+so they keep their tasks.
+
+## Emails to the Managing Director
+
+The MD gets everything in the app's Notifications, but **email only** when a task they assigned is completed
+(marked complete / approved) or a ticket they raised is resolved / closed.
 
 ## Privacy (important)
 
-A task is visible to the people on it — the person who assigned it and the people it is assigned to — and to
-**Top management (MD)**, who can open and read every task in the company (messages and files included) but cannot
-post or change anything on a task they are not on. IT administrators cannot open, search, count or see a task they
-are not on (it simply doesn't exist for them). Emails still go only to the people on the task. This is enforced by the server (API, search, overview,
-analytics, notifications, emails), not just hidden on screen. Note: anyone with direct access to the database
-itself (the database server's administrator) can still read it.
+A task is visible to the people on it — the person who assigned it and the people it is assigned to — and to the
+**Managing Director**, who can open and read every task (messages and files included) and write messages on it, but
+cannot change a task they are not on. Nobody else can open, search, count or see a task they are not on.
+Enforced by the server (API, search, overview, analytics, notifications, emails), not just hidden on screen.
+Anyone with direct access to the database server can still read the data.
 
 ## Several people on one task
 
 Pick one or more people when you assign (or later with **Edit**). Everyone on the task gets the email, sees it under
 **My tasks**, can post updates and can mark it complete. The first person is shown first; all are equal.
 
-## Making someone Top management (admins)
+## Giving someone a role (admins)
 
-There are three roles: **Employee**, **IT Administrator** and **Top management (MD)**. Top management assigns tasks
-to anyone, sees every task, and in the IT Service Desk can view all tickets (with internal notes), the dashboard,
-SLA report and Excel exports — read-only: no replies, assignment, status changes, users or settings. (The earlier separate
-"Management" role was merged into Top management — anyone who had it now has Top management.)
-
-Users & roles → find the person → **Roles** → tick **Top management (MD)** *next to* their
-normal role (Employee or IT Administrator) → Save. They see the Tasks area the next time they sign in.
+Users & roles → find the person → **Roles** → tick **Managing Director**, **Manager L1** or **Manager L2** *next to*
+their normal role (Employee or IT Administrator) → Save. They see the Tasks area the next time they sign in.
 
 ## The flow
 

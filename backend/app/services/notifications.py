@@ -62,6 +62,14 @@ def notify(db: Session, user_id: int | None, event: str, title: str, body: str |
     """In-app notification, also emailed unless email=False (e.g. ticket deleted) or the user opted out."""
     if not user_id:
         return None
+    # A Managing Director's private ticket is never announced to anyone who can't see it
+    if ticket is not None and ticket.is_restricted and user_id not in (ticket.requester_id, ticket.assignee_id) \
+            and not _is_md(db, user_id):
+        return None
+    # The Managing Director is emailed only when something THEY raised or assigned is finished
+    if email and _is_md(db, user_id):
+        email = (ticket is not None and ticket.requester_id == user_id and event in ("ticket_resolved", "ticket_closed")) \
+            or (task is not None and task.assigner_id == user_id and event in ("task_submitted", "task_completed"))
     pref = db.get(NotificationPreference, (user_id, event))
     if pref is not None and not pref.in_app and not pref.email:
         return None
@@ -86,6 +94,12 @@ def notify(db: Session, user_id: int | None, event: str, title: str, body: str |
     except IntegrityError:  # concurrent duplicate
         return None
     return n
+
+
+def _is_md(db: Session, user_id: int) -> bool:
+    from app.models import Role, UserRole
+    return db.scalar(select(UserRole.user_id).join(Role, Role.id == UserRole.role_id)
+                     .where(UserRole.user_id == user_id, Role.code == "top_management").limit(1)) is not None
 
 
 # ---------------------------------------------------------------- email content

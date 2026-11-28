@@ -11,7 +11,8 @@ H = {"X-Requested-With": "fetch"}
 
 
 def login(client, email, password=PASSWORD, headers=H):
-    return client.post("/api/v1/auth/login", json={"email": email, "password": password}, headers=headers)
+    from tests.conftest import code_for
+    return client.post("/api/v1/auth/login", json={"email": code_for(email), "password": password}, headers=headers)
 
 
 def test_login_success_sets_httponly_refresh_cookie(client):
@@ -28,7 +29,7 @@ def test_login_requires_anti_csrf_header(client):
 
 def test_wrong_password_and_unknown_user_give_same_error(client):
     a = login(client, EMAILS["employee"], "Wrong-pass-1")
-    b = login(client, "nobody@demo.example.com", "Wrong-pass-1")
+    b = login(client, "NOBODY99", "Wrong-pass-1")
     assert a.status_code == b.status_code == 401
     assert a.json()["error"]["message"] == b.json()["error"]["message"]
 

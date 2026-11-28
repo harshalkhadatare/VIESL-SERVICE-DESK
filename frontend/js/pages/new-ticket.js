@@ -3,6 +3,7 @@ import { state, catalog } from "../state.js";
 import { $, $$, html, mount, icon, debounce, busy, toast, errorToast, showFieldErrors, prioBadge, fileSize, empId } from "../ui.js";
 import { readClipboardFiles, onPasteFiles } from "../paste.js";
 
+const IS_MD = () => !!state.me?.roles?.includes("top_management");   // the Managing Director's tickets are private
 const ALLOWED = ".png,.jpg,.jpeg,.gif,.webp,.bmp,.tif,.tiff,.heic,.heif,.pdf";
 
 // Pre-filled starting points for the "Quick help" tiles on the home page (#/tickets/new?quick=…)
@@ -81,6 +82,9 @@ export async function render(view, _params = [], query = {}) {
             <div class="fieldset-title">Describe the issue</div>
             <div class="fieldset-sub">A clear subject and the exact error text help us fix it faster.</div>
             <div class="stack" style="gap:16px">
+              ${IS_MD() ? html`<label class="field"><span class="lbl">IT administrator who will handle this<span class="req">*</span></span>
+                <select name="assign_to_id" id="md-admin" required><option value="">Loading…</option></select>
+                <span class="hint">${icon("lock")} Private: only you and the administrator you choose can see this ticket.</span></label>` : ""}
               <label class="field"><span class="lbl">Subject<span class="req">*</span></span>
                 <input type="text" name="subject" maxlength="200" required placeholder="e.g. Purchase order approval screen shows an error"></label>
               <div id="dupes"></div>
@@ -119,6 +123,15 @@ export async function render(view, _params = [], query = {}) {
     </div>`);
 
   const form = $("#tf", view);
+  if (IS_MD()) {
+    api.get("/it-admins").then((list) => {
+      const sel = $("#md-admin", view);
+      if (!sel) return;
+      sel.innerHTML = "";
+      sel.append(new Option("Choose an IT administrator…", ""));
+      for (const u of list) sel.append(new Option(`${u.full_name}${u.job_title ? " — " + u.job_title : ""}`, u.id));
+    }).catch(errorToast);
+  }
   let desk = "";
 
   const setSeg = (seg, v) => $$("button", seg).forEach((b) => b.classList.toggle("on", b.dataset.v === v));
@@ -229,6 +242,7 @@ export async function render(view, _params = [], query = {}) {
     const other = v.category_id === "__other";
     if (!v.category_id) errs.category_id = "Choose a category — or “Other — type your own” at the bottom of the list.";
     if (other && (v.custom_category || "").trim().length < 3) errs.custom_category = "Type the category in a few words (at least 3 characters).";
+    if (IS_MD() && !v.assign_to_id) errs.assign_to_id = "Choose the IT administrator who should handle this ticket.";
     if ((v.subject || "").trim().length < 5) errs.subject = "Subject must be at least 5 characters.";
     if ((v.description || "").trim().length < 10) errs.description = "Please describe the issue (at least 10 characters).";
     if (v.related_ticket_number && !/^[A-Za-z]{2,5}-\d{2,4}-\d{6}$/.test(v.related_ticket_number.trim())) errs.related_ticket_number = "Use a ticket number like IT-26-000123 or ERP-26-000045.";
@@ -243,6 +257,7 @@ export async function render(view, _params = [], query = {}) {
       subcategory_id: !other && v.subcategory_id ? Number(v.subcategory_id) : null, desk,
       impact, urgency, contact_method: "portal",
       related_ticket_number: v.related_ticket_number?.trim() || null,
+      ...(IS_MD() ? { assign_to_id: Number(v.assign_to_id) } : {}),
     };
     const btn = $("button[type=submit]", form);
     busy(btn);

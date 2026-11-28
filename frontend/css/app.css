@@ -1912,3 +1912,4 @@ html[data-mode="dark"] .shell .content .card, html[data-mode="dark"] .shell .con
 html[data-mode="dark"] .tk-panel { background: rgba(14, 21, 36, .86); }
 html[data-mode="dark"] .tk-day span, html[data-mode="dark"] .tk-sys span { color: #c3cede; }
 html[data-mode="dark"] .kpi .label, html[data-mode="dark"] .kpi .hint, html[data-mode="dark"] .small.muted { color: #a9b7cc; }
+.field .hint svg { width: 13px; height: 13px; vertical-align: -2px; }

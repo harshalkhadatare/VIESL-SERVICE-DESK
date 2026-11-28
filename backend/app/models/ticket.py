@@ -38,6 +38,8 @@ class Ticket(Base, TimestampMixin, CreatedByMixin):
     ticket_type: Mapped[str] = mapped_column(Unicode(20), nullable=False, default="incident")
     # IT department chosen by the employee: 'it', 'erp' (ERP-IT) or 'both'
     desk: Mapped[str] = mapped_column(Unicode(10), default="it", server_default="it", nullable=False, index=True)
+    # Raised by the Managing Director: visible only to the MD, the requester and the IT administrator it is assigned to
+    is_restricted: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
     subject: Mapped[str] = mapped_column(Unicode(200), nullable=False)
     description: Mapped[str] = mapped_column(LongText, nullable=False)
 

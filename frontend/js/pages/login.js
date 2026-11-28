@@ -46,11 +46,12 @@ export async function render(root, { onLogin }) {
           <span class="tag">IT Service Desk</span>
         </div>
         <h2>Sign in</h2>
-        <p class="muted" style="margin-bottom:22px">Use your Employee ID (or company email) and password.</p>
+        <p class="muted" style="margin-bottom:22px">Use your Employee ID and password.</p>
         <div id="login-error" class="notice danger" role="alert" hidden style="margin-bottom:16px">${icon("alert")}<div></div></div>
         <div class="stack" style="gap:16px">
-          <label class="field"><span class="lbl">Employee ID or email</span>
-            <input type="text" name="email" autocomplete="username" autocapitalize="none" spellcheck="false" required placeholder="e.g. 12520"></label>
+          <label class="field"><span class="lbl">Employee ID</span>
+            <input type="text" name="email" autocomplete="username" autocapitalize="characters" spellcheck="false" required
+              placeholder="e.g. 12520" pattern="[^@]+" title="Enter your Employee ID (not your email address)"></label>
           <label class="field"><span class="lbl">Password</span>
             <input type="password" name="password" autocomplete="current-password" required></label>
           <button class="btn primary block" type="submit" style="height:42px">Sign in</button>

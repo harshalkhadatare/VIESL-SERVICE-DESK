@@ -144,7 +144,8 @@ class StaffOut(BaseModel):
 
 
 @router.get("/it-admins", response_model=list[StaffOut])
-def it_admins(p: Principal = Depends(require("ticket.assign")), db: Session = Depends(get_db)):
+def it_admins(p: Principal = Depends(require_any("ticket.assign", "ticket.view_restricted")),
+              db: Session = Depends(get_db)):
     """IT administrators a ticket can be assigned to, with their current open workload."""
     from sqlalchemy import func
 

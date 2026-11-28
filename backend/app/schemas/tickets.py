@@ -58,6 +58,8 @@ class TicketCreate(StrictIn):
     contact_method: ContactMethod | None = "portal"
     related_ticket_number: str | None = Field(None, max_length=20)
     erp: ErpDetailIn | None = None
+    # Managing Director only: the IT administrator who handles this private ticket
+    assign_to_id: int | None = None
 
 
 class DuplicateCheckIn(StrictIn):

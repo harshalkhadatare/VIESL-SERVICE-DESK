@@ -731,7 +731,8 @@ export async function renderNew(view) {
         <input type="text" name="title" maxlength="200" required placeholder="e.g. Prepare the monthly MIS report"></label>
       <label class="field"><span class="lbl">Details <span class="muted" style="font-weight:400">(optional)</span></span>
         <textarea name="description" rows="5" maxlength="8000" placeholder="What exactly you expect, the format, who to contact…"></textarea></label>
-      <div class="field"><span class="lbl">Assign to — one or more people<span class="req">*</span></span><div id="tf-person"></div><div class="err" data-err="assignee_id"></div></div>
+      <div class="field"><span class="lbl">Assign to — one or more people<span class="req">*</span></span><div id="tf-person"></div>
+        <span class="hint">Your role can assign to: ${(state.tasks?.assign_to || []).join(", ") || "—"}.</span><div class="err" data-err="assignee_id"></div></div>
       <div class="grid grid-2" style="gap:14px" id="tf-due">
         <label class="field"><span class="lbl">Deadline date<span class="req">*</span></span><input type="date" name="due_date" value="${localDate(tomorrow)}" min="${localDate(new Date())}" required></label>
         <label class="field"><span class="lbl">Time</span><input type="time" name="due_time" value="18:00"></label>
@@ -916,7 +917,7 @@ export async function renderDetail(view, [number], query = {}) {
           ${c.edit ? html`<button class="btn" data-a="edit">${icon("edit")} Edit</button>` : ""}
           ${c.cancel ? html`<button class="btn ghost danger" data-a="cancel">${icon("x")} Cancel task</button>` : ""}
         </div></div>
-      ${t.viewing_as_md ? html`<div class="notice">${icon("eye")}<div><b>Viewing as Top management.</b> You can read everything on this
+      ${t.viewing_as_md ? html`<div class="notice">${icon("eye")}<div><b>Viewing as Managing Director.</b> You can read everything on this
         task and write messages to the people on it (they'll see them in their notifications). Only the people on the task
         can change it.</div></div>` : ""}
       ${t.private ? html`<div class="notice tk-private">${icon("lock")}<div><b>Private task.</b> You can see that it exists and fix the deadline or people,

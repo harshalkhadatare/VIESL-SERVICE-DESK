@@ -21,21 +21,18 @@ def test_same_email_allowed_for_several_users(client):
                         json={"email": "office.team@visioninfraindia.com"}).status_code == 200
 
 
-def test_login_with_shared_email_picks_the_matching_password(client):
+def test_sign_in_with_employee_id_only(client):
+    """Many people share one company mailbox, so an email never signs anyone in — only the Employee ID."""
     _mk(client, "S2001", "shared.login@visioninfraindia.com", "alpha")
     _mk(client, "S2002", "shared.login@visioninfraindia.com", "bravo")
-    def who(pw):
-        r = client.post("/api/v1/auth/login", json={"email": "shared.login@visioninfraindia.com", "password": pw}, headers=H)
-        if r.status_code != 200:
-            return r.status_code
-        return client.get("/api/v1/auth/me", headers={**H, "Authorization": f"Bearer {r.json()['access_token']}"}).json()["employee_code"]
-    assert who("alpha") == "S2001" and who("bravo") == "S2002"
-    assert who("wrong") == 401
-    # same email AND same password: ask for the Employee ID
-    _mk(client, "S2003", "shared.login@visioninfraindia.com", "alpha")
     r = client.post("/api/v1/auth/login", json={"email": "shared.login@visioninfraindia.com", "password": "alpha"}, headers=H)
     assert r.status_code == 401 and "Employee ID" in r.json()["error"]["message"]
-    assert client.post("/api/v1/auth/login", json={"email": "S2003", "password": "alpha"}, headers=H).status_code == 200
+    for code, pw in (("S2001", "alpha"), ("s2002", "bravo")):
+        r = client.post("/api/v1/auth/login", json={"email": code, "password": pw}, headers=H)
+        assert r.status_code == 200
+        me = client.get("/api/v1/auth/me", headers={**H, "Authorization": f"Bearer {r.json()['access_token']}"}).json()
+        assert me["employee_code"] == code.upper()
+    assert client.post("/api/v1/auth/login", json={"email": "S2001", "password": "bravo"}, headers=H).status_code == 401
 
 
 def test_resolution_notes_five_characters(client):

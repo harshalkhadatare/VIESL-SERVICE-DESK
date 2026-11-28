@@ -34,8 +34,31 @@ PRIVATE = "Private — only the people on this task can read it."
 
 
 # ---------------------------------------------------------------- access
+def can_use(p: Principal) -> bool:
+    """Task management is for the Managing Director, IT administrators and Managers L1/L2 — not employees."""
+    return p.can("task.use")
+
+
 def can_assign(p: Principal) -> bool:
-    return p.can("task.assign") or p.can("task.admin")
+    return p.can("task.use") and p.can("task.assign")
+
+
+def assign_targets(p: Principal) -> set[str]:
+    """Roles this person may give tasks to (union over their roles). Never the Managing Director."""
+    from app.seed import ASSIGN_TARGETS
+    out: set[str] = set()
+    for r in p.roles:
+        out |= ASSIGN_TARGETS.get(r, set())
+    return out
+
+
+def assignable_clause(p: Principal):
+    """SQL filter for users this person may assign tasks to."""
+    from app.models import Role, UserRole
+    allowed = assign_targets(p)
+    has_allowed = select(UserRole.user_id).join(Role, Role.id == UserRole.role_id).where(Role.code.in_(allowed or {"-"}))
+    is_md = select(UserRole.user_id).join(Role, Role.id == UserRole.role_id).where(Role.code == "top_management")
+    return and_(User.id.in_(has_allowed), User.id.notin_(is_md))
 
 
 def sees_all(p: Principal) -> bool:
@@ -163,7 +186,7 @@ def fmt_due(dt: datetime | None, tz: str) -> str:
     return dt.astimezone(ZoneInfo(tz)).strftime("%d %b %Y, %I:%M %p")
 
 
-def _people(db: Session, ids: list[int]) -> list[User]:
+def _people(db: Session, ids: list[int], p: Principal | None = None, keep: tuple[int, ...] = ()) -> list[User]:
     ids = list(dict.fromkeys(i for i in ids if i))           # keep order, no duplicates
     if not ids:
         raise BusinessRuleError("Choose at least one person.", details=[{"field": "assignee_ids"}])
@@ -172,7 +195,20 @@ def _people(db: Session, ids: list[int]) -> list[User]:
     users = {u.id: u for u in db.scalars(select(User).where(User.id.in_(ids), User.is_active.is_(True)))}
     if len(users) != len(ids):
         raise BusinessRuleError("Choose active people only.", details=[{"field": "assignee_ids"}])
+    if p is not None:
+        new = [i for i in ids if i not in keep]          # people already on the task may stay
+        ok = set(db.scalars(select(User.id).where(User.id.in_(new or [-1]), assignable_clause(p))))
+        bad = [users[i].full_name for i in new if i not in ok]
+        if bad:
+            raise BusinessRuleError(
+                f"You can't give a task to {', '.join(bad)}. Your role can assign to: {_target_names(p)}.",
+                details=[{"field": "assignee_ids"}])
     return [users[i] for i in ids]
+
+
+def _target_names(p: Principal) -> str:
+    from app.seed import ROLES
+    return ", ".join(sorted(ROLES[c][0] for c in assign_targets(p) if c in ROLES)) or "nobody"
 
 
 def _set_members(db: Session, t: Task, people: list[User]) -> None:
@@ -259,7 +295,7 @@ def create_task(db: Session, p: Principal, *, title: str, description: str | Non
         raise Forbidden("Only management can assign tasks.")
     if priority not in TASK_PRIORITIES:
         raise BusinessRuleError("Choose High, Medium or Low priority.", details=[{"field": "priority"}])
-    people = _people(db, assignee_ids)
+    people = _people(db, assignee_ids, p)
     now = utcnow()
     t = Task(number=next_task_number(db, now.year), title=title.strip(), description=_clean(description),
              category=_clean(category), priority=priority, status="not_started", progress=0, assigner_id=p.id,
@@ -313,7 +349,7 @@ def edit_task(db: Session, p: Principal, t: Task, changes: dict) -> Task:
             _tell(db, u.id, p.id, "task_update", f"Deadline changed: {t.title}", f"New deadline: {fmt_due(new_due, u.timezone)}", t,
                   email=True)
     if changes.get("assignee_ids"):
-        people = _people(db, changes["assignee_ids"])
+        people = _people(db, changes["assignee_ids"], p, keep=tuple(t.member_ids))
         old_ids, new_ids = t.member_ids, [u.id for u in people]
         if old_ids != new_ids:
             added = [u for u in people if u.id not in old_ids]

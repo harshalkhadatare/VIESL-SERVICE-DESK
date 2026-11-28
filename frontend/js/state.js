@@ -24,7 +24,9 @@ export async function supportGroups() {
 export function roleLabel() {
   const r = state.me?.roles || [];
   const base = r.includes("it_admin") ? "IT Administrator" : "Employee";
-  if (r.includes("top_management")) return r.includes("it_admin") ? "Top management · IT Admin" : "Top management";
+  if (r.includes("top_management")) return r.includes("it_admin") ? "Managing Director · IT Admin" : "Managing Director";
+  if (r.includes("manager_l1")) return r.includes("it_admin") ? "Manager L1 · IT Admin" : "Manager L1";
+  if (r.includes("manager_l2")) return r.includes("it_admin") ? "Manager L2 · IT Admin" : "Manager L2";
   return base;
 }
 

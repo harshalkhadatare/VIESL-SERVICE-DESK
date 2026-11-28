@@ -1,5 +1,5 @@
 from app.core.request_ctx import describe_user_agent
-from tests.conftest import EMAILS, auth
+from tests.conftest import EMAILS, auth, code_for
 
 CHROME_WIN = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
               "Chrome/130.0.0.0 Safari/537.36")
@@ -16,7 +16,7 @@ def test_user_agent_is_readable():
 
 
 def _login(client, headers):
-    return client.post("/api/v1/auth/login", json={"email": EMAILS["employee2"], "password": "Vision@Demo2026"},
+    return client.post("/api/v1/auth/login", json={"email": code_for(EMAILS["employee2"]), "password": "Vision@Demo2026"},
                        headers={"X-Requested-With": "fetch", **headers})
 
 
