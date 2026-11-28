@@ -110,7 +110,7 @@ Roles are listed in order of authority.
 |---|---|---|
 | **Managing Director** | Sees and comments on every ticket. Tickets the MD raises are **private**: the MD picks the IT admin, and only the MD and that admin see the ticket. | Sees every task and can comment. Assigns to IT admins, Manager L1 and Manager L2. |
 | **IT Administrator** | Works, assigns and manages all tickets except the MD's private tickets. Has all admin settings. | Assigns to IT admins, Manager L1 and L2. Sees only tasks they are on. |
-| **Manager L1** | Views and comments on all IT and ERP-IT tickets. | Assigns to Manager L1 and L2. Sees only tasks they are on. |
+| **Manager L1** | Views and comments on all IT and ERP-IT tickets. | Assigns to IT admins, Manager L1 and L2. Sees only tasks they are on. |
 | **Manager L2** | Own tickets, like an employee. | Receives and completes tasks; can't assign. |
 | **Employee** | Raises and follows own tickets. | No access. |
 

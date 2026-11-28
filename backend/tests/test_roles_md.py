@@ -83,4 +83,4 @@ def test_manager_l1_sees_and_comments_on_all_tickets(client):
     assert client.post(f"{T}/{n}/comments", headers=h, json={"body": "Please check today", "is_internal": False}).status_code == 201
     assert client.get("/api/v1/admin/users", headers=h).status_code == 403
     me = client.get("/api/v1/tasks/me", headers=h).json()
-    assert me["can_assign"] and sorted(me["assign_to"]) == ["Manager L1", "Manager L2"]
+    assert me["can_assign"] and sorted(me["assign_to"]) == ["IT Administrator", "Manager L1", "Manager L2"]

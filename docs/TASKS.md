@@ -11,7 +11,7 @@ one company mailbox, so an email can't identify a person).
 |---|---|---|
 | **Managing Director** (highest) | Assigns to anyone (IT admins, Managers L1/L2). Sees **every** task, with messages and files, and can write on any. | Sees **every** ticket (incl. internal notes), the dashboard, SLA report and exports; can comment on any ticket. Doesn't assign tickets or change settings. Their own tickets are **private**: when raising one they choose the IT administrator, and only the MD and that administrator see it. |
 | **IT Administrator** | Assigns to Managers L1/L2 and other IT administrators (never to the MD). Sees only tasks they are on. | Everything as before: works and assigns tickets, manages users (incl. creating MDs and Managers) and settings. Never sees the MD's private tickets unless one is assigned to them. |
-| **Manager L1** | Assigns to Managers L1 and L2 (never to the MD). Sees only tasks they are on. | Sees and comments on all IT and ERP-IT tickets (not the MD's private ones). |
+| **Manager L1** | Assigns to IT administrators and Managers L1 and L2 (never to the MD). Sees only tasks they are on. | Sees and comments on all IT and ERP-IT tickets (not the MD's private ones). |
 | **Manager L2** | Receives and completes tasks; cannot assign. | Raises and follows their own tickets. |
 | **Employee** | **No Task management.** | Raises and follows their own tickets. |
 

@@ -67,13 +67,12 @@ def test_roles_and_visibility(client):
     for who in (_hdr(mgr), auth("admin")):
         r = client.post(API, json={"title": "Task for the MD", "assignee_ids": [md], "due_at": _iso()}, headers=who)
         assert r.status_code == 422 and "can't give a task" in r.json()["error"]["message"]
-    # Manager L1 assigns to L1 and L2 only; IT administrators to L1, L2 and other admins
-    assert client.post(API, json={"title": "L1 to admin task", "assignee_ids": [user_id(EMAILS["sd_admin"])],
-                                  "due_at": _iso()}, headers=_hdr(mgr)).status_code == 422
+    # Manager L1 (senior) assigns to IT administrators, L1 and L2; IT administrators to L1, L2 and other admins
+    assert _new(client, _hdr(mgr), user_id(EMAILS["sd_admin"]), title="L1 to admin task")["number"]
     assert _new(client, _hdr(mgr), mgr2, title="L1 to L1 task")["number"]
     assert _new(client, auth("admin"), user_id(EMAILS["sd_admin"]), title="Admin to admin task")["number"]
     people = {u["id"] for u in client.get(f"{API}/people", headers=_hdr(mgr)).json()}
-    assert emp in people and md not in people and user_id(EMAILS["admin"]) not in people
+    assert emp in people and md not in people and user_id(EMAILS["admin"]) in people
     me = client.get(f"{API}/me", headers=l2).json()
     assert me["has_access"] and me["has_tasks"] and not me["can_assign"]
 

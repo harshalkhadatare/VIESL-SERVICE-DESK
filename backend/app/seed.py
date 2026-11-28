@@ -63,8 +63,8 @@ ROLES = {
     "top_management": ("Managing Director",
                        "Highest role: see and comment on every task and ticket, assign tasks to anyone, dashboards and reports",
                        _EMP + ["task.use", "task.assign", "task.view_all", "ticket.view_restricted"] + _SEE_ALL_TICKETS),
-    # Manager L1: assigns tasks to Manager L1 / L2; sees (and comments on) all IT / ERP-IT tickets.
-    "manager_l1": ("Manager L1", "Assign tasks to Manager L1 / L2; see and comment on all IT and ERP-IT tickets",
+    # Manager L1 (senior manager): assigns tasks to IT administrators and Manager L1 / L2; sees (and comments on) all IT / ERP-IT tickets.
+    "manager_l1": ("Manager L1", "Assign tasks to IT administrators and Manager L1 / L2; see and comment on all IT and ERP-IT tickets",
                    _EMP + ["task.use", "task.assign"] + _SEE_ALL_TICKETS),
     # Manager L2: receives and completes tasks; cannot assign. Tickets: own tickets only.
     "manager_l2": ("Manager L2", "Receive and complete tasks (cannot assign); raise and track own tickets",
@@ -76,7 +76,7 @@ ROLE_ORDER = ["top_management", "it_admin", "manager_l1", "manager_l2", "employe
 # Who may give a task to whom (by the assigner's role). Nobody but the MD gives tasks to the MD — not even the MD.
 ASSIGN_TARGETS = {
     "top_management": {"it_admin", "manager_l1", "manager_l2"},
-    "manager_l1": {"manager_l1", "manager_l2"},
+    "manager_l1": {"it_admin", "manager_l1", "manager_l2"},
     "it_admin": {"manager_l1", "manager_l2", "it_admin"},
 }
 # Roles from earlier releases are folded into the roles above on the next seed run.

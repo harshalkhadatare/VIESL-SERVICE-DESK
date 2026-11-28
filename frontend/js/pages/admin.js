@@ -13,7 +13,7 @@ export async function renderUsers(view) {
   mount(view, html`<div class="page-head"><div><h1>Users & roles</h1>
       <div class="sub"><b>Employee</b> raises tickets, <b>IT Administrator</b> works and assigns them.
       Task management: <b>Managing Director</b> (sees and comments on every task and ticket, assigns tasks to anyone),
-      <b>Manager L1</b> (assigns tasks to L1 / L2, sees and comments on all tickets) and <b>Manager L2</b> (receives and
+      <b>Manager L1</b> (assigns tasks to IT admins and L1 / L2, sees and comments on all tickets) and <b>Manager L2</b> (receives and
       completes tasks). Employees use the IT Service Desk only. Use the <b>Roles</b> button. Changes are recorded in the audit log.</div></div>
       <div class="row"><button class="btn" id="import-users">${icon("download")} Import from Excel</button>
       <button class="btn primary" id="add-user">${icon("plus")} Add user</button></div></div>
