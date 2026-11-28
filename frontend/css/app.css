@@ -1913,3 +1913,26 @@ html[data-mode="dark"] .tk-panel { background: rgba(14, 21, 36, .86); }
 html[data-mode="dark"] .tk-day span, html[data-mode="dark"] .tk-sys span { color: #c3cede; }
 html[data-mode="dark"] .kpi .label, html[data-mode="dark"] .kpi .hint, html[data-mode="dark"] .small.muted { color: #a9b7cc; }
 .field .hint svg { width: 13px; height: 13px; vertical-align: -2px; }
+
+/* ---------- employee home: gradient welcome panel */
+.hero { background: linear-gradient(120deg, #0b2a6f 0%, #1d4ed8 42%, #6d28d9 78%, #c026d3 100%);
+  box-shadow: 0 14px 40px rgba(29, 78, 216, .35); border: 1px solid rgba(255, 255, 255, .18); }
+.hero::before { content: ""; position: absolute; left: -80px; bottom: -120px; width: 320px; height: 320px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(56, 189, 248, .45), transparent 70%); pointer-events: none; }
+.hero::after { background: radial-gradient(circle, rgba(244, 114, 182, .45), transparent 70%) !important; }
+.hero > * { position: relative; z-index: 1; }
+.hero p { color: #e0e7ff; }
+.hero .search input { background: rgba(255, 255, 255, .16); border-color: rgba(255, 255, 255, .28); }
+.hero .search input::placeholder { color: #dbe4ff; }
+
+/* ---------- ticket page: related tickets at the top of Details */
+.rel-top { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; margin-bottom: 14px; border-radius: 10px;
+  background: var(--primary-soft); border: 1px solid color-mix(in srgb, var(--primary) 25%, transparent); }
+.rel-top > svg { width: 16px; height: 16px; color: var(--primary); margin-top: 2px; flex: none; }
+.rel-top > div { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.rel-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--primary-text); }
+.rel-link { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; text-decoration: none; }
+.rel-link .t-sub2 { flex-basis: 100%; }
+.rel-link:hover .t-id { text-decoration: underline; }
+html[data-mode="dark"] .hero { background: linear-gradient(120deg, #0a1d4d 0%, #1e3a8a 42%, #4c1d95 78%, #86198f 100%); }
+html[data-mode="dark"] .hero .btn.primary { background: #fff; color: #0b2a6f; border-color: #fff; }

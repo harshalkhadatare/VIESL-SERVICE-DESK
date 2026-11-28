@@ -127,7 +127,8 @@ GROUPS = [("SD", "Service Desk", "manual"), ("ERP", "ERP Application Support", "
           ("SEC", "Information Security", "manual")]
 # code, name, type, group, erp, approval, protected, subcategories
 # Categories handled by the ERP-IT department; every other category belongs to IT (hardware, network, email…)
-ERP_DESK = {"ERP_APP", "ERP_DATA", "ERP_REPORT", "ERP_BACKDATE", "DB_INTEG", "ENHANCE", "ERP_OTHER"}
+ERP_DESK = {"ERP_APP", "ERP_DATA", "ERP_REPORT", "ERP_BACKDATE", "BIN_CODE", "ACCESS", "DB_INTEG", "ENHANCE",
+            "ERP_OTHER"}
 # Where "Other — type your own" tickets go, per IT department (hidden from the category list itself)
 OTHER_CODES = {"it": "OTHER", "erp": "ERP_OTHER", "both": "OTHER"}
 
@@ -141,7 +142,10 @@ CATEGORIES = [
     # Every category needs its OWN code (first value); re-using a code only adds subcategories to that category.
     ("ERP_BACKDATE", "ERP Back Date Lock Open", "service_request", "ERP", False, False, False,
      ["Pending work"]),
-    ("ACCESS", "User Account and Access Request", "service_request", "SD", False, True, False,
+    ("BIN_CODE", "Bin Code Request", "service_request", "ERP", False, False, False,
+     ["New Bin", "Bin Issue"]),
+    # handled by ERP-IT (moved from IT)
+    ("ACCESS", "User Account and Access Request", "service_request", "ERP", False, True, False,
      ["New ERP role", "Shared folder access", "Application access", "Remove access"]),
     ("PASSWORD", "Password Reset / Account Unlock", "service_request", "SD", False, False, False,
      ["Windows / domain", "ERP", "Email"]),
@@ -284,6 +288,9 @@ def seed_reference(db: Session) -> None:
         cat, _ = _get_or_create(db, Category, {"code": code}, name=name, default_ticket_type=ttype,
                                 default_group_id=groups[g].id, uses_erp_fields=erp, requires_approval=appr,
                                 is_protected=prot, sort_order=i * 10, desk="erp" if code in ERP_DESK else "it")
+        desk = "erp" if code in ERP_DESK else "it"
+        if cat.desk != desk:            # a category moved department (e.g. Access requests IT → ERP-IT)
+            cat.desk, cat.default_group_id = desk, groups[g].id
         for s in subs:
             _get_or_create(db, Subcategory, {"category_id": cat.id, "name": s})
     _remove_stray_subcategory(db, "ERP_APP", "Pending Work")

@@ -39,9 +39,6 @@ async function renderEmployee(view, showSwitch) {
       </div>
       <a class="btn primary" href="#/tickets/new">${icon("plus")} Raise a ticket</a>
     </section>
-    <div class="section-label" style="margin-top:22px">Quick help — pick what's wrong</div>
-    <div class="quick-tiles">${QUICK.map(([k, ic, t, sub]) => html`<a class="quick-tile" href="#/tickets/new?quick=${k}">
-      <span class="qt-ic">${icon(ic)}</span><span><b>${t}</b><span>${sub}</span></span></a>`)}</div>
     <div class="kpis" style="margin-top:20px" id="emp-kpis">${[1, 2, 3, 4].map(() => html`<div class="kpi"><div class="skeleton" style="width:50%"></div><div class="skeleton" style="width:30%;height:26px;margin-top:8px"></div></div>`)}</div>
     <div class="grid grid-main-side" style="margin-top:20px">
       <div class="card"><div class="card-head"><h2>Recently updated</h2><a href="#/tickets?scope=mine" class="small">View all</a></div>
@@ -80,15 +77,6 @@ async function renderEmployee(view, showSwitch) {
   } catch (e) { errorToast(e); }
 }
 
-// shortcuts on the employee home → pre-filled "Raise a ticket" form (see new-ticket.js QUICK_TEMPLATES)
-const QUICK = [
-  ["password", "key", "Forgot password", "Reset or unlock an account"],
-  ["outlook", "mail", "Email / Outlook", "Not syncing, can't send"],
-  ["printer", "file", "Printer / scanner", "Not printing, jammed"],
-  ["internet", "zap", "Internet / VPN", "Slow or no connection"],
-  ["erp", "layers", "ERP problem", "Error, wrong data, report"],
-  ["laptop", "inbox", "Laptop / desktop", "Slow, broken, new device"],
-];
 
 function kpi(label, value, href, tone = "", foot = "") {
   return html`<div class="kpi ${tone}">${href ? html`<a class="kpi-link" href="${href}" aria-label="${label}"></a>` : ""}

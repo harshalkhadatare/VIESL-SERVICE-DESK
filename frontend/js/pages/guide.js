@@ -17,7 +17,7 @@ function sections(staff) {
 
     { id: "raise", icon: "plus", title: "Raise a ticket", body: html`
       ${steps([
-        html`Click <b>Raise a ticket</b> in the left menu — or use a <b>Quick help</b> tile on the Home page (Forgot password, Printer, ERP…) to get a form that's already filled in.`,
+        html`Click <b>Raise a ticket</b> in the left menu (or the button on the Home page).`,
         html`Choose the <b>IT department</b>: <b>IT</b> (computers, printers, network, email, accounts), <b>ERP-IT</b> (ERP software, data, reports) or <b>Both / not sure</b>.`,
         html`Then choose the <b>category</b> — the list only shows what that department handles. Subcategory is optional.`,
         html`Write a short <b>Subject</b> and a clear <b>Description</b>: what happened, since when, and any error text.`,

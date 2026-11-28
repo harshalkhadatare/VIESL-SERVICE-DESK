@@ -108,6 +108,11 @@ export async function render(view, [number], query = {}) {
 
         <aside class="stack">
           <div class="card"><div class="card-head"><h2>Details</h2></div><div class="card-body">
+            ${t.relations.length ? html`<div class="rel-top">${icon("link")}<div><span class="rel-lbl">Related ticket${t.relations.length > 1 ? "s" : ""}</span>
+              ${t.relations.map((r) => html`<a class="rel-link" href="#/tickets/${r.number}" title="${r.subject}">
+                <span class="t-id">${r.number}</span>
+                <span class="pill">${r.relation_type === "duplicate_of" ? (r.direction === "outgoing" ? "duplicate of" : "has duplicate") : "related"}</span>
+                <span class="t-sub2">${r.subject} · ${r.status}</span></a>`)}</div></div>` : ""}
             <dl class="kv">
               <dt>Requester</dt><dd>${nameId(t.requester)}<div class="t-sub2">${realEmail(t.requester.email) || "No email on file"}${t.requester_phone ? html`<br>${t.requester_phone}` : ""}</div></dd>
               <dt>Department</dt><dd>${t.department?.name || "—"}</dd>
@@ -122,10 +127,6 @@ export async function render(view, [number], query = {}) {
             </dl></div></div>
           ${slaCard(t)}
           ${attachmentsCard(closed)}
-          ${t.relations.length ? html`<div class="card"><div class="card-head"><h2>Related tickets</h2></div><ul class="list">
-            ${t.relations.map((r) => html`<li><a class="item" href="#/tickets/${r.number}"><span class="t-id">${r.number}</span>
-              <span class="pill" style="margin-left:6px">${r.relation_type === "duplicate_of" ? (r.direction === "outgoing" ? "duplicate of" : "has duplicate") : "related"}</span>
-              <div class="t-sub2">${r.subject} · ${r.status}</div></a></li>`)}</ul></div>` : ""}
         </aside>
       </div>`);
     wire();
